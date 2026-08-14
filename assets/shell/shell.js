@@ -48,16 +48,31 @@ function applySize(key) {
   // Nested multi-page assemblies (#page is then a transparent container):
   // each nested sheet is one full page too.
   document.querySelectorAll('#page > .page').forEach(el => { el.style.minHeight = p.h + 'px'; });
-  // Page-break guides only on the active page
+  // Page-break guides only on the active page, and only when its content
+  // actually overflows one sheet. Skipped for nested multi-page assemblies —
+  // their sheets are discrete .page elements, there is no fragmentation to
+  // mark. Print fragments an overflowing sheet with box-decoration-break:
+  // clone (every fragment repeats the sheet's own padding and border), so
+  // per-sheet content capacity is the paper height minus BOTH decoration
+  // edges, and the first break lands one bottom-decoration short of the
+  // paper height. Sections still snap breaks earlier via break-inside rules;
+  // the guides mark the latest possible break.
   document.querySelectorAll('.page-break-guide').forEach(g => g.remove());
   const activePg = getActivePage();
-  for (let y = p.h; y < activePg.offsetHeight; y += p.h) {
-    const guide = document.createElement('div');
-    guide.className = 'page-break-guide';
-    guide.style.cssText = `position:absolute;left:0;right:0;top:${y}px;height:2px;` +
-      `background:repeating-linear-gradient(90deg,oklch(67% 0.006 78) 0 6px,transparent 6px 12px);` +
-      `pointer-events:none;`;
-    activePg.appendChild(guide);
+  const nested = document.querySelector('#page > .page');
+  if (!nested && activePg.offsetHeight > p.h) {
+    const cs = getComputedStyle(activePg);
+    const decoTop = parseFloat(cs.paddingTop) + parseFloat(cs.borderTopWidth);
+    const decoBottom = parseFloat(cs.paddingBottom) + parseFloat(cs.borderBottomWidth);
+    const step = Math.max(p.h - decoTop - decoBottom, 1);
+    for (let y = p.h - decoBottom; y < activePg.offsetHeight; y += step) {
+      const guide = document.createElement('div');
+      guide.className = 'page-break-guide';
+      guide.style.cssText = `position:absolute;left:0;right:0;top:${y}px;height:2px;` +
+        `background:repeating-linear-gradient(90deg,oklch(67% 0.006 78) 0 6px,transparent 6px 12px);` +
+        `pointer-events:none;`;
+      activePg.appendChild(guide);
+    }
   }
   // margin: 0 — the sheet fills the page box edge to edge. Physical printers
   // with a hardware non-printable border will offer their own fit/shrink in

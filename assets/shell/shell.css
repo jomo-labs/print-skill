@@ -298,6 +298,12 @@ footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-r
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     break-inside: avoid;
+    /* Overflowing content fragments onto continuation sheets; clone makes
+       every fragment carry the sheet's own padding and border, so each
+       continuation sheet keeps the same margins (and themed frame) as the
+       first instead of starting at the paper edge. */
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
   }
   /* One sheet per .page; no break after the last one (avoids a trailing blank
      sheet). Scoped to top-level pages so a .page div nested inside generated
@@ -318,6 +324,10 @@ footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-r
   #page > .page {
     break-inside: avoid;
     margin: 0 auto !important;
+    /* Same continuation-margin rule as top-level sheets (only matters if a
+       nested sheet overflows its own paper height). */
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
     /* Nested sheets carry the fragment's screen-presentation shadow — strip
        it like the top-level rule above does, or sheet 1's shadow prints as a
        gray gradient band at the bottom of the printed page. */
