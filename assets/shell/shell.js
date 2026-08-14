@@ -300,6 +300,45 @@ async function printThisPage() {
   }
 }
 
+// ── Auto-reload ─────────────────────────────────────────────────────────────
+// The model edits generated pages on disk (SKILL.md "Editing an existing
+// page"); this poll makes those edits appear in an already-open tab without a
+// manual refresh. Every 1.5s the shell HEADs its own URL and reloads when the
+// server's ETag (an mtime+size signature — see serveFile in server.mjs)
+// changes. Guards, in order:
+//   - file:// pages have no server to ask — skip entirely, same rule as
+//     printThisPage().
+//   - an in-progress double-click text edit is never yanked away: polling is
+//     deferred while a contentEditable element has focus. (Committed DOM
+//     edits still only live in the DOM — a reload after a model-side file
+//     change replaces them; the file is the source of truth.)
+//   - non-ok responses and network errors are ignored, never reloaded on:
+//     a restarting server, or the deleted temp .render-*.html this same
+//     script polls from inside the headless PDF render, would otherwise
+//     wipe the page mid-print.
+//   - hosts that serve no ETag (a page uploaded somewhere static) get no
+//     auto-reload rather than spurious ones.
+function initAutoReload() {
+  if (location.protocol === 'file:') return;
+  let etag = null;
+  const tick = async () => {
+    if (document.activeElement?.isContentEditable) return;
+    try {
+      const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
+      if (!res.ok) return;
+      const tag = res.headers.get('ETag');
+      if (!tag) return;
+      if (etag !== null && tag !== etag) { location.reload(); return; }
+      etag = tag;
+    } catch { /* offline or server restarting — try again next tick */ }
+  };
+  // Seed the baseline now, not on the first interval tick — an edit landing
+  // within the first poll period would otherwise BECOME the baseline and
+  // never trigger the reload it should have.
+  tick();
+  setInterval(tick, 1500);
+}
+
 // ── Init ────────────────────────────────────────────────────────────────────
 
 (function init() {
@@ -327,5 +366,6 @@ async function printThisPage() {
 
   initVariants();
   applySize(savedPaper);
+  initAutoReload();
   window.addEventListener('resize', () => scaleToFit(PAPERS[document.getElementById('mp-paper-select').value]?.w || 816));
 })();

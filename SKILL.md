@@ -158,6 +158,11 @@ Keep the same filename so the user's link stays valid, and re-run the Step 6
 verification greps after any edit. Never touch the shell's own markup or
 script — only content and content-overrides.
 
+A page open in the browser via the local server refreshes itself within a
+couple of seconds of the file changing on disk (the shell polls the server's
+ETag) — after an edit, tell the user the open page has updated; don't ask
+them to refresh.
+
 ## Scope notes
 
 - **Puzzles are presentation-only.** This skill formats mazes, word searches,

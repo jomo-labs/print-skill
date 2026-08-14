@@ -10,6 +10,11 @@
 //   GET  /healthz          liveness + identity probe
 //   POST /render-pdf       { html, title } -> application/pdf
 //
+// Static files also answer HEAD and carry an ETag derived from mtime+size —
+// the shell's auto-reload poll (see shell.js) HEADs its own URL and reloads
+// the page when that signature changes, so edits the model makes to a served
+// file show up in the user's open tab without a manual refresh.
+//
 // The render endpoint accepts the page's *serialized DOM* (the shell posts
 // document.documentElement.outerHTML), so PDFs include the user's in-browser
 // text edits. The HTML is staged as a temp file in the served directory so
@@ -64,13 +69,25 @@ function slugify(title) {
   );
 }
 
-async function serveFile(res, filePath) {
+async function serveFile(req, res, filePath, stat) {
+  const headers = {
+    "Content-Type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+    // Freshness signature for the shell's auto-reload poll. mtimeMs keeps
+    // sub-second resolution — a Last-Modified-only signature (whole seconds)
+    // would miss two writes landing within the same second.
+    "ETag": `"${stat.mtimeMs}-${stat.size}"`,
+    "Last-Modified": stat.mtime.toUTCString(),
+  };
+  if (req.method === "HEAD") {
+    res.writeHead(200, headers);
+    return res.end();
+  }
   const body = await fs.readFile(filePath);
-  res.writeHead(200, { "Content-Type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream" });
+  res.writeHead(200, headers);
   res.end(body);
 }
 
-async function serveStatic(res, urlPath) {
+async function serveStatic(req, res, urlPath) {
   // Pages and their assets from the served directory; /shell/* falls back to
   // the skill's own assets so a directory without a local shell copy still works.
   const candidates = [];
@@ -83,7 +100,7 @@ async function serveStatic(res, urlPath) {
   for (const candidate of candidates) {
     try {
       const stat = await fs.stat(candidate);
-      if (stat.isFile()) return await serveFile(res, candidate);
+      if (stat.isFile()) return await serveFile(req, res, candidate, stat);
     } catch {
       /* try next */
     }
@@ -164,8 +181,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/") {
       return await serveIndex(res);
     }
-    if (req.method === "GET") {
-      return await serveStatic(res, url.pathname);
+    if (req.method === "GET" || req.method === "HEAD") {
+      return await serveStatic(req, res, url.pathname);
     }
     res.writeHead(405, { "Content-Type": "text/plain" });
     res.end("method not allowed");
