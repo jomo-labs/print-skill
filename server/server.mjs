@@ -9,11 +9,19 @@
 //   GET  /                 index of served pages
 //   GET  /healthz          liveness + identity probe
 //   POST /render-pdf       { html, title } -> application/pdf
+//   PUT  /<page>.html      raw html body -> saved to the page's file
 //
 // Static files also answer HEAD and carry an ETag derived from mtime+size —
 // the shell's auto-reload poll (see shell.js) HEADs its own URL and reloads
 // the page when that signature changes, so edits the model makes to a served
 // file show up in the user's open tab without a manual refresh.
+//
+// PUT is the reverse direction: the shell saves the user's in-browser text
+// edits back into the page's file (sanitized serialized DOM). If-Match makes
+// the write conditional on the ETag the shell last saw, so a file the model
+// rewrote mid-edit is never clobbered — the stale save gets 412 and the shell
+// reloads instead. PUT edits existing top-level pages only; it never creates
+// files and never reaches shell assets or the temp render staging files.
 //
 // The render endpoint accepts the page's *serialized DOM* (the shell posts
 // document.documentElement.outerHTML), so PDFs include the user's in-browser
@@ -69,13 +77,17 @@ function slugify(title) {
   );
 }
 
+// Freshness signature for the shell's auto-reload poll and PUT's If-Match.
+// mtimeMs keeps sub-second resolution — a Last-Modified-only signature (whole
+// seconds) would miss two writes landing within the same second.
+function etagFor(stat) {
+  return `"${stat.mtimeMs}-${stat.size}"`;
+}
+
 async function serveFile(req, res, filePath, stat) {
   const headers = {
     "Content-Type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream",
-    // Freshness signature for the shell's auto-reload poll. mtimeMs keeps
-    // sub-second resolution — a Last-Modified-only signature (whole seconds)
-    // would miss two writes landing within the same second.
-    "ETag": `"${stat.mtimeMs}-${stat.size}"`,
+    "ETag": etagFor(stat),
     "Last-Modified": stat.mtime.toUTCString(),
   };
   if (req.method === "HEAD") {
@@ -168,6 +180,47 @@ async function handleRenderPdf(req, res) {
   }
 }
 
+async function handleSavePage(req, res, urlPath) {
+  const fail = (status, error, headers = {}) => {
+    res.writeHead(status, { "Content-Type": "application/json", ...headers });
+    res.end(JSON.stringify({ ok: false, error }));
+  };
+  // Writable surface: existing top-level .html pages only. No nested paths
+  // (shell assets stay read-only), no dotfiles (the temp .render-* staging
+  // files), and no creation — a page must have been generated first.
+  if (!/^\/[^/.][^/]*\.html$/.test(urlPath)) return fail(404, "not a saveable page");
+  const filePath = safeJoin(ROOT, urlPath);
+  if (!filePath) return fail(404, "not a saveable page");
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch {
+    return fail(404, "no such page");
+  }
+  // Conditional write: a mismatch means the file changed after the client
+  // last loaded/saved it (the model edited it mid-browser-edit). Reject so
+  // the newer version is never clobbered; the shell reloads on 412.
+  const ifMatch = req.headers["if-match"];
+  if (ifMatch && ifMatch !== etagFor(stat)) {
+    return fail(412, "file changed on disk", { "ETag": etagFor(stat) });
+  }
+  let html;
+  try {
+    html = await readBody(req);
+  } catch (e) {
+    return fail(400, String(e.message || e));
+  }
+  // Sanity floor, not validation: reject obviously truncated payloads rather
+  // than half a document replacing a page.
+  if (!html.trim() || !/<\/html>\s*$/i.test(html)) return fail(400, "not a complete html document");
+  await fs.writeFile(filePath, html);
+  const saved = await fs.stat(filePath);
+  // The new ETag becomes the saving tab's poll baseline so it doesn't
+  // reload on its own write (other open tabs of this page do — that's sync).
+  res.writeHead(200, { "Content-Type": "application/json", "ETag": etagFor(saved) });
+  res.end(JSON.stringify({ ok: true }));
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   try {
@@ -177,6 +230,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/render-pdf") {
       return await handleRenderPdf(req, res);
+    }
+    if (req.method === "PUT") {
+      return await handleSavePage(req, res, url.pathname);
     }
     if (req.method === "GET" && url.pathname === "/") {
       return await serveIndex(res);
