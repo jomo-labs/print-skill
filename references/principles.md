@@ -89,6 +89,7 @@ form), a packing list wants half-letter, a European household wants A4.
 
 When content genuinely needs two pages, the break is a design decision, not a
 consequence — each page should feel complete, a spread rather than an
-accident. The shell's print-fit zoom is a safety net, not a layout tool: the
-right fix for overflow is knowing the content length before committing to the
-layout.
+accident. There is no print-time safety net: print is WYSIWYG, so content
+that overflows the on-screen sheet boundary spills onto a second printed
+sheet exactly as shown. The only fix for overflow is knowing the content
+length before committing to the layout.
