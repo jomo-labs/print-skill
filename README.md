@@ -33,6 +33,20 @@ edge. This skill packages print as a design discipline:
   optional local Node server. No build step, no cloud. Works in any
   [skills-compatible agent](https://agentskills.io).
 
+## Headless / automation
+
+No UI required end to end: the agent authors the page with its file tools, and
+the PDF renders without a browser or a click — ready for pipelines that format
+something printable and ship the file onward (email, cloud print, archive).
+
+```bash
+# one-shot: writes weekly-chore-chart.pdf next to the page and exits
+node server/render-cli.mjs weekly-chore-chart.html
+
+# or against the running server
+curl -o chart.pdf http://127.0.0.1:4949/pdf/weekly-chore-chart.html
+```
+
 ## Manual install
 
 ```bash
