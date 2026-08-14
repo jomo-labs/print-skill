@@ -18,7 +18,8 @@ text editing, paper-size switching, print-fit scaling — ships in `assets/`
 authored or retyped, only copied and filled (see `references/assembly.md`).
 A bundled local server (`server/`) serves the generated pages and renders
 deterministic PDFs with headless Chromium — the same renderer on every
-machine.
+machine, driven by the page's Print button or fully headless for automated
+pipelines (see "Headless / pipeline use").
 
 Everything here runs in your head and your tools — no scripts, no server. That
 means you are also the design validator: the self-check in
@@ -138,6 +139,30 @@ Make the page reachable at `http://127.0.0.1:4949/<file>.html`:
 - If the server couldn't run: give the file path, note that Print / Save PDF
   uses the browser's print dialog, and mention Node 18+ enables the exact-PDF
   server.
+
+## Headless / pipeline use
+
+Nothing in this workflow needs a human at a browser: authoring, assembly, and
+verification (Steps 0–6) are entirely yours, and the PDF renders without
+anyone clicking **Print / Save PDF**. When the output is destined for an
+automated consumer — a pipeline stage, a print/mail job, another agent, or the
+user asked for "a PDF file" rather than a page to open — produce the PDF
+directly after Step 6:
+
+- **One-shot, no running server** (preferred in pipelines):
+  `node <skill-dir>/server/render-cli.mjs <file>.html [<out>.pdf]` — serves
+  the page's directory on an ephemeral loopback port, renders it with the same
+  headless Chromium as the interactive path, writes the PDF (default: next to
+  the HTML), prints the output path on stdout, and exits.
+- **Against the running server** (Step 7 already done):
+  `curl -fsS -o <file>.pdf http://127.0.0.1:4949/pdf/<file>.html`
+
+Both need Node 18+ and the Step 0 `npm install`. There is no dialog fallback
+without a human: if Node is unavailable, report the HTML path and say the PDF
+step needs Node 18+. In this mode Step 7 is optional, and the Step 8 report
+changes — give the PDF path (plus the HTML path and title), skip the
+open-the-link reminder, and hand the PDF to whatever the request says comes
+next (save, upload, attach).
 
 ## Editing an existing page
 
