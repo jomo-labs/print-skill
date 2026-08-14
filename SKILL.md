@@ -132,9 +132,10 @@ Make the page reachable at `http://127.0.0.1:4949/<file>.html`:
 - The page URL (`http://127.0.0.1:4949/<file>.html`) and the file path, plus
   the page title
 - One sentence on what was generated
-- Remind: "Open the link — double-click any text to edit it, then click
-  **Print / Save PDF** for an exact PDF. For font or color changes, ask me to
-  regenerate the page with new style instructions."
+- Remind: "Open the link — double-click any text to edit it (edits save into
+  the file automatically), then click **Print / Save PDF** for an exact PDF.
+  For font or color changes, ask me to regenerate the page with new style
+  instructions."
 - If the server couldn't run: give the file path, note that Print / Save PDF
   uses the browser's print dialog, and mention Node 18+ enables the exact-PDF
   server.
@@ -182,6 +183,17 @@ place — don't regenerate from scratch:
 Keep the same filename so the user's link stays valid, and re-run the Step 6
 verification greps after any edit. Never touch the shell's own markup or
 script — only content and content-overrides.
+
+A page open in the browser via the local server refreshes itself within a
+couple of seconds of the file changing on disk (the shell polls the server's
+ETag) — after an edit, tell the user the open page has updated; don't ask
+them to refresh.
+
+Sync runs the other way too: text edits the user makes in the browser are
+saved back into the file when committed. So the file may have changed since
+you wrote it — always Read the current file before editing, and never
+regenerate it from memory of what you generated (that would silently discard
+the user's own edits).
 
 ## Scope notes
 

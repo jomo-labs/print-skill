@@ -157,9 +157,16 @@ function enableEditMode() {
     const el = e.target;
     const pg = getActivePage();
     if (!el || !pg || !pg.contains(el) || !EDITABLE_TAGS.has(el.tagName.toLowerCase())) return;
+    const before = el.innerHTML;
     el.contentEditable = 'true';
     el.focus();
-    el.addEventListener('blur', () => { el.contentEditable = 'false'; }, { once: true });
+    el.addEventListener('blur', () => {
+      el.contentEditable = 'false';
+      // Committing an edit persists it — see the Save section. No-op commits
+      // (focused but unchanged) skip the write so ETags only move on real
+      // changes.
+      if (el.innerHTML !== before) savePage();
+    }, { once: true });
   };
   const onScroll = () => { clearHover(); };
   const onKey = (e) => {
@@ -198,6 +205,67 @@ function disableEditMode() {
 }
 
 function toggleEditMode() { editMode ? disableEditMode() : enableEditMode(); }
+
+// ── Save ────────────────────────────────────────────────────────────────────
+// Committed text edits are PUT back to the page's own URL so the file on disk
+// stays the single source of truth — the model reads user edits, and the
+// auto-reload poll can safely replace the DOM knowing nothing lives only
+// there. file:// pages have no server: their edits stay DOM-only (they still
+// reach print via the serialized-DOM path), same degradation as printing.
+
+// ETag of the file version this DOM was loaded from (or last saved as).
+// Shared between save (If-Match, so a stale DOM never clobbers a newer file)
+// and the auto-reload poll (baseline, so a tab doesn't reload on its own
+// save).
+let currentEtag = null;
+let saving = false;
+
+// The saved document is the live DOM minus runtime-only state, so the file
+// stays as clean as the assembly wrote it. Everything stripped here is
+// re-derived on load: applySize() sets page widths/guides, scaleToFit() sets
+// transform and padding, init() adds mp-embedded, edit mode adds the rest.
+function serializeForSave() {
+  const root = document.documentElement.cloneNode(true);
+  root.querySelectorAll('.page-break-guide, .mp-hover-box').forEach(el => el.remove());
+  const overlay = root.querySelector('#mp-overlay');
+  if (overlay) overlay.replaceChildren();
+  root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  const body = root.querySelector('body');
+  if (body) {
+    body.classList.remove('edit-active', 'mp-embedded');
+    if (!body.classList.length) body.removeAttribute('class');
+  }
+  root.querySelectorAll('.variant-page, #page, .page-surround').forEach(el => el.removeAttribute('style'));
+  return '<!DOCTYPE html>\n' + root.outerHTML;
+}
+
+async function savePage() {
+  if (location.protocol === 'file:') return;
+  saving = true;
+  try {
+    const res = await fetch(location.pathname, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'text/html',
+        ...(currentEtag ? { 'If-Match': currentEtag } : {}),
+      },
+      body: serializeForSave(),
+    });
+    if (res.status === 412) {
+      // The model rewrote the file while this edit was in progress. The
+      // conflict is inherently lossy; the file wins — reload to show it.
+      location.reload();
+      return;
+    }
+    if (!res.ok) return;
+    const tag = res.headers.get('ETag');
+    if (tag) currentEtag = tag;
+  } catch {
+    /* server unreachable — the edit stays in the DOM, as before */
+  } finally {
+    saving = false;
+  }
+}
 
 // ── Print ───────────────────────────────────────────────────────────────────
 // Both print paths produce the same geometry — the on-screen sheet at 1:1
@@ -259,6 +327,47 @@ async function printThisPage() {
   }
 }
 
+// ── Auto-reload ─────────────────────────────────────────────────────────────
+// The model edits generated pages on disk (SKILL.md "Editing an existing
+// page"); this poll makes those edits appear in an already-open tab without a
+// manual refresh. Every 1.5s the shell HEADs its own URL and reloads when the
+// server's ETag (an mtime+size signature — see serveFile in server.mjs)
+// changes. Guards, in order:
+//   - file:// pages have no server to ask — skip entirely, same rule as
+//     printThisPage().
+//   - an in-progress double-click text edit is never yanked away: polling is
+//     deferred while a contentEditable element has focus, and while a save
+//     is in flight (the save's own write must update the baseline via the
+//     PUT response, not race the poll into a self-reload).
+//   - non-ok responses and network errors are ignored, never reloaded on:
+//     a restarting server, or the deleted temp .render-*.html this same
+//     script polls from inside the headless PDF render, would otherwise
+//     wipe the page mid-print.
+//   - hosts that serve no ETag (a page uploaded somewhere static) get no
+//     auto-reload rather than spurious ones.
+function initAutoReload() {
+  if (location.protocol === 'file:') return;
+  const tick = async () => {
+    if (saving || document.activeElement?.isContentEditable) return;
+    try {
+      const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
+      if (!res.ok) return;
+      const tag = res.headers.get('ETag');
+      // Re-check after the await: a save that started while this HEAD was in
+      // flight will move the baseline itself — comparing against the
+      // pre-save baseline here would reload the tab on its own write.
+      if (!tag || saving) return;
+      if (currentEtag !== null && tag !== currentEtag) { location.reload(); return; }
+      currentEtag = tag;
+    } catch { /* offline or server restarting — try again next tick */ }
+  };
+  // Seed the baseline now, not on the first interval tick — an edit landing
+  // within the first poll period would otherwise BECOME the baseline and
+  // never trigger the reload it should have.
+  tick();
+  setInterval(tick, 1500);
+}
+
 // ── Init ────────────────────────────────────────────────────────────────────
 
 (function init() {
@@ -286,5 +395,6 @@ async function printThisPage() {
 
   initVariants();
   applySize(savedPaper);
+  initAutoReload();
   window.addEventListener('resize', () => scaleToFit(PAPERS[document.getElementById('mp-paper-select').value]?.w || 816));
 })();
