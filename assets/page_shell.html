@@ -46,13 +46,10 @@
   </div>
 </div>
 
-<!-- @page updated dynamically when paper size changes -->
-<style id="dynamic-page-css">@page { size: letter; margin: 0.25in; }</style>
-<!-- Per-document print fit factor, rewritten by computePrintFit(). The static
-     default below is the no-JS fallback: letter's width-bound factor (with
-     computePrintFit's 0.4% safety shave), so a script-less print still fits
-     the sheet width instead of clipping 0.4in. -->
-<style id="mp-print-fit-css">@media print { .page-surround > .page, #page > .page, .variant-page.active { zoom: 0.9374; } }</style>
+<!-- @page updated dynamically when paper size changes. Zero margin: the .page
+     element is the sheet itself, printed 1:1 — WYSIWYG. shell.css carries the
+     matching static letter dimensions, so a script-less print is still exact. -->
+<style id="dynamic-page-css">@page { size: letter; margin: 0; }</style>
 
 <script src="shell/shell.js"></script>
 </body>

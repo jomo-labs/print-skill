@@ -13,7 +13,7 @@ metadata:
 
 Turn the user's request into a print-ready HTML page. You author the page
 **content**; the page **shell** — design tokens, print button, double-click
-text editing, paper-size switching, print-fit scaling — ships in `assets/`
+text editing, paper-size switching, WYSIWYG print geometry — ships in `assets/`
 (a thin `page_shell.html` plus the `shell/` css+js it links) and is never
 authored or retyped, only copied and filled (see `references/assembly.md`).
 A bundled local server (`server/`) serves the generated pages and renders

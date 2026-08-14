@@ -5,7 +5,7 @@ file. Read this when you're ready to assemble (after the self-check in
 `design-rules.md` passes). Every step is anchor-exact — follow it literally.
 
 The shell is the single source of truth for design tokens, the toolbar,
-paper-size switching, edit mode, and print-fit logic. It is three files: the
+paper-size switching, edit mode, and WYSIWYG print geometry. It is three files: the
 thin page skeleton (`assets/page_shell.html`) and the shared assets it links
 relatively (`assets/shell/shell.css`, `assets/shell/shell.js`). You never
 author or retype any of them — **copy the files, then make targeted insertions
@@ -81,11 +81,11 @@ below hides it on screen and the shell's print rules hide it in print.)
 #page > footer { display: none; }
 #page > .page {
   width: 100%;
-  /* Screen-only sheet height. The shell never sets --mp-page-h, so nested
-     sheets always use the 1056px letter fallback — on screen a non-letter
-     paper choice keeps letter-height sheets. Print is unaffected (min-height
-     reset below; pagination is the shell's break rules). */
-  min-height: var(--mp-page-h, 1056px);
+  /* Sheet height fallback only — the shell's applySize() sets the exact
+     min-height for the selected paper as an inline style on every nested
+     sheet, in both screen and print (WYSIWYG: each nested sheet IS one full
+     printed page). */
+  min-height: 1056px;
   margin: 0 0 40px;
   padding: 52px 60px 48px;
   background: var(--color-paper) !important;
@@ -96,12 +96,14 @@ below hides it on screen and the shell's print rules hide it in print.)
 #page > .page:last-child { margin-bottom: 0; }
 #page > .page > footer { margin-top: auto; }
 @media print {
-  #page > .page { min-height: 0 !important; margin: 0 !important; }
+  /* Only the on-screen gap between sheets goes away — each sheet keeps its
+     full paper-size geometry so print matches the screen exactly. */
+  #page > .page { margin: 0 !important; }
 }
 </style>
 ```
 
-The shell's print CSS and `computePrintFit()` already handle the nested-sheet
+The shell's print CSS and `applySize()` already handle the nested-sheet
 lane (`#page > .page`) — you add nothing else.
 
 ### 3. Font link (font_import is set)
@@ -153,7 +155,7 @@ do not add another.
 - Exactly one `<style id="content-overrides">`.
 - The shell links are intact: one `href="shell/shell.css"` and one
   `src="shell/shell.js"`, and `<outdir>/shell/shell.js` exists and contains
-  `function computePrintFit` (assets copied, not truncated).
+  `function applySize` (assets copied, not truncated).
 - If `font_import` was set: exactly one `<link rel="stylesheet"` whose href starts
   with `https://fonts.googleapis.com/`, placed before the content-overrides tag.
 - If two-sheet: `id="mp-nested-sheets"` appears **before**

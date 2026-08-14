@@ -9,7 +9,12 @@ function lsSet(key, value) { try { localStorage.setItem(key, value); } catch {} 
 
 const PAPERS = {
   letter: { w: 816,  h: 1056, css: 'letter' },
-  a4:     { w: 794,  h: 1123, css: 'A4' },
+  // A4 is 793.7 x 1122.5 CSS px — floored, not rounded. The sheet element is
+  // sized to exactly these values and prints into a zero-margin page box, so
+  // a dimension rounded UP past the real page box would spill a hairline onto
+  // a second, blank sheet. Half a pixel of slack is invisible; a blank page
+  // is not.
+  a4:     { w: 793,  h: 1122, css: 'A4' },
   legal:  { w: 816,  h: 1344, css: 'legal' },
   // 'half-letter' is not a CSS page-size keyword (Chromium drops it and falls
   // back to the printer default) — explicit dimensions are required here.
@@ -26,104 +31,58 @@ function getActivePage() {
 function applySize(key) {
   const p = PAPERS[key] || PAPERS.letter;
   // Keep the select in sync for programmatic callers that invoke applySize
-  // directly — computePrintFit reads the active key from it.
+  // directly.
   const sel = document.getElementById('mp-paper-select');
   if (sel && sel.value !== key) sel.value = key;
-  // Set width on all page elements (single page or all variants)
-  document.querySelectorAll('.variant-page, #page').forEach(el => { el.style.width = p.w + 'px'; });
-  // Page-break guides only on the active page
+  // WYSIWYG contract: the .page element IS the sheet, on screen and in print
+  // alike — same width, same min-height, no print-time zoom, no extra @page
+  // margin. Its padding is the page margin. min-height (not height) so a
+  // genuine overflow stays visible past the boundary instead of being
+  // silently scaled or clipped — overflow is a content-length bug to fix at
+  // generation time, and it spills onto a second printed sheet exactly as
+  // the on-screen guides show.
+  document.querySelectorAll('.variant-page, #page').forEach(el => {
+    el.style.width = p.w + 'px';
+    el.style.minHeight = p.h + 'px';
+  });
+  // Nested multi-page assemblies (#page is then a transparent container):
+  // each nested sheet is one full page too.
+  document.querySelectorAll('#page > .page').forEach(el => { el.style.minHeight = p.h + 'px'; });
+  // Page-break guides only on the active page, and only when its content
+  // actually overflows one sheet. Skipped for nested multi-page assemblies —
+  // their sheets are discrete .page elements, there is no fragmentation to
+  // mark. Print fragments an overflowing sheet with box-decoration-break:
+  // clone (every fragment repeats the sheet's own padding and border), so
+  // per-sheet content capacity is the paper height minus BOTH decoration
+  // edges, and the first break lands one bottom-decoration short of the
+  // paper height. Sections still snap breaks earlier via break-inside rules;
+  // the guides mark the latest possible break.
   document.querySelectorAll('.page-break-guide').forEach(g => g.remove());
   const activePg = getActivePage();
-  for (let y = p.h; y < activePg.offsetHeight + p.h; y += p.h) {
-    const guide = document.createElement('div');
-    guide.className = 'page-break-guide';
-    guide.style.cssText = `position:absolute;left:0;right:0;top:${y}px;height:2px;` +
-      `background:repeating-linear-gradient(90deg,oklch(67% 0.006 78) 0 6px,transparent 6px 12px);` +
-      `pointer-events:none;`;
-    activePg.appendChild(guide);
+  const nested = document.querySelector('#page > .page');
+  if (!nested && activePg.offsetHeight > p.h) {
+    const cs = getComputedStyle(activePg);
+    const decoTop = parseFloat(cs.paddingTop) + parseFloat(cs.borderTopWidth);
+    const decoBottom = parseFloat(cs.paddingBottom) + parseFloat(cs.borderBottomWidth);
+    const step = Math.max(p.h - decoTop - decoBottom, 1);
+    for (let y = p.h - decoBottom; y < activePg.offsetHeight; y += step) {
+      const guide = document.createElement('div');
+      guide.className = 'page-break-guide';
+      guide.style.cssText = `position:absolute;left:0;right:0;top:${y}px;height:2px;` +
+        `background:repeating-linear-gradient(90deg,oklch(67% 0.006 78) 0 6px,transparent 6px 12px);` +
+        `pointer-events:none;`;
+      activePg.appendChild(guide);
+    }
   }
-  document.getElementById('dynamic-page-css').textContent = `@page { size: ${p.css}; margin: ${PRINT_MARGIN_IN}in; }`;
+  // margin: 0 — the sheet fills the page box edge to edge. Physical printers
+  // with a hardware non-printable border will offer their own fit/shrink in
+  // the print dialog; the artifact itself is never pre-shrunk. (A user-facing
+  // safe-margin control can layer on top of this later by reserving space
+  // INSIDE the sheet, never by changing the page box.)
+  document.getElementById('dynamic-page-css').textContent = `@page { size: ${p.css}; margin: 0; }`;
   lsSet('mpPaper', key);
   scaleToFit(p.w);
-  computePrintFit();
 }
-
-// ── Print fit ────────────────────────────────────────────────────────────────
-// Print keeps the on-screen canvas geometry (see the @media print block); this
-// computes the zoom that scales it into the sheet's printable area and writes
-// it as static CSS. Static-by-print-time matters: Playwright's page.pdf() never
-// fires beforeprint, so an unattended headless-PDF path can only consume
-// a rule that already exists in the DOM.
-//
-// 0.25in (not the deterministic PDF pipeline's exact requirement) is a
-// deliberate safety margin: a real printer's driver-reported printable area
-// is invisible to page JS and can be narrower than what's assumed here,
-// clipping content sized to fill right up to the edge (a physical printer
-// once clipped a page whose zoom was computed against a tighter 0.2in guess). This constant is the
-// last line of defense for the file:// case in printThisPage(), which has no
-// server to render an exact PDF against.
-const PRINT_MARGIN_IN = 0.25;
-// Below this the page is genuinely multi-sheet: cap the shrink for legibility
-// and let [data-mp-section] break rules take over. Content this long is a
-// generation-side bug — plan content length to fit the sheet.
-const PRINT_FIT_FLOOR = 0.6;
-
-function computePrintFit() {
-  const p = PAPERS[document.getElementById('mp-paper-select')?.value] || PAPERS.letter;
-  const margin = PRINT_MARGIN_IN * 96;
-  const printW = p.w - 2 * margin, printH = p.h - 2 * margin;
-  // Printable sheets: the active variant in variant mode; else, for a nested
-  // multi-page document (a two-sheet assembly puts its .page
-  // sheets inside #page), the nested sheets — #page is then a transparent
-  // container, neutralized by the :has() rule in the print block so zoom
-  // can't compound; else the top-level .page itself.
-  const nested = Array.from(document.querySelectorAll('#page > .page'));
-  const pages = document.querySelectorAll('.variant-page').length
-    ? [getActivePage()]
-    : (nested.length ? nested
-       : Array.from(document.querySelectorAll('.page-surround > .page')));
-  const sheetSel = nested.length ? '#page > .page' : '.page-surround > .page';
-  // One document-wide factor (the min across pages), not per-page factors —
-  // mixed type sizes across sheets of a single artifact read as a misprint.
-  // The width term caps the factor at ~0.95: a full-paper-width canvas can
-  // never print at 1.0 inside the page margin.
-  let z = 1;
-  pages.forEach(el => {
-    if (!el || !el.offsetWidth || !el.offsetHeight) return;
-    // Fractional, transform-corrected height. offsetHeight rounds to the
-    // nearest px (can under-report by half a pixel), and
-    // getBoundingClientRect() is scaled by the screen-fit transform — divide
-    // that scale back out via the width ratio.
-    const r = el.getBoundingClientRect();
-    const scale = el.offsetWidth ? (r.width / el.offsetWidth) : 1;
-    const h = scale ? (r.height / scale) : el.offsetHeight;
-    z = Math.min(z, printW / el.offsetWidth, printH / h);
-  });
-  // A height-bound factor lands the sheet EXACTLY at the printable height by
-  // construction, and Chrome paginates on device-pixel rounding — a hairline
-  // over spills a second, blank sheet (seen on HiDPI: dialog says "2 sheets"
-  // while printToPDF says 1). Shave 0.4% and floor (never round up) so the
-  // fit stays strictly inside the sheet on every display.
-  z = Math.floor(z * 0.996 * 1e4) / 1e4;
-  if (z < PRINT_FIT_FLOOR) {
-    // The floor is a legibility backstop, not a fix — keep the overflow
-    // visible to developers so generation-side length bugs stay detectable
-    // (the zoom hack must not paper them over).
-    console.warn(`[print-skill] print fit hit the ${PRINT_FIT_FLOOR} floor ` +
-      `(needed ${z.toFixed(2)}) — content overflows one sheet; this is a ` +
-      `generation-side content-length bug.`);
-    z = PRINT_FIT_FLOOR;
-  }
-  document.getElementById('mp-print-fit-css').textContent =
-    `@media print { ${sheetSel}, .variant-page.active { zoom: ${z.toFixed(4)}; } }`;
-}
-
-// Fonts load after init()'s first measurement and re-wrap lines; recompute so
-// the precomputed factor reflects real metrics. beforeprint covers every
-// browser print — including programmatic contentWindow.print() from an
-// embedding host — right before the dialog snapshot.
-if (document.fonts?.ready) document.fonts.ready.then(() => computePrintFit());
-window.addEventListener('beforeprint', computePrintFit);
 
 function scaleToFit(w) {
   const available = window.innerWidth - 80;
@@ -241,13 +200,13 @@ function disableEditMode() {
 function toggleEditMode() { editMode ? disableEditMode() : enableEditMode(); }
 
 // ── Print ───────────────────────────────────────────────────────────────────
-// These pages are also saved, emailed, and printed as standalone files with
-// no server reachable — see init()'s file:// paper-size comment. So Print
-// prefers the server-side /render-pdf pipeline (a PDF's fixed page box is
-// honored exactly by the OS/driver's printable-area fit) but
-// falls back to this page's own window.print() whenever that pipeline can't
-// be reached: file:// origins skip the attempt entirely, and any fetch
-// failure (offline, server error) falls back from the catch block.
+// Both print paths produce the same geometry — the on-screen sheet at 1:1
+// inside a zero-margin page box. Print prefers the server-side /render-pdf
+// pipeline (deterministic renderer, identical on every machine) and falls
+// back to this page's own window.print() whenever that pipeline can't be
+// reached: file:// origins skip the attempt entirely, and any fetch failure
+// (offline, server error) falls back from the catch block. The fallback is
+// only a different renderer, not a different layout.
 async function printThisPage() {
   const btn = document.getElementById('mp-btn-print');
   if (location.protocol === 'file:') { window.print(); return; }
@@ -290,8 +249,8 @@ async function printThisPage() {
     }
   } catch (e) {
     // Offline, or the endpoint isn't reachable from wherever this file is
-    // hosted — fall back to this page's own print-fit CSS rather than
-    // leaving the user with nothing.
+    // hosted — fall back to this page's own print CSS (same 1:1 geometry)
+    // rather than leaving the user with nothing.
     if (tab) tab.close();
     window.print();
   } finally {
@@ -317,7 +276,7 @@ async function printThisPage() {
   //
   // Paper size deliberately NOT restored from storage: all file:// pages share
   // one localStorage, so a paper picked on some other document weeks ago would
-  // silently re-target this page's @page size and print-fit math — while the
+  // silently re-target this page's @page size and sheet geometry — while the
   // user's print dialog stays on their printer's paper, producing clipped or
   // half-blank sheets. Every standalone page opens at letter; the toolbar
   // picker still works per visit, and an embedding host can re-apply its own

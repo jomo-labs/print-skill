@@ -87,8 +87,9 @@ Declare orientation only through the `paper` channel (assembly injects
 
 ## Margins and binding
 
-- **Default:** the shell manages page padding and print margins; keep content
-  inside the 0.5 in safe area.
+- **Default:** the shell's sheet padding IS the print margin — print is
+  WYSIWYG 1:1, nothing extra is added at print time — so keep content inside
+  the 0.5 in safe area.
 - **Binding/punch:** add 0.25–0.5 in extra on the binding edge (left for
   portrait).
 - **Duplex:** mirror gutters so the inside margin is larger on both sides.

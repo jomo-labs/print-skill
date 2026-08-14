@@ -18,8 +18,8 @@ edge. This skill packages print as a design discipline:
 - **Built for paper** — ink-friendly, grayscale-safe, inside the margins real
   printers can reach.
 - **Interactive output** — every page ships a **Print / Save PDF** button,
-  double-click text editing, paper-size switching, and auto print-fit: one
-  page means one sheet.
+  double-click text editing, and paper-size switching. Print is WYSIWYG:
+  the on-screen sheet and the printed sheet are dimension-identical, 1:1.
 - **Deterministic PDFs** — a bundled local server (Node + headless Chromium)
   serves your pages and renders pixel-identical PDFs on every machine, no
   dependence on the viewer's browser. Without it, pages still print fine via
