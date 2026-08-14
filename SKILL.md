@@ -26,7 +26,15 @@ means you are also the design validator: the self-check in
 
 ## Workflow
 
-### Step 0 — Input
+### Step 0 — Input & server warm-up
+
+First, warm up the PDF server in the background so the one-time Chromium
+download overlaps with authoring instead of stalling Step 7: if
+`<skill-dir>/server/node_modules` does not exist and Node is available, start
+`npm install` in `<skill-dir>/server` as a **background** task (its
+postinstall fetches the pinned Chromium build). Do not wait on it — continue
+straight to the input check; Step 7 picks it up. If Node/npm is unavailable,
+skip this; Step 7 degrades gracefully.
 
 If there's no input at all, ask: "What would you like to print? Paste text, a
 URL, or describe the page you want."
@@ -111,8 +119,9 @@ Make the page reachable at `http://127.0.0.1:4949/<file>.html`:
    `"print-skill-server"`, the server is already up; done.
 2. Otherwise start it in the background from the skill directory:
    `node <skill-dir>/server/server.mjs --dir <output-dir> --port 4949`.
-   First use only: run `npm install` in `<skill-dir>/server` beforehand (its
-   postinstall fetches the Chromium build).
+   If the Step 0 background `npm install` is still running, wait for it to
+   finish first; if it was skipped or failed, run `npm install` in
+   `<skill-dir>/server` now (its postinstall fetches the Chromium build).
 3. If Node is unavailable or the install fails, skip serving — the generated
    file still works opened directly in a browser (native print dialog instead
    of the rendered PDF). Say so in the report rather than failing the task.
