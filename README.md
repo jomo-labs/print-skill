@@ -17,16 +17,21 @@ edge. This skill packages print as a design discipline:
 
 - **Built for paper** — ink-friendly, grayscale-safe, inside the margins real
   printers can reach.
-- **Interactive, self-contained output** — every file ships a **Print / Save
-  PDF** button, double-click text editing, paper-size switching, and auto
-  print-fit: one page means one sheet.
+- **Interactive output** — every page ships a **Print / Save PDF** button,
+  double-click text editing, paper-size switching, and auto print-fit: one
+  page means one sheet.
+- **Deterministic PDFs** — a bundled local server (Node + headless Chromium)
+  serves your pages and renders pixel-identical PDFs on every machine, no
+  dependence on the viewer's browser. Without it, pages still print fine via
+  the browser dialog.
 - **20+ page types** — worksheets with answer keys, chore charts,
   certificates, calendars, meal plans, scorecards, word searches, comic
   scaffolds, and a catch-all for anything else.
 - **Themeable in one phrase** — "…in the style of Dog Man" restyles fonts,
   palette, page chrome, even the writing voice.
-- **Zero runtime** — markdown plus one HTML asset. No Python, no build. Works
-  in any [skills-compatible agent](https://agentskills.io).
+- **Tiny footprint** — markdown instructions, a small page shell, and an
+  optional local Node server. No build step, no cloud. Works in any
+  [skills-compatible agent](https://agentskills.io).
 
 ## Manual install
 

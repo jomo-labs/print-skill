@@ -2,6 +2,7 @@
 name: print
 description: "Convert anything into a beautifully formatted, print-ready HTML page using the magicprint design system. Handles content reformatting (text, URLs, notes, data) and structured printable forms (dashboards, calendars, worksheets, chore charts, scorecards, certificates, word searches, mazes, comic strips, drawing pages, activity pages for kids). Use when asked to 'print', 'make printable', 'format for print', 'weekly calendar', 'daily dashboard', 'worksheet', 'something for the fridge', 'chore chart', 'certificate', 'word search', 'maze', 'comic strip', 'drawing page', 'activity page', or 'coloring page'."
 license: Apache-2.0
+compatibility: Node 18+ recommended for the bundled local PDF server (optional — without it, pages print via the browser dialog)
 allowed-tools: Read Write Edit Bash WebFetch
 metadata:
   version: "1.0.0"
@@ -10,11 +11,14 @@ metadata:
 
 # Print
 
-Turn the user's request into a single, self-contained, print-ready HTML file.
-You author the page **content**; the page **shell** — design tokens, print
-button, double-click text editing, paper-size switching, print-fit scaling —
-ships as `assets/page_shell.html` and is never authored or retyped, only copied
-and filled (see `references/assembly.md`).
+Turn the user's request into a print-ready HTML page. You author the page
+**content**; the page **shell** — design tokens, print button, double-click
+text editing, paper-size switching, print-fit scaling — ships in `assets/`
+(a thin `page_shell.html` plus the `shell/` css+js it links) and is never
+authored or retyped, only copied and filled (see `references/assembly.md`).
+A bundled local server (`server/`) serves the generated pages and renders
+deterministic PDFs with headless Chromium — the same renderer on every
+machine.
 
 Everything here runs in your head and your tools — no scripts, no server. That
 means you are also the design validator: the self-check in
@@ -99,13 +103,31 @@ Run the grep checks listed at the end of `references/assembly.md` against the
 written file (no leftover `<!-- CONTENT -->`, shell intact, anchors in order).
 Fix in place if anything fails.
 
-### Step 7 — Report
+### Step 7 — Serve
 
-- HTML file path and page title
+Make the page reachable at `http://127.0.0.1:4949/<file>.html`:
+
+1. Probe `GET http://127.0.0.1:4949/healthz` — if it answers with
+   `"print-skill-server"`, the server is already up; done.
+2. Otherwise start it in the background from the skill directory:
+   `node <skill-dir>/server/server.mjs --dir <output-dir> --port 4949`.
+   First use only: run `npm install` in `<skill-dir>/server` beforehand (its
+   postinstall fetches the Chromium build).
+3. If Node is unavailable or the install fails, skip serving — the generated
+   file still works opened directly in a browser (native print dialog instead
+   of the rendered PDF). Say so in the report rather than failing the task.
+
+### Step 8 — Report
+
+- The page URL (`http://127.0.0.1:4949/<file>.html`) and the file path, plus
+  the page title
 - One sentence on what was generated
-- Remind: "Open in a browser — double-click any text to edit it, then click
-  **Print / Save PDF** when ready. For font or color changes, ask me to
+- Remind: "Open the link — double-click any text to edit it, then click
+  **Print / Save PDF** for an exact PDF. For font or color changes, ask me to
   regenerate the page with new style instructions."
+- If the server couldn't run: give the file path, note that Print / Save PDF
+  uses the browser's print dialog, and mention Node 18+ enables the exact-PDF
+  server.
 
 ## Editing an existing page
 

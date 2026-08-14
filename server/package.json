@@ -1,0 +1,18 @@
+{
+  "name": "print-skill-server",
+  "version": "1.0.0",
+  "description": "Local page server + deterministic PDF renderer for print-skill pages",
+  "type": "module",
+  "private": true,
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "postinstall": "playwright install chromium || true"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

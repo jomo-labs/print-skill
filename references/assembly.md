@@ -4,10 +4,12 @@ The mechanical procedure that turns your authored channels into the final HTML
 file. Read this when you're ready to assemble (after the self-check in
 `design-rules.md` passes). Every step is anchor-exact — follow it literally.
 
-The shell (`assets/page_shell.html`) is the single source of truth for design
-tokens, the toolbar, paper-size switching, edit mode, and print-fit logic. You
-never author it and never retype it — a retyped shell gets silently truncated.
-**Copy the file, then make targeted insertions at the anchors below.**
+The shell is the single source of truth for design tokens, the toolbar,
+paper-size switching, edit mode, and print-fit logic. It is three files: the
+thin page skeleton (`assets/page_shell.html`) and the shared assets it links
+relatively (`assets/shell/shell.css`, `assets/shell/shell.js`). You never
+author or retype any of them — **copy the files, then make targeted insertions
+at the anchors below.**
 
 ## Inputs (the authored channels)
 
@@ -25,13 +27,20 @@ never author it and never retype it — a retyped shell gets silently truncated.
 ### 1. Copy the shell
 
 ```bash
-cp <skill-dir>/assets/page_shell.html <output>.html
+cp <skill-dir>/assets/page_shell.html <outdir>/<output>.html
+cp -r <skill-dir>/assets/shell <outdir>/shell   # once per output directory
 ```
 
 Output filename: the title, lowercased, every run of non-alphanumeric characters
 replaced with a single hyphen, leading/trailing hyphens trimmed, plus `.html`
 (e.g. "Weekly Meal Planner" → `weekly-meal-planner.html`). Write to the current
 working directory unless the user asked for a location.
+
+The page links `shell/shell.css` and `shell/shell.js` by relative path, so the
+`shell/` directory must sit next to the generated pages — copy it if it isn't
+already there (skip if present; don't duplicate per page). The relative links
+mean the page works both served by the local server and opened directly as a
+file.
 
 All insertions below are edits to this copy. Insertion order matters: steps 2 → 3
 → 4 all anchor on the literal `<style id="content-overrides"></style>` tag, and
@@ -142,8 +151,9 @@ do not add another.
 
 - No `<!-- CONTENT -->` remains.
 - Exactly one `<style id="content-overrides">`.
-- `function computePrintFit` and `const PAPERS` are present (the shell wasn't
-  truncated — the output should be *larger* than the shell asset, never smaller).
+- The shell links are intact: one `href="shell/shell.css"` and one
+  `src="shell/shell.js"`, and `<outdir>/shell/shell.js` exists and contains
+  `function computePrintFit` (assets copied, not truncated).
 - If `font_import` was set: exactly one `<link rel="stylesheet"` whose href starts
   with `https://fonts.googleapis.com/`, placed before the content-overrides tag.
 - If two-sheet: `id="mp-nested-sheets"` appears **before**
