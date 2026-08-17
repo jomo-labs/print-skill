@@ -5,9 +5,10 @@ file. Read this when you're ready to assemble (after the self-check in
 `design-rules.md` passes). Every step is anchor-exact — follow it literally.
 
 The shell is the single source of truth for design tokens, the toolbar,
-paper-size switching, edit mode, and WYSIWYG print geometry. It is three files: the
-thin page skeleton (`assets/page_shell.html`) and the shared assets it links
-relatively (`assets/shell/shell.css`, `assets/shell/shell.js`). You never
+paper-size switching, edit mode, the chat panel, and WYSIWYG print geometry.
+It is four files: the thin page skeleton (`assets/page_shell.html`) and the
+shared assets it links relatively (`assets/shell/shell.css`,
+`assets/shell/shell.js`, `assets/shell/chat.js`). You never
 author or retype any of them — **copy the files, then make targeted insertions
 at the anchors below.**
 
@@ -20,6 +21,7 @@ at the anchors below.**
 | `custom_css` | no | Style overrides; lands in `<style id="content-overrides">`. Must have passed the self-check. |
 | `font_import` | no | A Google Fonts URL; becomes a `<link>`. Must have passed self-check item 8. |
 | `paper` | no | One of `a4`, `legal`, `half`, `landscape`. Empty/anything else = letter portrait. |
+| `live_edit` | no | `yes` only when your harness passed the checks in `references/harness-support.md` (reachability gate + capability ladder). Anything else = the page's Chat panel runs in manual copy/paste mode. |
 | `answer_key_html` | no | Answer-key content for worksheets only — makes this a two-sheet document (step 2). Never author the key as a second page inside `content_html`. |
 
 ## Procedure
@@ -142,6 +144,20 @@ Allowlisted values only — `a4`, `legal`, `half`, `landscape`. Anything else
 means: insert nothing; the page stays letter portrait. (This string lands inside
 a `<script>`, which is why the allowlist is strict.)
 
+### 5b. Live edit flag (live_edit is `yes`)
+
+Insert immediately **before** `</body>` (after the `applySize` line when both
+are present):
+
+```html
+<script>setLiveEditSupported(true);</script>
+```
+
+This exact literal, in full — nothing is interpolated. When `live_edit` is
+anything but `yes`, insert nothing: absence is the flag's false state, and
+the Chat panel then runs in manual copy/paste mode. (There is no
+`setLiveEditSupported(false)` variant to inject.)
+
 ### 6. Content
 
 Replace the **first** occurrence of `<!-- CONTENT -->` with `content_html` (the
@@ -153,14 +169,18 @@ do not add another.
 
 - No `<!-- CONTENT -->` remains.
 - Exactly one `<style id="content-overrides">`.
-- The shell links are intact: one `href="shell/shell.css"` and one
-  `src="shell/shell.js"`, and `<outdir>/shell/shell.js` exists and contains
-  `function applySize` (assets copied, not truncated).
+- The shell links are intact: one `href="shell/shell.css"`, one
+  `src="shell/shell.js"`, and one `src="shell/chat.js"`;
+  `<outdir>/shell/shell.js` exists and contains `function applySize`, and
+  `<outdir>/shell/chat.js` exists and contains `dispatchIntent` (assets
+  copied, not truncated).
 - If `font_import` was set: exactly one `<link rel="stylesheet"` whose href starts
   with `https://fonts.googleapis.com/`, placed before the content-overrides tag.
 - If two-sheet: `id="mp-nested-sheets"` appears **before**
   `id="content-overrides"`, and `#page` contains exactly two child `.page` divs,
   each ending in a `<footer>`.
 - If non-letter paper: `applySize('...')` appears before `</body>`.
+- If `live_edit` was `yes`: `setLiveEditSupported(true)` appears before
+  `</body>`; otherwise it appears nowhere.
 
 If any check fails, fix the copy — don't start over from a blank file.

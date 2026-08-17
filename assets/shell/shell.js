@@ -4,6 +4,16 @@
 // storage is unavailable. (Nothing reads storage back on this surface: paper
 // size deliberately starts at letter — see init.)
 function lsSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
+function lsGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+
+// ── Live edit capability flag ───────────────────────────────────────────────
+// Set at assembly time via an injected <script>setLiveEditSupported(true)</script>
+// (same mechanism as applySize) when the generating agent's harness can run
+// the chat listen loop — see references/harness-support.md. Absence = false.
+// chat.js reads the flag lazily on panel open/send, so injection order
+// relative to chat.js never matters.
+window.LIVE_EDIT_SUPPORTED = false;
+function setLiveEditSupported(v) { window.LIVE_EDIT_SUPPORTED = !!v; }
 
 // ── Paper size ──────────────────────────────────────────────────────────────
 
@@ -85,7 +95,11 @@ function applySize(key) {
 }
 
 function scaleToFit(w) {
-  const available = window.innerWidth - 80;
+  // The open chat panel narrows the viewport; only the screen-fit transform
+  // reacts — sheet width/min-height/padding (the WYSIWYG print geometry)
+  // never change. chat.js re-applies size on panel open/close.
+  const chatW = document.body.classList.contains('mp-chat-open') ? 336 : 0;
+  const available = window.innerWidth - 80 - chatW;
   const s = Math.min(available / w, 1);
   const el = getActivePage();
   el.style.transform = s < 1 ? `scale(${s})` : '';
@@ -164,8 +178,14 @@ function enableEditMode() {
       el.contentEditable = 'false';
       // Committing an edit persists it — see the Save section. No-op commits
       // (focused but unchanged) skip the write so ETags only move on real
-      // changes.
-      if (el.innerHTML !== before) savePage();
+      // changes. The data-mp-edited marker rides the same PUT as the edit
+      // itself, so file and DOM can never disagree about what the user
+      // touched — it's how the model finds user edits in the saved file
+      // (and it strips the markers it has addressed).
+      if (el.innerHTML !== before) {
+        el.setAttribute('data-mp-edited', '');
+        savePage();
+      }
     }, { once: true });
   };
   const onScroll = () => { clearHover(); };
@@ -227,12 +247,16 @@ let saving = false;
 function serializeForSave() {
   const root = document.documentElement.cloneNode(true);
   root.querySelectorAll('.page-break-guide, .mp-hover-box').forEach(el => el.remove());
+  // Chat panel DOM is runtime-only chrome (chat.js rebuilds it every load);
+  // data-mp-edited markers on content are NOT stripped — persisting them is
+  // how the model finds user edits in the file.
+  root.querySelector('#mp-chat-panel')?.remove();
   const overlay = root.querySelector('#mp-overlay');
   if (overlay) overlay.replaceChildren();
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
   const body = root.querySelector('body');
   if (body) {
-    body.classList.remove('edit-active', 'mp-embedded');
+    body.classList.remove('edit-active', 'mp-embedded', 'mp-chat-open');
     if (!body.classList.length) body.removeAttribute('class');
   }
   root.querySelectorAll('.variant-page, #page, .page-surround').forEach(el => el.removeAttribute('style'));
@@ -348,7 +372,10 @@ async function printThisPage() {
 function initAutoReload() {
   if (location.protocol === 'file:') return;
   const tick = async () => {
-    if (saving || document.activeElement?.isContentEditable) return;
+    // Deferred while typing in the chat panel for the same reason as an
+    // in-progress text edit: a reload would eat the half-typed input.
+    if (saving || document.activeElement?.isContentEditable ||
+        document.activeElement?.closest?.('#mp-chat-panel')) return;
     try {
       const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return;

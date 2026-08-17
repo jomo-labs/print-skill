@@ -11,6 +11,8 @@
 //   GET  /pdf/<page>.html  render a served page -> application/pdf (headless use)
 //   POST /render-pdf       { html, title } -> application/pdf
 //   PUT  /<page>.html      raw html body -> saved to the page's file
+//   POST /chat/<page>.html/messages   append a chat message (shell or model)
+//   GET  /chat/<page>.html/messages   read/long-poll chat messages + presence
 //
 // Static files also answer HEAD and carry an ETag derived from mtime+size —
 // the shell's auto-reload poll (see shell.js) HEADs its own URL and reloads
@@ -39,6 +41,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderPdf, closeBrowser } from "./render.mjs";
+import { getStore, postMessage, awaitMessages, listening, closeAll as closeChat } from "./chat-store.mjs";
 
 const DEFAULT_PORT = 4949;
 const SKILL_ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets");
@@ -177,6 +180,74 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     res.end(JSON.stringify({ ok: true }));
   }
 
+  // /chat/<page>.html/messages — the Chat panel's transport (see chat-store.mjs).
+  // The shell POSTs user messages and polls with wait=0; the model's chat-cli
+  // POSTs replies/status and long-polls as consumer=model. Chat exists only
+  // for pages PUT could reach: same top-level-.html rule, and the page file
+  // must exist — a chat thread never outlives (or predates) its page.
+  async function handleChat(req, res, urlPath, query) {
+    const fail = (status, error) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error }));
+    };
+    const m = urlPath.match(/^\/chat(\/[^/.][^/]*\.html)\/messages$/);
+    if (!m) return fail(404, "not a chat endpoint");
+    const pagePath = m[1];
+    const filePath = safeJoin(ROOT, pagePath);
+    if (!filePath) return fail(404, "no such page");
+    try {
+      if (!(await fs.stat(filePath)).isFile()) return fail(404, "no such page");
+    } catch {
+      return fail(404, "no such page");
+    }
+    const store = getStore(pagePath);
+
+    if (req.method === "POST") {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req, 64 * 1024));
+      } catch (e) {
+        return fail(400, String(e.message || e));
+      }
+      const { from, kind, text, data } = payload || {};
+      if (from !== "user" && from !== "model") return fail(400, "from must be user|model");
+      if (kind !== "message" && kind !== "status") return fail(400, "kind must be message|status");
+      // Status carries state in data and may have empty text; messages must say something.
+      if (typeof text !== "string" || (kind === "message" && !text.trim())) {
+        return fail(400, "missing text");
+      }
+      if (data !== undefined && (typeof data !== "object" || data === null)) {
+        return fail(400, "data must be an object");
+      }
+      const msg = postMessage(store, { from, kind, text, data });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: true, id: msg.id, epoch: store.epoch, listening: listening(store) }));
+    }
+
+    if (req.method === "GET") {
+      const after = query.has("after") ? Math.max(0, Number(query.get("after")) || 0) : undefined;
+      // Bounded long-poll by contract: 25s keeps total request time under the
+      // strictest harness command ceilings the CLI has to live inside.
+      const waitMs = Math.min(Math.max(Number(query.get("wait")) || 0, 0), 25) * 1000;
+      const from = ["user", "model", "any"].includes(query.get("from")) ? query.get("from") : "any";
+      const consumer = query.get("consumer") || "";
+      const peek = query.get("peek") === "1";
+      const messages = await awaitMessages(store, {
+        after,
+        from,
+        waitMs,
+        consumer,
+        peek,
+        onAbort: (drop) => req.on("close", drop),
+      });
+      if (res.writableEnded) return; // client went away mid-poll
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: true, epoch: store.epoch, listening: listening(store), messages }));
+    }
+
+    return fail(405, "method not allowed");
+  }
+
   async function serveIndex(res) {
     const entries = (await fs.readdir(ROOT)).filter(
       (f) => f.endsWith(".html") && !f.startsWith(".")
@@ -266,6 +337,9 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       if (req.method === "POST" && url.pathname === "/render-pdf") {
         return await handleRenderPdf(req, res);
       }
+      if (url.pathname.startsWith("/chat/")) {
+        return await handleChat(req, res, decodeURIComponent(url.pathname), url.searchParams);
+      }
       if (req.method === "PUT") {
         return await handleSavePage(req, res, decodeURIComponent(url.pathname));
       }
@@ -297,7 +371,12 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
         server,
         port: bound,
         url: baseUrl,
-        close: () => new Promise((r) => server.close(r)),
+        // Settle open chat long-polls first or close() waits out the longest
+        // poll (render-cli's one-shot server and SIGINT both come through here).
+        close: () => {
+          closeChat();
+          return new Promise((r) => server.close(r));
+        },
       });
     });
   });

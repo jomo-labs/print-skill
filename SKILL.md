@@ -29,6 +29,11 @@ means you are also the design validator: the self-check in
 
 ### Step 0 — Input & server warm-up
 
+**Live-mode invocation short-circuits everything**: if the request is `live`
+(`/print live`) or an ask in words to go live / connect to the page's chat,
+skip the generation workflow entirely and follow "Live mode (`/print live`)"
+below.
+
 First, warm up the PDF server in the background so the one-time Chromium
 download overlaps with authoring instead of stalling Step 7: if
 `<skill-dir>/server/node_modules` does not exist and Node is available, start
@@ -86,6 +91,7 @@ matters (paper size, DPI, margins). Produce these channels:
 | `custom_css` | Optional. `:root` token overrides + content-specific rules. |
 | `font_import` | Optional. Google Fonts URL — required whenever you name any font beyond Playfair Display / Source Serif 4 / Inter. |
 | `paper` | `landscape`, `a4`, `legal`, `half`, or empty (= letter portrait). The ONLY orientation mechanism. |
+| `live_edit` | `yes` or empty. Decide per `references/harness-support.md`: `yes` only if the user's browser can reach the local server (reachability gate — cloud sandboxes fail this) AND your harness can run the bounded listen loop (capability ladder). Unknown harness: apply the ladder, don't guess from the name. Empty = the page's Chat panel runs in manual copy/paste mode. |
 | `title` | Page title; also becomes the filename. |
 | `answer_key_html` | Worksheets with an answer key only; otherwise empty. Never author the key as a second page inside `content_html`. |
 
@@ -102,7 +108,8 @@ say so in your report.
 Follow `references/assembly.md` exactly: copy `assets/page_shell.html` to
 `<slugified-title>.html`, then make the anchored insertions — nested-sheet CSS
 (two-sheet only), font `<link>`, `custom_css` into
-`<style id="content-overrides">`, `applySize('<paper>')` before `</body>`, and
+`<style id="content-overrides">`, `applySize('<paper>')` and (when
+`live_edit` is `yes`) `setLiveEditSupported(true)` before `</body>`, and
 finally replace `<!-- CONTENT -->` with your content. Copy the shell with `cp`
 — never retype it.
 
@@ -136,6 +143,10 @@ Make the page reachable at `http://127.0.0.1:4949/<file>.html`:
   the file automatically), then click **Print / Save PDF** for an exact PDF.
   For font or color changes, ask me to regenerate the page with new style
   instructions."
+- If `live_edit` was `yes`, add: "The page also has a **Chat** button — send
+  me `/print live` and I'll connect to it, so you can request changes right
+  from the page." If not, add: "The page's **Chat** button turns your
+  requests into instructions you can copy and paste back to me."
 - If the server couldn't run: give the file path, note that Print / Save PDF
   uses the browser's print dialog, and mention Node 18+ enables the exact-PDF
   server.
@@ -194,6 +205,68 @@ saved back into the file when committed. So the file may have changed since
 you wrote it — always Read the current file before editing, and never
 regenerate it from memory of what you generated (that would silently discard
 the user's own edits).
+
+## Live mode (`/print live`)
+
+The generated page's Chat panel can talk to you through the local server —
+but **only when the user asks**. Never enter the listen loop on your own
+after generating a page; the panel itself tells the user to send
+`/print live` when they want you connected. Messages the user sends before
+you connect queue on the server; your first `wait` drains them.
+
+All commands below are `node <skill-dir>/server/chat-cli.mjs …` against the
+running server (Step 7). Target page: the page generated in this
+conversation; if none and exactly one page is served, use it; otherwise ask
+which page.
+
+### Entering
+
+1. Ensure the server is up (Step 7 probe). If the page wasn't assembled with
+   `setLiveEditSupported(true)`, say live mode isn't available for this page
+   and stop.
+2. Pick your listen mechanism from the capability ladder in
+   `references/harness-support.md` — PUSH or BACKGROUND+READ with
+   `wait <file>.html --follow` where your harness supports it, else the
+   bounded foreground loop below. For the bounded loop, run the selftest
+   probe once (`selftest --seconds 20`, falling back to `--seconds 8`) to
+   pick your `--timeout`; if even 8 fails, remove the injected
+   `setLiveEditSupported(true)` line from the page (one Edit) and tell the
+   user live mode doesn't work in this harness.
+3. Announce presence fast — `status <file>.html idle` — then start listening.
+   Tell the user in the harness conversation that you're connected and how to
+   stop (`say "done"` in the panel, or just ask here).
+
+### Listening (bounded loop)
+
+Run `wait <file>.html --timeout <T>` as a foreground command. Each run exits
+0 printing either a JSON batch of user messages or the literal `NO_MESSAGE`;
+re-run immediately on `NO_MESSAGE`. Exit 2 means the server died — restart it
+(Step 7) and resume.
+
+### Handling a message
+
+1. `status <file>.html working`
+2. **Read the current file from disk** — never edit from memory. The user's
+   browser edits and their `data-mp-edited` markers live in the file, and the
+   message may carry element context in `data` (`selector`, `snapshot`,
+   `edited`) pointing into it. For a sweep of everything the user edited:
+   `edits <file>.html`.
+3. Apply the change per "Editing an existing page" (same self-check rules for
+   CSS, same Step 6 greps). Strip the `data-mp-edited` attributes you
+   addressed as part of the edit — the marker means "not yet seen by the
+   model". The open tab refreshes itself.
+4. `say <file>.html "<one-line confirmation>"`, then `status <file>.html done`,
+   then resume listening.
+
+### Exiting — mandatory caps
+
+- After **15 consecutive `NO_MESSAGE` rounds**, or when a chat message just
+  says done/stop/that's all: post a sign-off (`say`), then
+  `status <file>.html idle`, leave the loop, and report back in the harness
+  that chat is paused and `/print live` reconnects. Mention that messages
+  sent meanwhile will queue.
+- Anything the user asks in the harness conversation itself always outranks
+  the loop — answer it; re-enter live mode only if they want it.
 
 ## Scope notes
 
