@@ -38,7 +38,7 @@
 // --auto-port: if the port is taken (e.g. another project's print-skill
 // server), walk upward to the next free one instead of failing.
 import http from "node:http";
-import { promises as fs } from "node:fs";
+import { promises as fs, realpathSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -428,8 +428,17 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
 }
 
 // Direct invocation: parse flags, run until signaled.
-const isMain =
-  process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+// Node realpaths import.meta.url, so argv[1] must be realpathed too — or a
+// symlinked install path (e.g. .claude/skills/print -> the repo) never
+// matches and the server silently loads as a module instead of starting.
+const isMain = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(path.resolve(process.argv[1]))).href;
+  } catch {
+    return false; // argv[1] doesn't exist on disk — certainly not this file
+  }
+})();
 if (isMain) {
   const args = process.argv.slice(2);
   const argValue = (flag, fallback) => {
