@@ -4,17 +4,24 @@
 // talks to a transport directly. Adding a new page interaction that needs the
 // model means adding ONE registry entry (how it serializes for the live
 // server, how it formats as a copy/paste instruction); the transports and the
-// panel never change. dispatchIntent() picks the route per the current mode:
+// panel never change. dispatchIntent() picks the route per the current state:
 //
-//   live    LIVE_EDIT_SUPPORTED (assembly-injected — see shell.js), the Live
-//           toggle is on, the page is served, and the model is listening
-//           (presence from the server): messages POST to /chat/<page>/messages
-//           and the model's replies/status stream back via the poll.
-//   ready   same, but no model is listening yet: messages still POST (they
-//           queue server-side and the model's first `wait` drains them) and
-//           the panel shows how to connect ("/print live").
-//   manual  flag false, toggle off, or file://: every intent renders a
-//           copy/paste card the user relays to their model by hand.
+//   live     served, toggle on, and a model is listening (presence from the
+//            server — the ground truth, regardless of the assembly-time
+//            flag): messages POST to /chat/<page>/messages and the model's
+//            replies/status stream back via the poll.
+//   ready    served, toggle on, LIVE_EDIT_SUPPORTED (assembly-injected — see
+//            shell.js), no model listening yet: messages still POST (they
+//            queue server-side and the model's first `wait` drains them);
+//            the panel shows how to connect ("/print live").
+//   dormant  served, toggle on, no flag: the flag is an assembly-time GUESS,
+//            so the panel still shows the "/print live" guidance and still
+//            polls — if a model connects anyway, the state upgrades to live.
+//            Until then intents render copy/paste cards (nothing queues
+//            invisibly where no listener may ever come).
+//   off      the user flipped the Live toggle off: copy/paste cards.
+//   file     file:// — no server exists, the one structurally impossible
+//            case: copy/paste cards.
 //
 // The panel is runtime-only chrome: built here on demand, stripped by
 // serializeForSave(), hidden in print and embedded modes. Chat never touches
@@ -27,10 +34,18 @@
   // ── Mode ──────────────────────────────────────────────────────────────────
 
   const served = () => location.protocol !== 'file:';
-  const liveCapable = () =>
-    window.LIVE_EDIT_SUPPORTED === true && lsGet('mpChatLive') !== 'off' && served();
-  // 'live' | 'ready' | 'manual' — ready/live differ only by model presence.
-  const chatMode = () => (liveCapable() ? (modelListening ? 'live' : 'ready') : 'manual');
+  const toggleOn = () => lsGet('mpChatLive') !== 'off';
+
+  // 'live' | 'ready' | 'dormant' | 'off' | 'file' — see the header comment.
+  // Presence outranks the flag: a listening model means live, always.
+  function panelState() {
+    if (!served()) return 'file';
+    if (!toggleOn()) return 'off';
+    if (modelListening) return 'live';
+    return window.LIVE_EDIT_SUPPORTED === true ? 'ready' : 'dormant';
+  }
+  // States whose intents render copy/paste cards instead of POSTing.
+  const isPasteState = (s) => s === 'dormant' || s === 'off' || s === 'file';
 
   const pageFileName = () =>
     served() ? decodeURIComponent(location.pathname.replace(/^\//, ''))
@@ -70,11 +85,14 @@
     openPanel();
     const spec = INTENTS[intent.type];
     if (!spec) return;
-    if (chatMode() === 'manual') {
+    if (isPasteState(panelState())) {
       manualTransport.send(intent, spec);
-      return;
+    } else {
+      await liveTransport.send(intent, spec);
     }
-    await liveTransport.send(intent, spec);
+    // The empty-state guidance was consumed by the first message; re-render
+    // so ready/dormant keep their compact "/print live" hint above the log.
+    refreshMode();
   }
 
   // ── Live transport ────────────────────────────────────────────────────────
@@ -112,7 +130,9 @@
       }
     },
     start() {
-      if (pollTimer || !liveCapable()) return;
+      // Polls in dormant too — presence is how a flag-less page discovers a
+      // model connected anyway and upgrades itself to live.
+      if (pollTimer || !served() || !toggleOn()) return;
       const tick = async () => {
         try {
           const res = await fetch(`${chatUrl()}?after=${cursor}&from=any`, { cache: 'no-store' });
@@ -193,8 +213,9 @@
 
     const head = el('div', 'mp-chat-head');
     head.appendChild(el('span', 'mp-chat-title', 'Chat'));
-    // Live toggle only where live could ever apply — flag set and served.
-    if (window.LIVE_EDIT_SUPPORTED === true && served()) {
+    // Live toggle on every served page ('off' needs a way back, and dormant
+    // pages are live-capable too); only file:// (no server) hides it.
+    if (served()) {
       const label = el('label', 'mp-live-toggle');
       toggleEl = document.createElement('input');
       toggleEl.type = 'checkbox';
@@ -286,39 +307,61 @@
     document.body.classList.contains('mp-chat-open') ? closePanel() : openPanel();
   }
 
-  // Re-render the mode-dependent chrome (empty state, hint, presence,
-  // polling). Called on open, toggle flips, and presence changes.
+  // The "/print live" guidance, in two variants sharing one content: the
+  // centered empty state (log still empty) and the compact hint card pinned
+  // above an existing conversation.
+  function buildLiveGuidance(kind, state) {
+    const box = el('div', kind === 'empty' ? 'mp-chat-empty' : 'mp-chat-hint');
+    if (kind === 'empty') box.appendChild(el('p', null, 'Start live mode'));
+    const line = el('p', null);
+    line.appendChild(el('span', null, 'Copy '));
+    line.appendChild(el('code', null, '/print live'));
+    line.appendChild(el('span', null, ' and send it to your model to connect.'));
+    box.appendChild(line);
+    const row = el('p', null);
+    const copy = el('button', 'mp-copy-btn', 'Copy');
+    copy.type = 'button';
+    copy.addEventListener('click', () => copyText('/print live', copy));
+    row.appendChild(copy);
+    box.appendChild(row);
+    if (state === 'dormant') {
+      box.appendChild(el('p', 'mp-live-note',
+        'If your model supports live mode it will connect here; until then, anything you send becomes an instruction you can copy to it.'));
+    }
+    return box;
+  }
+
+  // Re-render the state-dependent chrome (empty state, hint, presence,
+  // polling). Called on open, toggle flips, presence changes, and after each
+  // dispatched intent.
   function refreshMode() {
     if (!panel) return;
-    const mode = chatMode();
-    panel.dataset.mode = mode;
-    if (toggleEl) toggleEl.checked = lsGet('mpChatLive') !== 'off';
+    const state = panelState();
+    panel.dataset.mode = state;
+    if (toggleEl) toggleEl.checked = toggleOn();
 
     panel.querySelector('.mp-chat-empty')?.remove();
     panel.querySelector('.mp-chat-hint')?.remove();
 
-    if (mode === 'manual') {
+    if (state === 'off' || state === 'file') {
       liveTransport.stop();
       if (!log.childElementCount) {
         const empty = el('div', 'mp-chat-empty');
-        empty.appendChild(el('p', null, 'Live mode is not supported.'));
-        empty.appendChild(el('p', null, 'Chat directly with your model — anything you do here becomes an instruction you can copy and paste to it.'));
+        if (state === 'off') {
+          empty.appendChild(el('p', null, 'Live is off.'));
+          empty.appendChild(el('p', null, 'Flip Live above to reconnect — or keep going here, and your requests become instructions you can copy to your model.'));
+        } else {
+          empty.appendChild(el('p', null, 'Live mode needs the local server.'));
+          empty.appendChild(el('p', null, 'This page was opened straight from disk, so chat directly with your model — your requests become instructions you can copy to it.'));
+        }
         log.appendChild(empty);
       }
-      presenceEl.textContent = '';
-      presenceEl.className = '';
+      renderPresence();
     } else {
       liveTransport.start();
-      if (mode === 'ready') {
-        const hint = el('div', 'mp-chat-hint');
-        hint.appendChild(el('span', null, 'Live mode available — send '));
-        hint.appendChild(el('code', null, '/print live'));
-        hint.appendChild(el('span', null, ' to your model to connect.'));
-        const copy = el('button', 'mp-copy-btn', 'Copy');
-        copy.type = 'button';
-        copy.addEventListener('click', () => copyText('/print live', copy));
-        hint.appendChild(copy);
-        log.prepend(hint);
+      if (state === 'ready' || state === 'dormant') {
+        if (!log.childElementCount) log.appendChild(buildLiveGuidance('empty', state));
+        else log.prepend(buildLiveGuidance('hint', state));
       }
       renderPresence();
     }
@@ -337,10 +380,22 @@
   }
 
   function renderPresence() {
-    if (!presenceEl || chatMode() === 'manual') return;
+    if (!presenceEl) return;
+    const state = panelState();
+    if (state !== 'live' && state !== 'ready') {
+      // dormant shows nothing until presence appears (which flips it to live)
+      presenceEl.textContent = '';
+      presenceEl.className = '';
+      return;
+    }
     if (statusState) {
-      presenceEl.textContent = statusState;
+      // Model is working on something from this panel: animated "…" dots.
+      presenceEl.textContent = '';
       presenceEl.className = 'mp-presence-working';
+      const dots = el('span', 'mp-dots');
+      for (let i = 0; i < 3; i++) dots.appendChild(el('i'));
+      presenceEl.appendChild(dots);
+      presenceEl.appendChild(el('span', null, statusState));
     } else if (modelListening) {
       presenceEl.textContent = 'Model is listening';
       presenceEl.className = 'mp-presence-live';
@@ -479,7 +534,7 @@
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
 
   function persistCards() {
-    if (chatMode() !== 'manual') return;
+    if (!isPasteState(panelState())) return;
     const cards = Array.from(log.querySelectorAll('.mp-paste-card pre')).map(p => p.textContent).slice(-20);
     ssSet('mpChatCards', JSON.stringify(cards));
   }
@@ -489,7 +544,7 @@
     openPanel();
     const draft = ssGet('mpChatDraft');
     if (draft && inputEl) inputEl.value = draft;
-    if (chatMode() === 'manual') {
+    if (isPasteState(panelState())) {
       try {
         for (const text of JSON.parse(ssGet('mpChatCards') || '[]')) addPasteCard(text);
       } catch { /* corrupt store — start clean */ }

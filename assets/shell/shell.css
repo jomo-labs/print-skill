@@ -310,14 +310,16 @@ body.mp-chat-open #mp-chat-panel { display: flex; }
   line-height: 1.5;
   color: var(--color-ink);
 }
-.mp-chat-hint code {
+.mp-chat-hint p { margin: 0 0 6px; }
+.mp-chat-hint p:last-child { margin-bottom: 0; }
+.mp-chat-hint code, .mp-chat-empty code {
   font-size: 11px;
   background: var(--color-paper);
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid var(--color-rule-light);
 }
-.mp-chat-hint .mp-copy-btn { margin-left: 6px; }
+.mp-live-note { font-size: 10px; color: var(--color-dim); }
 
 .mp-paste-card {
   border: 1px solid var(--color-rule-light);
@@ -371,7 +373,28 @@ body.mp-chat-open #mp-chat-panel { display: flex; }
 .mp-presence-live { color: var(--color-accent); }
 .mp-presence-queued { color: var(--color-dim); }
 .mp-presence-working { color: var(--color-mid); }
-.mp-presence-working::before { content: '⋯'; }
+.mp-presence-working::before { content: none; } /* the animated dots replace the static dot */
+
+/* Subtle "model is working" indicator: three dots pulsing in sequence. */
+.mp-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-right: 7px;
+  vertical-align: 1px;
+}
+.mp-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: mp-dot-pulse 1.2s ease-in-out infinite;
+}
+.mp-dots i:nth-child(2) { animation-delay: 0.2s; }
+.mp-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes mp-dot-pulse {
+  0%, 60%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+}
 
 #mp-chat-form {
   border-top: 1px solid var(--color-rule-light);

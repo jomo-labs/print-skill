@@ -146,7 +146,9 @@ Make the page reachable at `http://127.0.0.1:4949/<file>.html`:
 - If `live_edit` was `yes`, add: "The page also has a **Chat** button — send
   me `/print live` and I'll connect to it, so you can request changes right
   from the page." If not, add: "The page's **Chat** button turns your
-  requests into instructions you can copy and paste back to me."
+  requests into instructions you can copy and paste back to me — and if you
+  send me `/print live`, I'll check whether live chat can work in this setup
+  and connect if it can."
 - If the server couldn't run: give the file path, note that Print / Save PDF
   uses the browser's print dialog, and mention Node 18+ enables the exact-PDF
   server.
@@ -221,9 +223,15 @@ which page.
 
 ### Entering
 
-1. Ensure the server is up (Step 7 probe). If the page wasn't assembled with
-   `setLiveEditSupported(true)`, say live mode isn't available for this page
-   and stop.
+1. Ensure the server is up (Step 7 probe). A page without the injected
+   `setLiveEditSupported(true)` line is NOT a refusal — the flag is an
+   assembly-time guess, and the page's Chat panel invites `/print live`
+   either way. Re-run the decision from `references/harness-support.md`
+   now (reachability gate, then the ladder); if it passes, add the missing
+   `<script>setLiveEditSupported(true);</script>` line before `</body>`
+   (one Edit, per assembly step 5b) and continue. Only if it genuinely
+   fails do you tell the user live mode can't work here — and say why
+   (unreachable browser vs. no loop support), not just "unsupported".
 2. Pick your listen mechanism from the capability ladder in
    `references/harness-support.md` — PUSH or BACKGROUND+READ with
    `wait <file>.html --follow` where your harness supports it, else the
@@ -245,7 +253,13 @@ re-run immediately on `NO_MESSAGE`. Exit 2 means the server died — restart it
 
 ### Handling a message
 
-1. `status <file>.html working`
+1. `status <file>.html working` — the panel shows an animated working
+   indicator. While you work, push what's useful for the user to see:
+   re-post `status <file>.html working "<short progress note>"` to update
+   the indicator's label as you move through stages, and use
+   `say <file>.html "<message>"` for anything worth keeping in the
+   conversation (a finding, a question, a caveat) — it appears as a chat
+   bubble immediately, not just at the end.
 2. **Read the current file from disk** — never edit from memory. The user's
    browser edits and their `data-mp-edited` markers live in the file, and the
    message may carry element context in `data` (`selector`, `snapshot`,

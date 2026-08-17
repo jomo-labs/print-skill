@@ -22,7 +22,10 @@
 //   say <page> <text…|->        Post a model reply ('-' reads stdin).
 //   status <page> <working|done|idle> [text]
 //                               Post loading/status state (drives the
-//                               panel's spinner line, not a chat bubble).
+//                               panel's animated working indicator, not a
+//                               chat bubble). Re-post `status working
+//                               "<note>"` to update the indicator's label
+//                               with progress while you work.
 //   edits <page> [--full]       List elements carrying data-mp-edited in the
 //                               served file (the markers the shell stamps on
 //                               user-edited elements); --full prints the
