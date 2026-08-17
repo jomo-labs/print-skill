@@ -7,6 +7,9 @@
 // cap foreground commands at 10–30 seconds; an unbounded wait would look
 // like a broken skill there).
 //
+// <page> is the server path of the page — "<project>/<page>.html" under the
+// build/ layout, or just "<page>.html" for a top-level page.
+//
 //   wait <page> [--timeout N] [--after ID] [--peek]
 //       Bounded poll for new user messages. Prints exactly one of:
 //         {"epoch":"…","messages":[…]}    >=1 new message   (exit 0)
@@ -60,7 +63,10 @@ function takeValue(name, fallback) {
 const BASE = (takeValue("--url", process.env.PRINT_SKILL_URL || "http://127.0.0.1:4949")).replace(/\/+$/, "");
 const follow = takeFlag("--follow");
 const peek = takeFlag("--peek");
-const timeout = Math.min(Math.max(Number(takeValue("--timeout", 20)) || 20, 5), 25);
+// Foreground loops keep the 20s default (strict-harness safe); background
+// one-shot listeners (harness wakes the model when the command exits) may
+// pass up to 300 for long quiet holds between wakes.
+const timeout = Math.min(Math.max(Number(takeValue("--timeout", 20)) || 20, 5), 300);
 const after = takeValue("--after", undefined);
 const seconds = Math.max(Number(takeValue("--seconds", 20)) || 20, 1);
 const full = takeFlag("--full");
@@ -74,7 +80,9 @@ function die(msg) {
 
 function pagePath(p) {
   if (!p || !/\.html?$/i.test(p)) die(`usage: chat-cli.mjs ${command} <page>.html …`);
-  return encodeURIComponent(p.replace(/^\/+/, ""));
+  // Per-segment encoding: pages may live one project directory deep
+  // (build/<project>/ layout → "<project>/<page>.html").
+  return p.replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
 }
 
 async function api(path, init) {

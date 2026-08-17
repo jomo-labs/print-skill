@@ -34,7 +34,9 @@
 // browser involved — for automated pipelines (see render-cli.mjs for the
 // one-shot variant that needs no running server).
 //
-// Usage: node server.mjs [--dir <pages-dir>] [--port <port>]
+// Usage: node server.mjs [--dir <pages-dir>] [--port <port>] [--auto-port]
+// --auto-port: if the port is taken (e.g. another project's print-skill
+// server), walk upward to the next free one instead of failing.
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -111,8 +113,10 @@ async function readBody(req, limit = 8 * 1024 * 1024) {
 /**
  * Start the pages server. Returns { server, port, url, close } once listening.
  * port 0 picks an ephemeral port (used by render-cli.mjs for one-shot renders).
+ * autoPort: on EADDRINUSE, walk up from `port` (up to +10) instead of failing —
+ * lets a second project run its own server while another project's holds 4949.
  */
-export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "127.0.0.1" } = {}) {
+export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "127.0.0.1", autoPort = false } = {}) {
   const ROOT = path.resolve(dir);
   // Bound after listen; handlers only run once requests arrive, so reads are safe.
   let baseUrl = null;
@@ -144,10 +148,12 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       res.writeHead(status, { "Content-Type": "application/json", ...headers });
       res.end(JSON.stringify({ ok: false, error }));
     };
-    // Writable surface: existing top-level .html pages only. No nested paths
-    // (shell assets stay read-only), no dotfiles (the temp .render-* staging
-    // files), and no creation — a page must have been generated first.
-    if (!/^\/[^/.][^/]*\.html$/.test(urlPath)) return fail(404, "not a saveable page");
+    // Writable surface: existing .html pages, top-level or one project
+    // subdirectory deep (the build/<project>/ layout). No deeper nesting, no
+    // dot-segments (the temp .render-* staging files stay unreachable), and
+    // no creation — a page must have been generated first. shell/ assets are
+    // .css/.js, so the .html requirement keeps them read-only.
+    if (!/^\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html$/.test(urlPath)) return fail(404, "not a saveable page");
     const filePath = safeJoin(ROOT, urlPath);
     if (!filePath) return fail(404, "not a saveable page");
     let stat;
@@ -183,14 +189,15 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
   // /chat/<page>.html/messages — the Chat panel's transport (see chat-store.mjs).
   // The shell POSTs user messages and polls with wait=0; the model's chat-cli
   // POSTs replies/status and long-polls as consumer=model. Chat exists only
-  // for pages PUT could reach: same top-level-.html rule, and the page file
-  // must exist — a chat thread never outlives (or predates) its page.
+  // for pages PUT could reach: same path rule (top-level or one project dir
+  // deep), and the page file must exist — a chat thread never outlives (or
+  // predates) its page.
   async function handleChat(req, res, urlPath, query) {
     const fail = (status, error) => {
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error }));
     };
-    const m = urlPath.match(/^\/chat(\/[^/.][^/]*\.html)\/messages$/);
+    const m = urlPath.match(/^\/chat(\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html)\/messages$/);
     if (!m) return fail(404, "not a chat endpoint");
     const pagePath = m[1];
     const filePath = safeJoin(ROOT, pagePath);
@@ -226,9 +233,11 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
 
     if (req.method === "GET") {
       const after = query.has("after") ? Math.max(0, Number(query.get("after")) || 0) : undefined;
-      // Bounded long-poll by contract: 25s keeps total request time under the
-      // strictest harness command ceilings the CLI has to live inside.
-      const waitMs = Math.min(Math.max(Number(query.get("wait")) || 0, 0), 25) * 1000;
+      // Bounded long-poll by contract. 300s ceiling: background/one-shot
+      // listeners (harness wakes the model when the command exits) want long
+      // quiet holds; the FOREGROUND bound that keeps strict harnesses happy
+      // is the CLI's default (20s), not this ceiling.
+      const waitMs = Math.min(Math.max(Number(query.get("wait")) || 0, 0), 300) * 1000;
       const from = ["user", "model", "any"].includes(query.get("from")) ? query.get("from") : "any";
       const consumer = query.get("consumer") || "";
       const peek = query.get("peek") === "1";
@@ -249,12 +258,26 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
   }
 
   async function serveIndex(res) {
-    const entries = (await fs.readdir(ROOT)).filter(
-      (f) => f.endsWith(".html") && !f.startsWith(".")
-    );
+    // Pages at the root plus one project-directory level deep (the
+    // build/<project>/ layout); shell/ and dot-entries are assets, not pages.
+    const entries = [];
+    for (const e of await fs.readdir(ROOT, { withFileTypes: true })) {
+      if (e.name.startsWith(".") || e.name === "shell") continue;
+      if (e.isFile() && e.name.endsWith(".html")) entries.push(e.name);
+      else if (e.isDirectory()) {
+        try {
+          for (const f of await fs.readdir(path.join(ROOT, e.name))) {
+            if (f.endsWith(".html") && !f.startsWith(".")) entries.push(`${e.name}/${f}`);
+          }
+        } catch { /* unreadable dir — skip */ }
+      }
+    }
     const items = entries
       .sort()
-      .map((f) => `<li><a href="/${encodeURIComponent(f)}">${f}</a></li>`)
+      .map((f) => {
+        const href = "/" + f.split("/").map(encodeURIComponent).join("/");
+        return `<li><a href="${href}">${f}</a></li>`;
+      })
       .join("\n");
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(
@@ -276,12 +299,23 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: false, error: "missing html" }));
     }
-    // Stage in the served dir so relative shell/ and image references resolve.
+    // Stage next to the page the DOM came from (the shell sends its own
+    // location.pathname) so relative shell/ and image references resolve for
+    // nested build/<project>/ pages too; root when absent or invalid. The
+    // dot-prefixed name keeps the staging file out of PUT/chat/index reach.
+    let stageDirUrl = "";
+    if (typeof payload.path === "string" && /^\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html$/.test(payload.path)) {
+      const slash = payload.path.lastIndexOf("/");
+      if (slash > 0 && safeJoin(ROOT, payload.path)) {
+        stageDirUrl = payload.path.slice(1, slash + 1); // "project/"
+      }
+    }
     const temp = `.render-${crypto.randomBytes(6).toString("hex")}.html`;
-    const tempPath = path.join(ROOT, temp);
+    const tempPath = path.join(ROOT, stageDirUrl, temp);
     try {
       await fs.writeFile(tempPath, payload.html);
-      const pdf = await renderPdf(`${baseUrl}/${temp}`);
+      const encodedDir = stageDirUrl.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+      const pdf = await renderPdf(`${baseUrl}/${encodedDir ? encodedDir + "/" : ""}${temp}`);
       res.writeHead(200, {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${slugify(payload.title)}.pdf"`,
@@ -362,23 +396,34 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
   });
 
   return new Promise((resolve, reject) => {
-    server.once("error", reject);
-    // Local tool: bind loopback only, never an external interface.
-    server.listen(port, host, () => {
-      const bound = server.address().port;
-      baseUrl = `http://${host}:${bound}`;
-      resolve({
-        server,
-        port: bound,
-        url: baseUrl,
-        // Settle open chat long-polls first or close() waits out the longest
-        // poll (render-cli's one-shot server and SIGINT both come through here).
-        close: () => {
-          closeChat();
-          return new Promise((r) => server.close(r));
-        },
+    let attempt = port;
+    const tryListen = () => {
+      server.once("error", (e) => {
+        if (autoPort && e.code === "EADDRINUSE" && attempt - port < 10) {
+          attempt++;
+          tryListen();
+        } else {
+          reject(e);
+        }
       });
-    });
+      // Local tool: bind loopback only, never an external interface.
+      server.listen(attempt, host, () => {
+        const bound = server.address().port;
+        baseUrl = `http://${host}:${bound}`;
+        resolve({
+          server,
+          port: bound,
+          url: baseUrl,
+          // Settle open chat long-polls first or close() waits out the longest
+          // poll (render-cli's one-shot server and SIGINT both come through here).
+          close: () => {
+            closeChat();
+            return new Promise((r) => server.close(r));
+          },
+        });
+      });
+    };
+    tryListen();
   });
 }
 
@@ -394,6 +439,7 @@ if (isMain) {
   const { url, close } = await startServer({
     dir: argValue("--dir", process.cwd()),
     port: Number(argValue("--port", DEFAULT_PORT)),
+    autoPort: args.includes("--auto-port"),
   });
   console.log(`print-skill server: ${url}  (serving ${path.resolve(argValue("--dir", process.cwd()))})`);
   for (const signal of ["SIGINT", "SIGTERM"]) {

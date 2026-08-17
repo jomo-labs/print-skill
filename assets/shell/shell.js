@@ -322,7 +322,9 @@ async function printThisPage() {
     const res = await fetch('/render-pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html, title: document.title }),
+      // path lets the server stage the render temp next to this page, so
+      // relative asset references resolve for nested build/<project>/ pages.
+      body: JSON.stringify({ html, title: document.title, path: location.pathname }),
     });
     if (!res.ok) throw new Error(`server returned ${res.status}`);
     const blob = await res.blob();

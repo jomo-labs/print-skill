@@ -3,7 +3,8 @@
 // One store per served page, holding a bounded message log plus the
 // bookkeeping that makes the two consumers work:
 //   - the shell polls with wait=0 on its usual 1.5s cadence;
-//   - the model's chat-cli polls with a bounded long-poll (wait<=25s) as
+//   - the model's chat-cli polls with a bounded long-poll (20s foreground
+//     default, up to 300s for background one-shot listeners) as
 //     consumer=model, which drives both a server-held delivery cursor (so the
 //     stateless one-shot CLI never re-reads messages) and the presence signal
 //     the panel shows as "model is listening".
@@ -49,7 +50,11 @@ export function getStore(page) {
 
 export function listening(store) {
   if (store.openModelWaits > 0) return true;
-  const grace = Math.max(45_000, 2.5 * store.lastModelWaitMs);
+  // Sized so a loop of bounded waits with harness-turn gaps reads as
+  // listening, but capped: a long background wait (e.g. 240s) that ends and
+  // never re-arms must not pin "model is listening" for many minutes —
+  // re-arming after a wake takes seconds, not another full wait window.
+  const grace = Math.max(45_000, Math.min(2.5 * store.lastModelWaitMs, 120_000));
   return Date.now() - store.lastModelWaitEnd < grace;
 }
 
@@ -95,7 +100,7 @@ export function awaitMessages(store, { after, from, waitMs, consumer, peek, onAb
   if (ready.length || !waitMs) {
     if (isModel) {
       store.lastModelWaitEnd = Date.now();
-      store.lastModelWaitMs = Math.max(store.lastModelWaitMs, waitMs || 0);
+      store.lastModelWaitMs = waitMs || 0;
     }
     return Promise.resolve(deliver(ready));
   }

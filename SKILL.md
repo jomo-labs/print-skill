@@ -121,23 +121,34 @@ Fix in place if anything fails.
 
 ### Step 7 — Serve
 
-Make the page reachable at `http://127.0.0.1:4949/<file>.html`:
+Make the page reachable at `http://127.0.0.1:<port>/<project-slug>/<file>.html`.
+The served root is `<cwd>/build` — the parent of the assembly output
+directory — so one server covers every page this project generates.
 
-1. Probe `GET http://127.0.0.1:4949/healthz` — if it answers with
-   `"print-skill-server"`, the server is already up; done.
-2. Otherwise start it in the background from the skill directory:
-   `node <skill-dir>/server/server.mjs --dir <output-dir> --port 4949`.
+1. Probe ports 4949–4958 with `GET http://127.0.0.1:<port>/healthz`. An
+   answer naming `"print-skill-server"` whose `dir` equals `<cwd>/build` is
+   this project's server — reuse it (note its port); a healthy server with a
+   **different** `dir` belongs to another project — leave it alone and keep
+   probing.
+2. If none matched, start one **in the background** (never foreground — some
+   harnesses kill foreground commands at 30s, taking the server down):
+   `node <skill-dir>/server/server.mjs --dir <cwd>/build --port 4949 --auto-port`.
+   `--auto-port` walks to the next free port when 4949 is taken; the startup
+   line prints the URL it actually bound — read it, don't assume 4949.
    If the Step 0 background `npm install` is still running, wait for it to
    finish first; if it was skipped or failed, run `npm install` in
    `<skill-dir>/server` now (its postinstall fetches the Chromium build).
 3. If Node is unavailable or the install fails, skip serving — the generated
    file still works opened directly in a browser (native print dialog instead
-   of the rendered PDF). Say so in the report rather than failing the task.
+   of the rendered PDF). Say so in the report rather than failing the task;
+   this fallback is the one case where the report hands out a file path.
 
 ### Step 8 — Report
 
-- The page URL (`http://127.0.0.1:4949/<file>.html`) and the file path, plus
-  the page title
+- The page URL (`http://127.0.0.1:<port>/<project-slug>/<file>.html`) and the
+  page title. **URL only — never the build/ file path.** The file is a build
+  artifact; users open the link, not the file. Mention the path only if the
+  user asks for it or is debugging.
 - One sentence on what was generated
 - Remind: "Open the link — double-click any text to edit it (edits save into
   the file automatically), then click **Print / Save PDF** for an exact PDF.
@@ -163,12 +174,12 @@ user asked for "a PDF file" rather than a page to open — produce the PDF
 directly after Step 6:
 
 - **One-shot, no running server** (preferred in pipelines):
-  `node <skill-dir>/server/render-cli.mjs <file>.html [<out>.pdf]` — serves
-  the page's directory on an ephemeral loopback port, renders it with the same
-  headless Chromium as the interactive path, writes the PDF (default: next to
-  the HTML), prints the output path on stdout, and exits.
+  `node <skill-dir>/server/render-cli.mjs build/<project-slug>/<file>.html [<out>.pdf]`
+  — serves the page's directory on an ephemeral loopback port, renders it
+  with the same headless Chromium as the interactive path, writes the PDF
+  (default: next to the HTML), prints the output path on stdout, and exits.
 - **Against the running server** (Step 7 already done):
-  `curl -fsS -o <file>.pdf http://127.0.0.1:4949/pdf/<file>.html`
+  `curl -fsS -o <file>.pdf http://127.0.0.1:<port>/pdf/<project-slug>/<file>.html`
 
 Both need Node 18+ and the Step 0 `npm install`. There is no dialog fallback
 without a human: if Node is unavailable, report the HTML path and say the PDF
@@ -217,9 +228,11 @@ after generating a page; the panel itself tells the user to send
 you connect queue on the server; your first `wait` drains them.
 
 All commands below are `node <skill-dir>/server/chat-cli.mjs …` against the
-running server (Step 7). Target page: the page generated in this
-conversation; if none and exactly one page is served, use it; otherwise ask
-which page.
+running server (Step 7), with `--url` pointing at its actual port. The
+`<page>` argument is the page's server path — `<project-slug>/<file>.html`
+under the build/ layout. Target page: the page generated in this
+conversation; if none and exactly one page is served (GET `/` lists them),
+use it; otherwise ask which page.
 
 ### Entering
 
@@ -232,24 +245,38 @@ which page.
    (one Edit, per assembly step 5b) and continue. Only if it genuinely
    fails do you tell the user live mode can't work here — and say why
    (unreachable browser vs. no loop support), not just "unsupported".
-2. Pick your listen mechanism from the capability ladder in
-   `references/harness-support.md` — PUSH or BACKGROUND+READ with
-   `wait <file>.html --follow` where your harness supports it, else the
-   bounded foreground loop below. For the bounded loop, run the selftest
-   probe once (`selftest --seconds 20`, falling back to `--seconds 8`) to
-   pick your `--timeout`; if even 8 fails, remove the injected
+2. Pick your listen mechanism from the ladder under "Listening" below —
+   highest rung your harness supports (details per harness in
+   `references/harness-support.md`). Only rung (c) needs the selftest probe
+   (`selftest --seconds 20`, falling back to `--seconds 8`) to pick its
+   `--timeout`; if even 8 fails, remove the injected
    `setLiveEditSupported(true)` line from the page (one Edit) and tell the
    user live mode doesn't work in this harness.
 3. Announce presence fast — `status <file>.html idle` — then start listening.
    Tell the user in the harness conversation that you're connected and how to
    stop (`say "done"` in the panel, or just ask here).
 
-### Listening (bounded loop)
+### Listening
 
-Run `wait <file>.html --timeout <T>` as a foreground command. Each run exits
-0 printing either a JSON batch of user messages or the literal `NO_MESSAGE`;
-re-run immediately on `NO_MESSAGE`. Exit 2 means the server died — restart it
-(Step 7) and resume.
+Use the quietest mechanism your harness offers — **foreground polling is the
+last resort, not the default**. A visible loop of `wait` commands reads as
+silent background churn to the user watching the conversation:
+
+- **(a) Stream/monitor** — your harness can feed a background command's
+  output lines back to you as events: run `wait <page> --follow` in the
+  background and react to each NDJSON line. No polling at all.
+- **(b) Background + wake** — your harness runs commands in the background
+  and notifies you when they exit (e.g. Claude Code's background Bash):
+  run `wait <page> --timeout 240` as a background task and **end your
+  turn**. The completion notification wakes you — handle any messages, then
+  arm the next background wait. Idle cost: one wake per ~4 minutes, nothing
+  in the foreground.
+- **(c) Foreground bounded loop** — nothing else available: loop
+  `wait <page> --timeout <T>` (the selftest-chosen T) in the foreground;
+  each run prints a JSON batch or `NO_MESSAGE`; re-run on `NO_MESSAGE`.
+
+Exit 2 from any `wait` means the server died — restart it (Step 7, same
+`--dir`) and resume.
 
 ### Handling a message
 
@@ -274,11 +301,12 @@ re-run immediately on `NO_MESSAGE`. Exit 2 means the server died — restart it
 
 ### Exiting — mandatory caps
 
-- After **15 consecutive `NO_MESSAGE` rounds**, or when a chat message just
-  says done/stop/that's all: post a sign-off (`say`), then
-  `status <file>.html idle`, leave the loop, and report back in the harness
-  that chat is paused and `/print live` reconnects. Mention that messages
-  sent meanwhile will queue.
+- After **~15 minutes with no messages** (rung (c): 15 consecutive
+  `NO_MESSAGE` rounds at T=20; rung (b): ~4 empty wakes at `--timeout 240`),
+  or when a chat message just says done/stop/that's all: post a sign-off
+  (`say`), then `status <file>.html idle`, leave the loop, and report back
+  in the harness that chat is paused and `/print live` reconnects. Mention
+  that messages sent meanwhile will queue.
 - Anything the user asks in the harness conversation itself always outranks
   the loop — answer it; re-enter live mode only if they want it.
 

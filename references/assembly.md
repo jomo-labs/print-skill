@@ -26,17 +26,34 @@ at the anchors below.**
 
 ## Procedure
 
-### 1. Copy the shell
+### 1. Output directory, gitignore, copy the shell
+
+Generated pages are build artifacts, not sources — they live under a
+gitignored `build/` directory, in a subdirectory scoped to the project, and
+users reach them through the local server URL, never the file path:
+
+```
+<outdir> = <cwd>/build/<project-slug>/
+```
+
+`<project-slug>` is the working directory's basename run through the same
+slug rule as filenames (lowercase, non-alphanumerics → single hyphen,
+trimmed). If the user asked for an explicit output location, that wins —
+skip the build/ convention entirely.
 
 ```bash
+mkdir -p <outdir>
 cp <skill-dir>/assets/page_shell.html <outdir>/<output>.html
 cp -r <skill-dir>/assets/shell <outdir>/shell   # once per output directory
 ```
 
+**Gitignore** (once per project): if `<cwd>` is inside a git repository and
+`git check-ignore -q build` fails, append a `build/` line to `<cwd>/.gitignore`
+(creating the file if needed).
+
 Output filename: the title, lowercased, every run of non-alphanumeric characters
 replaced with a single hyphen, leading/trailing hyphens trimmed, plus `.html`
-(e.g. "Weekly Meal Planner" → `weekly-meal-planner.html`). Write to the current
-working directory unless the user asked for a location.
+(e.g. "Weekly Meal Planner" → `weekly-meal-planner.html`).
 
 The page links `shell/shell.css` and `shell/shell.js` by relative path, so the
 `shell/` directory must sit next to the generated pages — copy it if it isn't

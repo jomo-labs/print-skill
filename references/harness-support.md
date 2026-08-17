@@ -31,10 +31,15 @@ loop in SKILL.md's "Live mode" section:
   back into the conversation as events as it appears. Run
   `chat-cli.mjs wait <page> --follow` under it; each NDJSON line is a user
   message arriving.
-- **(b) BACKGROUND+READ** — you can start a command in the background
-  (`run_in_background`, `is_background`, `&`…) and later read its
-  accumulated output. Run `wait --follow` in the background and harvest new
-  lines whenever you get a turn.
+- **(b) BACKGROUND+WAKE** — you can start a command in the background
+  (`run_in_background`, `is_background`, `&`…). If your harness *notifies*
+  you when a background command exits (Claude Code does), run one-shot
+  `wait <page> --timeout 240` in the background and end your turn — the
+  completion notification is your wake; handle messages and re-arm. Never
+  loop foreground waits on such a host: it reads as constant silent
+  command churn. If the harness only lets you *read* accumulated background
+  output on your own turns, run `wait --follow` in the background and
+  harvest new lines whenever you get a turn.
 - **(c) BOUNDED POLL** — you can only run foreground commands. Probe your
   real ceiling once, at live-mode entry:
   `node <skill-dir>/server/chat-cli.mjs selftest --seconds 20`.
@@ -50,7 +55,7 @@ Unknown/unlisted harness: don't guess from the name — apply the ladder.
 
 | Harness | Flag | Rung / notes |
 |---|---|---|
-| Claude Code (CLI / desktop) | **yes** | (a) or (b): background Bash + output monitoring; Bash timeout raisable to 600s. Best case. |
+| Claude Code (CLI / desktop) | **yes** | (b): run `wait <page> --timeout 240` with `run_in_background` and end the turn — the task-completion notification wakes the session; re-arm per wake. (a) where a Monitor/stream tool exists. Do NOT loop foreground `wait` commands here. |
 | Claude Code (web), Codex cloud, Cursor cloud agents, Copilot coding agent, other cloud/CI sandboxes | **no** | Reachability gate: user's browser cannot reach sandbox loopback. |
 | OpenAI Codex CLI | **yes** | (c), with care: default exec timeout is **10 s** — always pass an explicit per-call timeout ≥ 2× the wait window, or use `--timeout 8`. |
 | Gemini CLI | **yes** | (b) or (c): `is_background` + output reads; foreground cap ~5 min. |
@@ -71,9 +76,11 @@ hard requirement, not a preference.
 
 ## Why waits are bounded
 
-`wait` caps at 25 s server-side and defaults to 20 s in the CLI. Bounded +
-idempotent (a server-held cursor delivers each message exactly once across
-invocations) means a plain loop of foreground commands works on every rung-
-(c) harness, and no harness ever sees a command that looks hung. `NO_MESSAGE`
-with exit 0 — not a non-zero exit — signals an empty poll, so harnesses that
-surface non-zero exits as errors don't misreport a quiet minute as a failure.
+`wait` defaults to 20 s — safe for every foreground harness — and allows up
+to 300 s for background one-shot listeners (rung (b)), where the harness
+wake, not a timeout ceiling, ends the hold. Bounded + idempotent (a
+server-held cursor delivers each message exactly once across invocations)
+means a plain loop of foreground commands works on every rung-(c) harness,
+and no harness ever sees a command that looks hung. `NO_MESSAGE` with exit
+0 — not a non-zero exit — signals an empty poll, so harnesses that surface
+non-zero exits as errors don't misreport a quiet minute as a failure.

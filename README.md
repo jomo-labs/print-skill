@@ -39,12 +39,15 @@ No UI required end to end: the agent authors the page with its file tools, and
 the PDF renders without a browser or a click — ready for pipelines that format
 something printable and ship the file onward (email, cloud print, archive).
 
+Generated pages land in a gitignored `build/<project>/` directory — users
+reach them through the local server URL, never the raw file.
+
 ```bash
 # one-shot: writes weekly-chore-chart.pdf next to the page and exits
-node server/render-cli.mjs weekly-chore-chart.html
+node server/render-cli.mjs build/my-project/weekly-chore-chart.html
 
 # or against the running server
-curl -o chart.pdf http://127.0.0.1:4949/pdf/weekly-chore-chart.html
+curl -o chart.pdf http://127.0.0.1:4949/pdf/my-project/weekly-chore-chart.html
 ```
 
 ## Manual install
