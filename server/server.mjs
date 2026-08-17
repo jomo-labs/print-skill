@@ -180,7 +180,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       res.end(JSON.stringify({ ok: false, error }));
     };
     // Writable surface: existing .html pages, top-level or one project
-    // subdirectory deep (the build/<project>/ layout). No deeper nesting, no
+    // subdirectory deep (pages live flat in out/; one dir level is accepted for custom layouts). No deeper nesting, no
     // dot-segments (the temp .render-* staging files stay unreachable), and
     // no creation — a page must have been generated first. shell/ assets are
     // .css/.js, so the .html requirement keeps them read-only.
@@ -290,7 +290,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
 
   async function serveIndex(res) {
     // Pages at the root plus one project-directory level deep (the
-    // build/<project>/ layout); shell/ and dot-entries are assets, not pages.
+    // flat out/ layout plus one optional dir level); shell/ and dot-entries are assets, not pages.
     const entries = [];
     for (const e of await fs.readdir(ROOT, { withFileTypes: true })) {
       if (e.name.startsWith(".") || e.name === "shell") continue;
@@ -332,7 +332,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     }
     // Stage next to the page the DOM came from (the shell sends its own
     // location.pathname) so relative shell/ and image references resolve for
-    // nested build/<project>/ pages too; root when absent or invalid. The
+    // pages one directory deep too; root when absent or invalid. The
     // dot-prefixed name keeps the staging file out of PUT/chat/index reach.
     let stageDirUrl = "";
     if (typeof payload.path === "string" && /^\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html$/.test(payload.path)) {

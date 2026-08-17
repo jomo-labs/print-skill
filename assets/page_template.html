@@ -8,18 +8,25 @@
 <!-- Default typeface trio only. Themed pages load any additional fonts via
      their own font_import <link> (inserted at assembly time). -->
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="shell/document.css">
+<!-- Document styles are INLINED at assembly: step 1's sed replaces the
+     marker line below with the skill's document stylesheet, so a generated
+     page is one self-contained file with no sidecar references at all
+     (which is also why this comment names no asset paths). -->
+<style id="mp-document-css">
+/* @@DOCUMENT_CSS@@ */
+</style>
 <style id="content-overrides"></style>
 </head>
 <body>
 
-<!-- Pure document. Opened directly, this is a plain printable HTML file —
-     styled and print-exact via document.css, no chrome at all. The local
-     server wraps it at serve time: it injects chrome.css + shell.js +
-     chat.js (toolbar, edit mode, chat panel), so chrome updates apply
-     automatically to every already-generated page. The only per-page
-     configuration is assembly-set data attributes on the body tag:
-     data-mp-paper (non-letter paper) and data-mp-live-edit (live chat).
+<!-- Pure document, fully self-contained. Opened directly, this is a plain
+     printable HTML file — its styles are inlined above, no chrome, no
+     sidecar files at all. The local server wraps it at serve time: it
+     injects chrome.css + shell.js + chat.js (toolbar, edit mode, chat
+     panel), so chrome updates apply automatically to every
+     already-generated page. The only per-page configuration is
+     assembly-set data attributes on the body tag: data-mp-paper
+     (non-letter paper) and data-mp-live-edit (live chat).
      (This comment deliberately never spells the body tag itself — assembly
      replaces that literal tag, and it must stay unique in this file.) -->
 

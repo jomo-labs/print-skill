@@ -7,8 +7,8 @@
 // cap foreground commands at 10–30 seconds; an unbounded wait would look
 // like a broken skill there).
 //
-// <page> is the server path of the page — "<project>/<page>.html" under the
-// build/ layout, or just "<page>.html" for a top-level page.
+// <page> is the server path of the page — "<page>.html" under the default
+// flat out/ layout ("<dir>/<page>.html" for custom one-level layouts).
 //
 //   wait <page> [--timeout N] [--after ID] [--peek]
 //       Bounded poll for new user messages. Prints exactly one of:
@@ -81,7 +81,7 @@ function die(msg) {
 function pagePath(p) {
   if (!p || !/\.html?$/i.test(p)) die(`usage: chat-cli.mjs ${command} <page>.html …`);
   // Per-segment encoding: pages may live one project directory deep
-  // (build/<project>/ layout → "<project>/<page>.html").
+  // (custom layouts → "<dir>/<page>.html"; the default out/ layout is flat).
   return p.replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
 }
 
