@@ -154,12 +154,13 @@ directory — so one server covers every page this project generates.
   the file automatically), then click **Print / Save PDF** for an exact PDF.
   For font or color changes, ask me to regenerate the page with new style
   instructions."
-- If `live_edit` was `yes`, add: "The page also has a **Chat** button — send
-  me `/print live` and I'll connect to it, so you can request changes right
-  from the page." If not, add: "The page's **Chat** button turns your
-  requests into instructions you can copy and paste back to me — and if you
-  send me `/print live`, I'll check whether live chat can work in this setup
-  and connect if it can."
+- If `live_edit` was `yes`, add: "Press **Edit** on the page to edit text and
+  open the chat panel — send me `/print live` and I'll connect to it, so you
+  can request changes right from the page." If not, add: "Press **Edit** on
+  the page to edit text and open the chat panel, which turns your requests
+  into instructions you can copy and paste back to me — and if you send me
+  `/print live`, I'll check whether live chat can work in this setup and
+  connect if it can."
 - If the server couldn't run: give the file path, note that Print / Save PDF
   uses the browser's print dialog, and mention Node 18+ enables the exact-PDF
   server.
@@ -221,7 +222,8 @@ the user's own edits).
 
 ## Live mode (`/print live`)
 
-The generated page's Chat panel can talk to you through the local server —
+The generated page's chat panel (opened by the page's **Edit** button) can
+talk to you through the local server —
 but **only when the user asks**. Never enter the listen loop on your own
 after generating a page; the panel itself tells the user to send
 `/print live` when they want you connected. Messages the user sends before

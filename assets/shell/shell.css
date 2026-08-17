@@ -70,10 +70,15 @@ body {
 #mp-toolbar button:hover { opacity: 0.8; }
 #mp-toolbar button:disabled { opacity: 0.6; cursor: default; pointer-events: none; }
 
+/* Combined edit+chat toggle: pencil when idle, X + "Editing" while active
+   (active = solid ink so exiting is obvious). */
 #mp-btn-edit {
   background: transparent !important;
   color: var(--color-mid) !important;
   border: 1px solid var(--color-rule-light) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 #mp-btn-edit:hover {
   background: var(--color-bg) !important;
@@ -84,6 +89,9 @@ body {
   color: var(--color-paper) !important;
   border-color: var(--color-ink) !important;
 }
+#mp-btn-edit .mp-icon-x { display: none; }
+#mp-btn-edit.active .mp-icon-pencil { display: none; }
+#mp-btn-edit.active .mp-icon-x { display: inline; }
 
 #mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--color-rule-light); flex-shrink: 0; }
 
@@ -196,28 +204,13 @@ body.edit-active { cursor: text; }
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
-/* ── Chat panel ── */
-#mp-btn-chat {
-  background: transparent !important;
-  color: var(--color-mid) !important;
-  border: 1px solid var(--color-rule-light) !important;
-}
-#mp-btn-chat:hover {
-  background: var(--color-bg) !important;
-  color: var(--color-ink) !important;
-}
-#mp-btn-chat.active {
-  background: var(--color-ink) !important;
-  color: var(--color-paper) !important;
-  border-color: var(--color-ink) !important;
-}
-
+/* ── Chat panel — docked LEFT; the viewport shrinks beside it (no overlay) ── */
 #mp-chat-panel {
   position: fixed;
-  top: 56px; right: 0; bottom: 0;
+  top: 56px; left: 0; bottom: 0;
   width: 336px;
   background: var(--color-paper);
-  border-left: 1px solid var(--color-rule-light);
+  border-right: 1px solid var(--color-rule-light);
   display: none;
   flex-direction: column;
   z-index: 150; /* under the toolbar (200); the pointer-events-none overlay (9000) doesn't block clicks */
@@ -225,6 +218,12 @@ body.edit-active { cursor: text; }
   font-size: 12px;
 }
 body.mp-chat-open #mp-chat-panel { display: flex; }
+body.mp-chat-open .page-surround {
+  margin-left: 336px;
+  /* scaleToFit already shrinks the preview for the reduced viewport; anything
+     that still doesn't fit scrolls instead of hiding under the panel. */
+  overflow-x: auto;
+}
 
 .mp-chat-head {
   display: flex;
@@ -405,40 +404,32 @@ body.mp-chat-open #mp-chat-panel { display: flex; }
   align-items: end;
 }
 #mp-chat-attach { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.mp-attach-btn {
-  background: transparent !important;
-  color: var(--color-mid) !important;
-  border: 1px dashed var(--color-rule-light) !important;
-  padding: 3px 9px !important;
-  font-size: 10px !important;
-  border-radius: 10px;
-  cursor: pointer;
-}
-.mp-attach-btn:hover { color: var(--color-ink) !important; border-color: var(--color-mid) !important; }
+#mp-chat-attach:empty { display: none; }
 .mp-attach-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   background: var(--color-pull-bg);
   border: 1px solid var(--color-rule-light);
   border-radius: 10px;
-  padding: 3px 8px;
+  padding: 3px 9px 3px 6px;
   font-size: 10px;
   color: var(--color-ink);
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
+.mp-attach-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Removal X sits on the LEFT of the chip */
 .mp-attach-clear {
   background: transparent !important;
   border: none !important;
   color: var(--color-mid) !important;
   padding: 0 !important;
-  font-size: 12px;
+  font-size: 10px;
   cursor: pointer;
   line-height: 1;
+  flex-shrink: 0;
 }
+.mp-attach-clear:hover { color: var(--color-ink) !important; }
 #mp-chat-input {
   font-family: var(--font-label);
   font-size: 12px;
@@ -464,7 +455,67 @@ body.mp-chat-open #mp-chat-panel { display: flex; }
 }
 .mp-chat-send:hover { opacity: 0.8; }
 
-body.mp-chat-picking { cursor: crosshair; }
+#mp-chat-input:disabled, .mp-chat-send:disabled { opacity: 0.45; cursor: default; }
+
+/* Element selected via double-click (chip in the chat area). Screen-only —
+   never printed, and serializeForSave strips the class from saved files. */
+@media screen {
+  .mp-selected {
+    outline: 2px solid rgba(59, 130, 246, 0.7);
+    outline-offset: 2px;
+  }
+}
+
+/* ── Connect takeover (ready state): bold, inverted, unmissable ── */
+.mp-connect-takeover {
+  flex: 1;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 28px 22px;
+  text-align: center;
+  line-height: 1.55;
+}
+.mp-takeover-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mp-connect-takeover code {
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.mp-copy-invert {
+  background: var(--color-paper) !important;
+  color: var(--color-ink) !important;
+  padding: 8px 16px !important;
+  font-size: 11px !important;
+}
+.mp-takeover-wait {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+}
+.mp-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--color-paper);
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: mp-spin 0.9s linear infinite;
+}
+@keyframes mp-spin { to { transform: rotate(360deg); } }
 
 /* ── Element defaults (adapt per content type) ── */
 h1 { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; line-height: 1.1; margin-bottom: 0.2em; }
@@ -557,7 +608,7 @@ footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-r
 @media print {
   body { padding: 0 !important; background: white; }
   #mp-toolbar, #mp-overlay, .page-break-guide, #mp-chat-panel { display: none !important; }
-  .page-surround { background: white; padding: 0 !important; display: block; min-height: 0 !important; }
+  .page-surround { background: white; padding: 0 !important; margin: 0 !important; display: block; min-height: 0 !important; }
   /* WYSIWYG: print reuses the on-screen sheet 1:1 — width, min-height,
      padding, and themed border all stay, inside a zero-margin @page box the
      same size as the sheet. No zoom, no re-layout: only the screen-fit

@@ -197,8 +197,8 @@
 
   // ── Panel DOM ─────────────────────────────────────────────────────────────
 
-  let panel = null, log = null, presenceEl = null, inputEl = null, toggleEl = null;
-  let attachCtx = null; // {selector, snapshot, edited} from element pick mode
+  let panel = null, log = null, presenceEl = null, inputEl = null, sendEl = null, toggleEl = null;
+  let attachCtx = null; // { el } — the element double-click selected in edit mode
 
   function el(tag, className, text) {
     const n = document.createElement(tag);
@@ -231,8 +231,13 @@
     }
     const close = el('button', 'mp-chat-close', '×');
     close.type = 'button';
-    close.title = 'Close';
-    close.addEventListener('click', closePanel);
+    close.title = 'Exit editing';
+    // Panel and edit mode are one combined state: closing the panel exits
+    // edit mode, whose hook closes the panel.
+    close.addEventListener('click', () => {
+      if (typeof disableEditMode === 'function') disableEditMode();
+      else closePanel();
+    });
     head.appendChild(close);
     panel.appendChild(head);
 
@@ -243,12 +248,8 @@
     panel.appendChild(presenceEl);
 
     const form = el('form', null); form.id = 'mp-chat-form';
+    // Chip row: filled by double-click element selection in edit mode.
     const attachRow = el('div', null); attachRow.id = 'mp-chat-attach';
-    const attachBtn = el('button', 'mp-attach-btn', '⌖ Attach element');
-    attachBtn.type = 'button';
-    attachBtn.title = 'Point at an element on the page to talk about it';
-    attachBtn.addEventListener('click', enterPickMode);
-    attachRow.appendChild(attachBtn);
     form.appendChild(attachRow);
 
     inputEl = document.createElement('textarea');
@@ -261,17 +262,19 @@
     inputEl.addEventListener('input', () => ssSet('mpChatDraft', inputEl.value));
     form.appendChild(inputEl);
 
-    const send = el('button', 'mp-chat-send', 'Send');
-    send.type = 'submit';
-    form.appendChild(send);
+    sendEl = el('button', 'mp-chat-send', 'Send');
+    sendEl.type = 'submit';
+    form.appendChild(sendEl);
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = inputEl.value.trim();
       if (!text) return;
       inputEl.value = '';
       ssSet('mpChatDraft', '');
-      const intent = attachCtx
-        ? { type: 'element-request', payload: { text, ...attachCtx } }
+      // Element context is captured at SEND time from the live element, so
+      // the snapshot includes the edits the user just made to it.
+      const intent = attachCtx?.el?.isConnected
+        ? { type: 'element-request', payload: { text, ...captureElement(attachCtx.el) } }
         : { type: 'chat-message', payload: { text } };
       clearAttach();
       dispatchIntent(intent);
@@ -283,11 +286,23 @@
 
   // ── Panel state / mode rendering ─────────────────────────────────────────
 
+  // Combined mode: shell.js owns the EDIT toggle and calls this hook when
+  // edit mode flips. Entering edit auto-enables live where the page supports
+  // it — un-doing a previous explicit toggle-off the moment the user starts
+  // editing (the header toggle still turns it off again mid-session).
+  window.mpChatOnEditMode = (on) => {
+    if (on) {
+      if (window.LIVE_EDIT_SUPPORTED === true && served()) lsSet('mpChatLive', 'on');
+      openPanel();
+    } else {
+      closePanel();
+    }
+  };
+
   function openPanel() {
     buildPanel();
     if (!document.body.classList.contains('mp-chat-open')) {
       document.body.classList.add('mp-chat-open');
-      document.getElementById('mp-btn-chat')?.classList.add('active');
       ssSet('mpChatOpen', '1');
       applySize(document.getElementById('mp-paper-select').value || 'letter');
     }
@@ -295,16 +310,10 @@
   }
 
   function closePanel() {
-    exitPickMode();
     document.body.classList.remove('mp-chat-open');
-    document.getElementById('mp-btn-chat')?.classList.remove('active');
     ssSet('mpChatOpen', '');
     liveTransport.stop();
     applySize(document.getElementById('mp-paper-select').value || 'letter');
-  }
-
-  function togglePanel() {
-    document.body.classList.contains('mp-chat-open') ? closePanel() : openPanel();
   }
 
   // The "/print live" guidance, in two variants sharing one content: the
@@ -331,9 +340,32 @@
     return box;
   }
 
-  // Re-render the state-dependent chrome (empty state, hint, presence,
-  // polling). Called on open, toggle flips, presence changes, and after each
-  // dispatched intent.
+  // Full-panel takeover for the ready state: the model isn't connected yet,
+  // so the ONLY next step is starting live mode — make it unmissable (bold,
+  // inverted, spinner) and disable the input until presence arrives. The
+  // header Live toggle stays reachable as the escape hatch to manual mode.
+  function buildConnectTakeover() {
+    const box = el('div', 'mp-connect-takeover');
+    box.appendChild(el('div', 'mp-takeover-title', 'Start live mode'));
+    const line = el('p', null);
+    line.appendChild(el('span', null, 'Copy '));
+    line.appendChild(el('code', null, '/print live'));
+    line.appendChild(el('span', null, ' and send it to your model.'));
+    box.appendChild(line);
+    const copy = el('button', 'mp-copy-btn mp-copy-invert', 'Copy /print live');
+    copy.type = 'button';
+    copy.addEventListener('click', () => copyText('/print live', copy));
+    box.appendChild(copy);
+    const wait = el('div', 'mp-takeover-wait');
+    wait.appendChild(el('span', 'mp-spinner'));
+    wait.appendChild(el('span', null, 'Waiting for your model to connect…'));
+    box.appendChild(wait);
+    return box;
+  }
+
+  // Re-render the state-dependent chrome (empty state, takeover, presence,
+  // polling, input enablement). Called on open, toggle flips, presence
+  // changes, and after each dispatched intent.
   function refreshMode() {
     if (!panel) return;
     const state = panelState();
@@ -342,8 +374,21 @@
 
     panel.querySelector('.mp-chat-empty')?.remove();
     panel.querySelector('.mp-chat-hint')?.remove();
+    panel.querySelector('.mp-connect-takeover')?.remove();
+    log.style.display = '';
+    // Only the ready takeover locks the input — everywhere else typing works
+    // (live sends; dormant/off/file produce paste cards).
+    const locked = state === 'ready';
+    if (inputEl) inputEl.disabled = locked;
+    if (sendEl) sendEl.disabled = locked;
 
-    if (state === 'off' || state === 'file') {
+    if (state === 'ready') {
+      liveTransport.start(); // presence poll — connection dismisses the takeover
+      log.style.display = 'none';
+      panel.insertBefore(buildConnectTakeover(), presenceEl);
+      presenceEl.textContent = '';
+      presenceEl.className = '';
+    } else if (state === 'off' || state === 'file') {
       liveTransport.stop();
       if (!log.childElementCount) {
         const empty = el('div', 'mp-chat-empty');
@@ -359,7 +404,7 @@
       renderPresence();
     } else {
       liveTransport.start();
-      if (state === 'ready' || state === 'dormant') {
+      if (state === 'dormant') {
         if (!log.childElementCount) log.appendChild(buildLiveGuidance('empty', state));
         else log.prepend(buildLiveGuidance('hint', state));
       }
@@ -382,8 +427,9 @@
   function renderPresence() {
     if (!presenceEl) return;
     const state = panelState();
-    if (state !== 'live' && state !== 'ready') {
-      // dormant shows nothing until presence appears (which flips it to live)
+    if (state !== 'live') {
+      // ready has the takeover's spinner; dormant shows nothing until
+      // presence appears (which flips it to live)
       presenceEl.textContent = '';
       presenceEl.className = '';
       return;
@@ -441,67 +487,52 @@
     });
   }
 
-  // ── Element pick mode ─────────────────────────────────────────────────────
-  // Reuses shell.js's hover-box machinery (showHover/clearHover/overlay are
-  // page-globals) so picking looks exactly like edit mode's targeting.
+  // ── Element selection chips ──────────────────────────────────────────────
+  // Double-click in edit mode is the selection gesture: shell.js marks the
+  // element .mp-selected and calls the hook below; the chip in the chat area
+  // is the removable handle for that selection. No separate pick mode.
 
-  let pickListeners = null;
+  window.mpChatOnElementSelected = (target) => {
+    attachCtx = { el: target };
+    renderAttachChip();
+  };
 
-  function enterPickMode() {
-    if (pickListeners) return;
-    document.body.classList.add('mp-chat-picking');
-    const onMove = (e) => {
-      const pg = getActivePage();
-      const t = e.target;
-      if (!t || !pg || !pg.contains(t) || t === pg) { clearHover(); return; }
-      showHover(t);
+  // Fresh capture at send time — includes the user's just-made edits, minus
+  // runtime-only state (selection class, contenteditable).
+  function captureElement(target) {
+    const clone = target.cloneNode(true);
+    clone.removeAttribute('contenteditable');
+    clone.classList.remove('mp-selected');
+    if (!clone.classList.length) clone.removeAttribute('class');
+    return {
+      selector: buildSelector(target),
+      snapshot: clone.outerHTML.slice(0, 2048),
+      edited: target.hasAttribute('data-mp-edited'),
     };
-    const onClick = (e) => {
-      const pg = getActivePage();
-      const t = e.target;
-      if (!t || !pg || !pg.contains(t) || t === pg) return;
-      e.preventDefault();
-      e.stopPropagation();
-      attachCtx = {
-        selector: buildSelector(t),
-        snapshot: t.outerHTML.slice(0, 2048),
-        edited: t.hasAttribute('data-mp-edited'),
-      };
-      exitPickMode();
-      renderAttachChip();
-      inputEl?.focus();
-    };
-    const onKey = (e) => { if (e.key === 'Escape') exitPickMode(); };
-    document.addEventListener('mousemove', onMove, { passive: true });
-    document.addEventListener('click', onClick, true);
-    document.addEventListener('keydown', onKey);
-    pickListeners = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('click', onClick, true);
-      document.removeEventListener('keydown', onKey);
-    };
-  }
-
-  function exitPickMode() {
-    document.body.classList.remove('mp-chat-picking');
-    clearHover();
-    if (pickListeners) { pickListeners(); pickListeners = null; }
   }
 
   function renderAttachChip() {
     const row = document.getElementById('mp-chat-attach');
     if (!row) return;
     row.querySelector('.mp-attach-chip')?.remove();
-    if (!attachCtx) return;
-    const chip = el('span', 'mp-attach-chip', `⌖ ${attachCtx.selector}`);
-    const x = el('button', 'mp-attach-clear', '×');
+    if (!attachCtx?.el) return;
+    const chip = el('span', 'mp-attach-chip');
+    const x = el('button', 'mp-attach-clear', '✕');
     x.type = 'button';
+    x.title = 'Remove — deselects the element';
     x.addEventListener('click', clearAttach);
-    chip.appendChild(x);
+    chip.appendChild(x); // X sits on the left of the chip
+    chip.appendChild(el('span', 'mp-attach-label', `⌖ ${buildSelector(attachCtx.el)}`));
     row.appendChild(chip);
   }
 
+  // Removing the chip also deselects the element on the page.
   function clearAttach() {
+    if (attachCtx?.el) {
+      attachCtx.el.classList.remove('mp-selected');
+      if (!attachCtx.el.classList.length) attachCtx.el.removeAttribute('class');
+      if (document.activeElement === attachCtx.el) attachCtx.el.blur();
+    }
     attachCtx = null;
     renderAttachChip();
   }
@@ -541,7 +572,13 @@
 
   function restore() {
     if (ssGet('mpChatOpen') !== '1') return;
-    openPanel();
+    // Panel open == edit mode: re-enter the combined mode through shell.js so
+    // the button state, hover/dblclick listeners, and panel all come back.
+    if (typeof enableEditMode === 'function' && !document.body.classList.contains('edit-active')) {
+      enableEditMode(); // its hook opens the panel
+    } else {
+      openPanel();
+    }
     const draft = ssGet('mpChatDraft');
     if (draft && inputEl) inputEl.value = draft;
     if (isPasteState(panelState())) {
@@ -552,13 +589,11 @@
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────
-
-  const btn = document.getElementById('mp-btn-chat');
-  if (btn) btn.addEventListener('click', togglePanel);
-  // Restore only after the whole document has parsed: the assembly-injected
-  // setLiveEditSupported(true) line sits before </body>, AFTER this script,
-  // so restoring synchronously here would read the flag as false and rebuild
-  // a live panel in manual mode.
+  // The EDIT button lives in shell.js; this file only reacts through the
+  // mpChatOnEditMode hook. Restore runs only after the whole document has
+  // parsed: the assembly-injected setLiveEditSupported(true) line sits before
+  // </body>, AFTER this script, so restoring synchronously here would read
+  // the flag as false and rebuild a live panel in manual mode.
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', restore);
   } else {

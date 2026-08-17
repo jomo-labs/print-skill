@@ -159,7 +159,13 @@ function showHover(el) {
 function enableEditMode() {
   editMode = true;
   document.getElementById('mp-btn-edit').classList.add('active');
+  const label = document.getElementById('mp-btn-edit-label');
+  if (label) label.textContent = 'Editing';
   document.body.classList.add('edit-active');
+  // Editing and the chat panel are one combined mode — chat.js (when
+  // present) opens the panel and auto-enables live through this hook. The
+  // shell stays fully functional without it.
+  window.mpChatOnEditMode?.(true);
 
   const onMove = (e) => {
     const el = e.target;
@@ -174,6 +180,12 @@ function enableEditMode() {
     const before = el.innerHTML;
     el.contentEditable = 'true';
     el.focus();
+    // Double-click is also the element-selection gesture for the chat panel:
+    // mark it (screen-only outline; serializeForSave strips the class) and
+    // hand it to chat.js, which shows it as a removable chip.
+    document.querySelectorAll('.mp-selected').forEach(s => { if (s !== el) s.classList.remove('mp-selected'); });
+    el.classList.add('mp-selected');
+    window.mpChatOnElementSelected?.(el);
     el.addEventListener('blur', () => {
       el.contentEditable = 'false';
       // Committing an edit persists it — see the Save section. No-op commits
@@ -218,10 +230,14 @@ function blurActiveEdit() {
 function disableEditMode() {
   editMode = false;
   document.getElementById('mp-btn-edit').classList.remove('active');
+  const label = document.getElementById('mp-btn-edit-label');
+  if (label) label.textContent = 'Edit';
   document.body.classList.remove('edit-active');
   blurActiveEdit();
   clearHover();
+  document.querySelectorAll('.mp-selected').forEach(s => s.classList.remove('mp-selected'));
   if (editListeners) { editListeners(); editListeners = null; }
+  window.mpChatOnEditMode?.(false);
 }
 
 function toggleEditMode() { editMode ? disableEditMode() : enableEditMode(); }
@@ -254,6 +270,10 @@ function serializeForSave() {
   const overlay = root.querySelector('#mp-overlay');
   if (overlay) overlay.replaceChildren();
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  root.querySelectorAll('.mp-selected').forEach(el => {
+    el.classList.remove('mp-selected');
+    if (!el.classList.length) el.removeAttribute('class');
+  });
   const body = root.querySelector('body');
   if (body) {
     body.classList.remove('edit-active', 'mp-embedded', 'mp-chat-open');
