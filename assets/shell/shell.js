@@ -263,12 +263,16 @@ let saving = false;
 function serializeForSave() {
   const root = document.documentElement.cloneNode(true);
   root.querySelectorAll('.page-break-guide, .mp-hover-box').forEach(el => el.remove());
-  // Chat panel DOM is runtime-only chrome (chat.js rebuilds it every load);
+  // ALL chrome is runtime-only (injectChrome/chat.js rebuild it every load) —
+  // stripping it here keeps the saved file a pure document, and turns the
+  // first save of a legacy page (baked-in chrome) into a cleanse.
   // data-mp-edited markers on content are NOT stripped — persisting them is
   // how the model finds user edits in the file.
+  root.querySelector('#mp-toolbar')?.remove();
+  root.querySelector('#mp-overlay')?.remove();
   root.querySelector('#mp-chat-panel')?.remove();
-  const overlay = root.querySelector('#mp-overlay');
-  if (overlay) overlay.replaceChildren();
+  // The server's serve-time wrap added these; the file on disk never has them.
+  root.querySelectorAll('[data-mp-chrome]').forEach(el => el.remove());
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
   root.querySelectorAll('.mp-selected').forEach(el => {
     el.classList.remove('mp-selected');
@@ -417,15 +421,107 @@ function initAutoReload() {
   setInterval(tick, 1500);
 }
 
+// ── Chrome injection ────────────────────────────────────────────────────────
+// The generated file is a pure document; ALL skill chrome is built here at
+// runtime, so shell updates apply to already-generated pages the moment
+// they're (re)loaded. Any pre-existing #mp-toolbar/#mp-overlay in the file is
+// a legacy page with baked-in chrome — it's removed and replaced, and the
+// next PUT save cleanses it from the file (serializeForSave strips chrome).
+
+function injectChrome() {
+  document.getElementById('mp-toolbar')?.remove();
+  document.getElementById('mp-overlay')?.remove();
+
+  const toolbar = document.createElement('div');
+  toolbar.id = 'mp-toolbar';
+  const sep = () => {
+    const s = document.createElement('div');
+    s.className = 'mp-sep';
+    return s;
+  };
+
+  const print = document.createElement('button');
+  print.id = 'mp-btn-print';
+  print.textContent = 'Print / Save PDF';
+  toolbar.appendChild(print);
+  toolbar.appendChild(sep());
+
+  // Combined edit+chat toggle: pencil when idle; X + "Editing" while active.
+  // chat.js (when present) opens/closes the side panel through the mode hook.
+  const edit = document.createElement('button');
+  edit.id = 'mp-btn-edit';
+  edit.innerHTML =
+    '<svg class="mp-icon-pencil" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>' +
+    '<svg class="mp-icon-x" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
+    '<span id="mp-btn-edit-label">Edit</span>';
+  toolbar.appendChild(edit);
+  toolbar.appendChild(sep());
+
+  const select = document.createElement('select');
+  select.id = 'mp-paper-select';
+  select.title = 'Paper size';
+  for (const [value, label] of [
+    ['letter', 'US Letter'], ['landscape', 'Letter Landscape'], ['a4', 'A4'],
+    ['legal', 'Legal'], ['half', 'Half Letter'],
+  ]) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    select.appendChild(opt);
+  }
+  select.addEventListener('change', () => applySize(select.value));
+  toolbar.appendChild(select);
+
+  // Variant nav — hidden until initVariants() detects multiple .variant-page
+  const vsep = sep();
+  vsep.id = 'mp-variant-sep';
+  vsep.style.display = 'none';
+  toolbar.appendChild(vsep);
+  const nav = document.createElement('div');
+  nav.id = 'mp-variant-nav';
+  nav.style.cssText = 'display:none; align-items:center; gap:8px;';
+  const prev = document.createElement('button');
+  prev.id = 'mp-btn-prev';
+  prev.className = 'mp-nav-btn';
+  prev.title = 'Previous variant';
+  prev.innerHTML = '&#8592;';
+  const label = document.createElement('span');
+  label.id = 'mp-variant-label';
+  label.style.cssText = 'font-family:var(--font-label);font-size:11px;color:var(--color-mid);white-space:nowrap;letter-spacing:0.04em;';
+  label.textContent = '1 / 1';
+  const next = document.createElement('button');
+  next.id = 'mp-btn-next';
+  next.className = 'mp-nav-btn';
+  next.title = 'Next variant';
+  next.innerHTML = '&#8594;';
+  nav.appendChild(prev);
+  nav.appendChild(label);
+  nav.appendChild(next);
+  toolbar.appendChild(nav);
+
+  const ov = document.createElement('div');
+  ov.id = 'mp-overlay';
+  document.body.prepend(ov);
+  document.body.prepend(toolbar);
+}
+
 // ── Init ────────────────────────────────────────────────────────────────────
 
 (function init() {
+  injectChrome();
+
   // Detect iframe embedding — strip standalone chrome
   if (window.self !== window.top) document.body.classList.add('mp-embedded');
 
   // Toolbar buttons
   document.getElementById('mp-btn-print').addEventListener('click', printThisPage);
   document.getElementById('mp-btn-edit').addEventListener('click', toggleEditMode);
+
+  // Per-page configuration is declarative: assembly sets data attributes on
+  // <body> (the document carries data, never chrome API calls). Legacy pages
+  // instead carry injected applySize()/setLiveEditSupported() script lines
+  // after this script — those globals still work, so they self-configure too.
+  if (document.body.dataset.mpLiveEdit) setLiveEditSupported(true);
 
   // Pages ship their design baked in: the shell's :root tokens plus whatever
   // #content-overrides the generation wrote (ad-hoc theme tokens included).
@@ -436,10 +532,11 @@ function initAutoReload() {
   // one localStorage, so a paper picked on some other document weeks ago would
   // silently re-target this page's @page size and sheet geometry — while the
   // user's print dialog stays on their printer's paper, producing clipped or
-  // half-blank sheets. Every standalone page opens at letter; the toolbar
-  // picker still works per visit, and an embedding host can re-apply its own
-  // saved choice via applySize after load.
-  const savedPaper = 'letter';
+  // half-blank sheets. Every standalone page opens at its own configured
+  // paper; the toolbar picker still works per visit, and an embedding host
+  // can re-apply its own saved choice via applySize after load.
+  const configured = document.body.dataset.mpPaper;
+  const savedPaper = PAPERS[configured] ? configured : 'letter';
   document.getElementById('mp-paper-select').value = savedPaper;
 
   initVariants();

@@ -4,13 +4,14 @@ The mechanical procedure that turns your authored channels into the final HTML
 file. Read this when you're ready to assemble (after the self-check in
 `design-rules.md` passes). Every step is anchor-exact — follow it literally.
 
-The shell is the single source of truth for design tokens, the toolbar,
-paper-size switching, edit mode, the chat panel, and WYSIWYG print geometry.
-It is four files: the thin page skeleton (`assets/page_shell.html`) and the
-shared assets it links relatively (`assets/shell/shell.css`,
-`assets/shell/shell.js`, `assets/shell/chat.js`). You never
-author or retype any of them — **copy the files, then make targeted insertions
-at the anchors below.**
+The document template (`assets/page_template.html`) is the page skeleton —
+a pure document with no chrome markup. The shell it links relatively
+(`assets/shell/shell.css`, `assets/shell/shell.js`, `assets/shell/chat.js`)
+is the single source of truth for design tokens, the toolbar, paper-size
+switching, edit mode, the chat panel, and WYSIWYG print geometry — all
+injected at runtime, never baked into the page. You never author or retype
+any of these files — **copy them, then make targeted insertions at the
+anchors below.**
 
 ## Inputs (the authored channels)
 
@@ -42,9 +43,9 @@ trimmed). If the user asked for an explicit output location, that wins —
 skip the build/ convention entirely.
 
 ```bash
-mkdir -p <outdir>
-cp <skill-dir>/assets/page_shell.html <outdir>/<output>.html
-cp -r <skill-dir>/assets/shell <outdir>/shell   # once per output directory
+mkdir -p <outdir>/shell
+cp <skill-dir>/assets/page_template.html <outdir>/<output>.html
+cp -f <skill-dir>/assets/shell/* <outdir>/shell/
 ```
 
 **Gitignore** (once per project): if `<cwd>` is inside a git repository and
@@ -55,11 +56,17 @@ Output filename: the title, lowercased, every run of non-alphanumeric characters
 replaced with a single hyphen, leading/trailing hyphens trimmed, plus `.html`
 (e.g. "Weekly Meal Planner" → `weekly-meal-planner.html`).
 
-The page links `shell/shell.css` and `shell/shell.js` by relative path, so the
-`shell/` directory must sit next to the generated pages — copy it if it isn't
-already there (skip if present; don't duplicate per page). The relative links
-mean the page works both served by the local server and opened directly as a
-file.
+The generated page is a **pure document**: it links only `shell/document.css`
+(tokens, page geometry, print rules) by relative path and contains no chrome
+markup and no scripts. Opened directly as a file it is a plain printable HTML
+page; the local server wraps it at serve time by injecting `chrome.css` +
+`shell.js` + `chat.js` (toolbar, edit mode, chat panel) — always the skill's
+current chrome, so shell updates apply automatically to already-generated
+pages. The `shell/` directory must still sit next to the pages (for the
+stylesheet, and for older pages that link scripts directly) — **refresh it on
+every assembly** (the `cp -f`, never "skip if present"): shell files are
+runtime assets nobody edits in place, so overwriting is always safe, while a
+stale copy from an older skill version breaks `file:`-opened pages.
 
 All insertions below are edits to this copy. Insertion order matters: steps 2 → 3
 → 4 all anchor on the literal `<style id="content-overrides"></style>` tag, and
@@ -149,31 +156,28 @@ Replace `<style id="content-overrides"></style>` with:
 
 If `custom_css` is empty, leave the tag untouched.
 
-### 5. Paper size (paper is a4, legal, half, or landscape)
+### 5. Body configuration attributes (paper and/or live_edit set)
 
-Insert immediately **before** `</body>`:
+The document carries per-page configuration as **data attributes on `<body>`**
+— never as script calls (the runtime chrome reads them at load). Replace the
+literal `<body>` tag with `<body …>` carrying only the attributes that apply:
 
-```html
-<script>applySize('{paper}');</script>
-```
+- `data-mp-paper="{paper}"` when `paper` is one of the allowlisted values —
+  `a4`, `legal`, `half`, `landscape`. Anything else (including letter): omit
+  the attribute; the page opens letter portrait. (The value lands inside an
+  HTML attribute, which is why the allowlist is strict.)
+  When set, ALSO replace the static line inside `<style id="dynamic-page-css">`
+  with the matching size — `a4` → `A4`, `legal` → `legal`, `half` →
+  `5.5in 8.5in`, `landscape` → `letter landscape` — e.g.
+  `@page { size: A4; margin: 0; }`. A page opened directly (script-less) then
+  prints its configured paper exactly; `document.css` sizes the on-screen
+  sheet from the body attribute.
+- `data-mp-live-edit="1"` — this exact literal — when `live_edit` is `yes`.
+  Absence is the flag's false state: the Chat panel then runs in manual
+  copy/paste mode.
 
-Allowlisted values only — `a4`, `legal`, `half`, `landscape`. Anything else
-means: insert nothing; the page stays letter portrait. (This string lands inside
-a `<script>`, which is why the allowlist is strict.)
-
-### 5b. Live edit flag (live_edit is `yes`)
-
-Insert immediately **before** `</body>` (after the `applySize` line when both
-are present):
-
-```html
-<script>setLiveEditSupported(true);</script>
-```
-
-This exact literal, in full — nothing is interpolated. When `live_edit` is
-anything but `yes`, insert nothing: absence is the flag's false state, and
-the Chat panel then runs in manual copy/paste mode. (There is no
-`setLiveEditSupported(false)` variant to inject.)
+Both set → `<body data-mp-paper="a4" data-mp-live-edit="1">`. Neither set →
+leave `<body>` untouched.
 
 ### 6. Content
 
@@ -186,18 +190,20 @@ do not add another.
 
 - No `<!-- CONTENT -->` remains.
 - Exactly one `<style id="content-overrides">`.
-- The shell links are intact: one `href="shell/shell.css"`, one
-  `src="shell/shell.js"`, and one `src="shell/chat.js"`;
-  `<outdir>/shell/shell.js` exists and contains `function applySize`, and
-  `<outdir>/shell/chat.js` exists and contains `dispatchIntent` (assets
-  copied, not truncated).
+- Pure document: exactly one `href="shell/document.css"` link; **no**
+  `<script` tags, no `shell/shell.js` reference, and `id="mp-toolbar"` appears
+  nowhere (the server injects all chrome at serve time).
+- Shell assets current: `<outdir>/shell/document.css` exists and contains
+  `--color-ink`; `<outdir>/shell/shell.js` contains `injectChrome`;
+  `<outdir>/shell/chat.js` contains `mpChatOnEditMode` (not stale or
+  truncated).
 - If `font_import` was set: exactly one `<link rel="stylesheet"` whose href starts
   with `https://fonts.googleapis.com/`, placed before the content-overrides tag.
 - If two-sheet: `id="mp-nested-sheets"` appears **before**
   `id="content-overrides"`, and `#page` contains exactly two child `.page` divs,
   each ending in a `<footer>`.
-- If non-letter paper: `applySize('...')` appears before `</body>`.
-- If `live_edit` was `yes`: `setLiveEditSupported(true)` appears before
-  `</body>`; otherwise it appears nowhere.
+- If non-letter paper: the `<body` tag carries `data-mp-paper="<paper>"`.
+- If `live_edit` was `yes`: the `<body` tag carries `data-mp-live-edit="1"`;
+  otherwise the attribute appears nowhere.
 
 If any check fails, fix the copy — don't start over from a blank file.

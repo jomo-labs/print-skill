@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Default typeface trio only. Themed pages load any additional fonts via
+     their own font_import <link> (inserted at assembly time). -->
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell/document.css">
+<style id="content-overrides"></style>
+</head>
+<body>
+
+<!-- Pure document. Opened directly, this is a plain printable HTML file —
+     styled and print-exact via document.css, no chrome at all. The local
+     server wraps it at serve time: it injects chrome.css + shell.js +
+     chat.js (toolbar, edit mode, chat panel), so chrome updates apply
+     automatically to every already-generated page. The only per-page
+     configuration is assembly-set data attributes on the body tag:
+     data-mp-paper (non-letter paper) and data-mp-live-edit (live chat).
+     (This comment deliberately never spells the body tag itself — assembly
+     replaces that literal tag, and it must stay unique in this file.) -->
+
+<!-- Page canvas -->
+<div class="page-surround">
+  <div class="page" id="page">
+    <!-- CONTENT -->
+    <footer><span></span><span></span></footer>
+  </div>
+</div>
+
+<!-- @page updated dynamically when paper size changes. Zero margin: the .page
+     element is the sheet itself, printed 1:1 — WYSIWYG. shell.css carries the
+     matching static letter dimensions, so a script-less print is still exact. -->
+<style id="dynamic-page-css">@page { size: letter; margin: 0; }</style>
+
+</body>
+</html>

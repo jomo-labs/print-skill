@@ -4,7 +4,9 @@
 // Serves a directory of generated pages plus the shared shell assets, and
 // renders deterministic PDFs via headless Chromium:
 //
-//   GET  /<page>.html      a generated page from the served directory
+//   GET  /<page>.html      a generated page, wrapped with the skill's chrome
+//                          (chrome.css + shell.js + chat.js injected at serve
+//                          time — the file on disk is a pure document)
 //   GET  /shell/*          shell assets (served dir first, skill assets as fallback)
 //   GET  /                 index of served pages
 //   GET  /healthz          liveness + identity probe
@@ -84,17 +86,41 @@ function etagFor(stat) {
   return `"${stat.mtimeMs}-${stat.size}"`;
 }
 
-async function serveFile(req, res, filePath, stat) {
+// Serve-time chrome wrap. Generated pages are pure documents (plain
+// printable HTML, no chrome references at all); serving one through this
+// server injects the chrome stylesheet and scripts so the toolbar/edit/chat
+// functionality appears — always the skill's CURRENT chrome, since nothing
+// in the file can go stale. Legacy pages that still link shell.js themselves
+// are left alone (double-loading the shell would double the chrome).
+// serializeForSave strips [data-mp-chrome] tags, so PUT round-trips stay pure.
+const CHROME_HEAD = `<link rel="stylesheet" href="/shell/chrome.css" data-mp-chrome>`;
+const CHROME_BODY = `<script src="/shell/shell.js" data-mp-chrome></script>\n<script src="/shell/chat.js" data-mp-chrome></script>`;
+
+function injectChromeTags(html) {
+  if (html.includes("shell/shell.js")) return html; // legacy page: own links
+  let out = html;
+  if (out.includes("</head>")) out = out.replace("</head>", `${CHROME_HEAD}\n</head>`);
+  if (out.includes("</body>")) out = out.replace("</body>", `${CHROME_BODY}\n</body>`);
+  return out;
+}
+
+async function serveFile(req, res, filePath, stat, { wrapChrome = false } = {}) {
   const headers = {
     "Content-Type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream",
     "ETag": etagFor(stat),
     "Last-Modified": stat.mtime.toUTCString(),
+    // Always revalidate (cheap with ETags): heuristic browser caching would
+    // otherwise keep serving stale shell js/css after a skill update.
+    "Cache-Control": "no-cache",
   };
   if (req.method === "HEAD") {
     res.writeHead(200, headers);
     return res.end();
   }
-  const body = await fs.readFile(filePath);
+  let body = await fs.readFile(filePath);
+  if (wrapChrome && /\.html?$/i.test(filePath)) {
+    body = Buffer.from(injectChromeTags(body.toString("utf-8")));
+  }
   res.writeHead(200, headers);
   res.end(body);
 }
@@ -122,19 +148,24 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
   let baseUrl = null;
 
   async function serveStatic(req, res, urlPath) {
-    // Pages and their assets from the served directory; /shell/* falls back to
-    // the skill's own assets so a directory without a local shell copy still works.
+    // Pages and their assets from the served directory. Shell assets (top
+    // level or one project dir deep) are served from the SKILL's own copy
+    // FIRST: the skill is the source of truth for chrome, so served pages
+    // always run the current shell even when the local copy next to the
+    // pages is stale (it exists only for file:// use). Local copy remains
+    // the fallback for files the skill doesn't ship.
     const candidates = [];
-    const inRoot = safeJoin(ROOT, urlPath);
-    if (inRoot) candidates.push(inRoot);
-    if (urlPath.startsWith("/shell/")) {
-      const inAssets = safeJoin(SKILL_ASSETS, urlPath);
+    const shellMatch = urlPath.match(/^(?:\/[^/.][^/]*)?(\/shell\/[^/]+)$/);
+    if (shellMatch) {
+      const inAssets = safeJoin(SKILL_ASSETS, shellMatch[1]);
       if (inAssets) candidates.push(inAssets);
     }
+    const inRoot = safeJoin(ROOT, urlPath);
+    if (inRoot) candidates.push(inRoot);
     for (const candidate of candidates) {
       try {
         const stat = await fs.stat(candidate);
-        if (stat.isFile()) return await serveFile(req, res, candidate, stat);
+        if (stat.isFile()) return await serveFile(req, res, candidate, stat, { wrapChrome: true });
       } catch {
         /* try next */
       }
