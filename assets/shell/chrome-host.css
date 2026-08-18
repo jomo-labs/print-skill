@@ -29,6 +29,18 @@
        (scaleToFit() shrinks the preview to match the narrower canvas.) */
     body.mp-chat-open { padding-left: 336px !important; }
 
+    /* The canvas gives up (and takes back) that column in the same motion as
+       the panel's slide — same duration and curve as --mp-slide/--mp-ease in
+       chrome.css, restated because custom properties don't reach out of the
+       chrome's shadow root. The sheet's fit-scale (an inline transform
+       scaleToFit writes) rides the same curve, so the column narrowing and
+       the preview shrinking read as one movement instead of a jump. */
+    body { transition: padding-left 220ms cubic-bezier(0.22, 0.61, 0.36, 1) !important; }
+    .page, .variant-page { transition: transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1) !important; }
+    @media (prefers-reduced-motion: reduce) {
+      body, .page, .variant-page { transition: none !important; }
+    }
+
     /* The canvas is the app's main region: it starts below the fixed toolbar,
        takes all the width the toolbar and the panel leave, and scrolls
        ITSELF when the sheet doesn't fit. Scrolling inside the region rather

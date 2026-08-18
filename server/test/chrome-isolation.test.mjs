@@ -151,6 +151,11 @@ async function inspect(browser, url) {
     .getElementById("mp-btn-edit").click());
   await page.waitForFunction(() => document.getElementById("mp-chrome-root").shadowRoot
     .querySelector("#mp-chat-panel .mp-starter"));
+  // The panel slides in and the canvas gives up its column over ~220ms — every
+  // measurement below is of the settled layout, never a frame of that motion.
+  await page.waitForFunction(() => getComputedStyle(document.body).paddingLeft === "336px"
+    && document.getElementById("mp-chrome-root").shadowRoot
+       .getElementById("mp-chat-panel").getBoundingClientRect().left === 0);
   // Drive the two edit-mode gestures so their chrome exists to be compared:
   // double-click selects (chip + outline), hover draws the element box.
   await page.dblclick("#probe");

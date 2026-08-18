@@ -41,6 +41,12 @@
      boundary does not stop them); generic families cannot be redefined. */
   --mp-font-ui:   ui-sans-serif, system-ui, sans-serif;
   --mp-font-mono: ui-monospace, monospace;
+
+  /* The panel's slide. chrome-host.css restates these numbers for the
+     document side of the same motion (custom properties don't reach out of
+     the shadow root) — change them together. */
+  --mp-slide: 220ms;
+  --mp-ease:  cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 /* The shadow tree gets no UA-reset from the page's own `* { }` rule, and
@@ -245,12 +251,37 @@ button, input, textarea, select {
   width: 336px;
   background: var(--mp-paper);
   border-right: 1px solid var(--mp-rule);
-  display: none;
+  display: flex;
   flex-direction: column;
   z-index: 150; /* under the toolbar (200); the pointer-events-none overlay (9000) doesn't block clicks */
   font-size: 12px;
+
+  /* Closed is parked off the left edge, not `display: none` — display can't
+     be transitioned, a transform can, and the panel is only ever 336px of
+     layout either way. visibility flips at the END of the slide out (and
+     instantly on the way in) so a closed panel is untabbable and inert
+     without cutting the animation short. */
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform var(--mp-slide) var(--mp-ease),
+              visibility 0s linear var(--mp-slide);
 }
-:host([data-mp-chat-open]) #mp-chat-panel { display: flex; }
+:host([data-mp-chat-open]) #mp-chat-panel {
+  transform: none;
+  visibility: visible;
+  transition: transform var(--mp-slide) var(--mp-ease), visibility 0s;
+}
+/* The FIRST open inserts the panel into the shadow root already matching the
+   open state, so there is no previous value to animate from — @starting-style
+   supplies one. (Engines without it simply show the panel at once; nothing
+   else depends on this rule.) */
+@starting-style {
+  :host([data-mp-chat-open]) #mp-chat-panel { transform: translateX(-100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #mp-chat-panel,
+  :host([data-mp-chat-open]) #mp-chat-panel { transition: none; }
+}
 
 /* Panel body: the live conversation plus the not-connected overlay's
    positioning context. */
