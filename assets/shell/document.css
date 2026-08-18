@@ -70,15 +70,14 @@
   /* Page chrome — the theme spec's Surface section sets these instead of
      rewriting the .page rule. The frame is drawn INSET from the paper edge:
      a border on the sheet's own edge lands in the strip no desktop printer
-     can reach, so it would simply drop out of a home print run. The default
-     insets — half the margin at the top and sides, two thirds at the bottom
-     where printers grip deepest — clear that strip on every edge, sit clear of
-     the content, and follow the margin if a theme retunes it. (The deeper
-     bottom also optically centers the frame.) Print strips the shadow. */
+     can reach, so it would simply drop out of a home print run. The inset is
+     uniform — a frame reads as a frame only if it sits the same distance from
+     every edge — and lands at 0.5in by default, which clears the unprintable
+     strip even at the bottom, where printers grip deepest. It is derived from
+     the smallest page margin so it stays outside the content box if a theme
+     retunes the margins. Print strips the shadow. */
   --page-border: none;
-  --page-frame-inset: calc(var(--page-margin-top) / 2)
-                      calc(var(--page-margin-x) / 2)
-                      calc(var(--page-margin-bottom) * 2 / 3);
+  --page-frame-inset: calc(var(--page-margin-top) * 3 / 4);
   --page-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
 
   /* Imagery treatment. Grayscale is the default because color photos dither

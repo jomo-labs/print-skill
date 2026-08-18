@@ -120,7 +120,7 @@ tighter-set (0.08em) heading inside running content. Don't collapse them.
 | `--border-thin` | 1.5px — boxed components, utility outlines |
 | `--border-hair` | 1px — table rules, `hr`, footer rule |
 | `--page-border` | `none` |
-| `--page-frame-inset` | `32px 36px 48px` — derived from the page margin, clear of the unprintable edge |
+| `--page-frame-inset` | 48px (0.5in) on every edge — derived from the page margin, clear of the unprintable edge |
 | `--page-shadow` | `0 6px 48px oklch(0% 0 0 / 0.16)` (screen only; print strips it) |
 | `--image-filter` | `grayscale(100%)` |
 
