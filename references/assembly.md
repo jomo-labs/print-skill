@@ -48,7 +48,7 @@ out/ convention entirely.
 
 ```bash
 mkdir -p <outdir>
-sed -e '\|/\* @@DOCUMENT_CSS@@ \*/|{r <skill-dir>/assets/shell/document.css' -e 'd}' \
+sed -e '\|/\* @@DOCUMENT_CSS@@ \*/|{r <skill-dir>/assets/shell/document.css' -e 'd' -e '}' \
   <skill-dir>/assets/page_template.html > <outdir>/<output>.html
 ```
 
