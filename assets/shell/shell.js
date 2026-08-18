@@ -578,6 +578,17 @@ function injectChrome() {
     return s;
   };
 
+  // Print is the toolbar's first control and never moves: it is the one
+  // action every page has in every mode, and anchoring it at the left edge
+  // keeps it under the same pixel whether or not edit mode has expanded the
+  // controls to its right.
+  const print = document.createElement('button');
+  print.id = 'mp-btn-print';
+  print.textContent = 'Print / Save PDF';
+  toolbar.appendChild(print);
+
+  toolbar.appendChild(sep());
+
   // Combined edit+chat toggle: pencil when idle; X + "Editing" while active.
   // chat.js (when present) opens/closes the side panel through the mode hook.
   const edit = document.createElement('button');
@@ -588,7 +599,8 @@ function injectChrome() {
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
 
-  // Page setup, right of the edit toggle: paper size and orientation as two
+  // Page setup, right of the edit toggle (so the controls edit mode adds all
+  // grow rightward, away from Print): paper size and orientation as two
   // combo boxes. They're independent axes — any size combines with either
   // orientation — so they stay two controls, not one product list. Built
   // always, shown only in edit mode (chrome.css gates them on the host's
@@ -622,13 +634,6 @@ function injectChrome() {
   orientSel.setAttribute('aria-label', 'Orientation');
   orientSel.addEventListener('change', () => setOrientation(orientSel.value));
   toolbar.appendChild(setup);
-
-  toolbar.appendChild(sep());
-
-  const print = document.createElement('button');
-  print.id = 'mp-btn-print';
-  print.textContent = 'Print / Save PDF';
-  toolbar.appendChild(print);
 
   // Variant nav — hidden until initVariants() detects multiple .variant-page
   const vsep = sep();
