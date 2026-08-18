@@ -1,9 +1,8 @@
 # Theme Spec Template
 
-The schema every theme — the default (Newspaper) and every named theme — must
-satisfy before it's usable. A theme spec lives at
-`references/themes/<name>.md` and is loaded on demand by the print skill; this
-file is the checklist that spec must fill out, not a spec itself.
+The schema every theme must satisfy. A spec lives at
+`references/themes/<name>.md`, loaded on demand; this file is the checklist it
+fills out, not a spec itself.
 
 **A theme spec describes only what its theme changes.** Everything universal to
 print lives once in the "Platform invariants" section of `design-rules.md`;
@@ -12,11 +11,9 @@ with the reason — never pad it with boilerplate ("page margin: unchanged").
 
 ## Section-to-token map
 
-Every visual decision a theme makes reaches the page through a CSS variable
-defined in `assets/shell/document.css`. Sections 2-5 are therefore written as
-token tables: the spec states the value, and executing the theme means copying
-those values into a `:root { ... }` block in `custom_css` — nothing is
-translated by hand, and nothing else in the stylesheet needs restating.
+Every visual decision reaches the page through a CSS variable in
+`assets/shell/document.css`, so sections 2-5 are token tables: executing the
+theme means copying their values into a `:root { ... }` block in `custom_css`.
 
 | Section | Tokens it sets |
 |---|---|
@@ -33,24 +30,21 @@ theme actually moves.
 
 ## 1. Meta & Philosophy
 
-- **3-6 principles** specific to this theme (not the universal print
-  principles in `principles.md`, which already apply to every theme — these
-  are what makes *this* theme's execution of them distinct).
+- **3-6 principles** specific to this theme — not the universal ones in
+  `principles.md`, but what makes *this* theme's execution of them distinct.
 - **Personality adjectives** — 3-5 words a stranger could use to describe the
   theme's character.
 - **Voice & microcopy** — how body text should read when the print skill
   generates content in this theme (tone, sentence length, characteristic
   phrases). Cite an existing example if one exists.
 - **What makes it distinctive** — the one or two things that make this theme
-  unmistakably itself, distinct from the other shipped themes. This is the
-  most-skipped, most-important field — do not leave it generic.
+  unmistakably itself, distinct from the other shipped themes. Not generic.
 
 ## 2. Typography
 
-- A token table for the three families, each with a fallback stack, plus the
-  Google Fonts URL **as a plain URL** (not a CSS `@import` block — it goes
-  into the `font_import` channel verbatim, and `custom_css` may not contain
-  `@import` or `url(`).
+- A token table for the three families with fallback stacks, plus the Google
+  Fonts URL **as a plain URL** — it goes into the `font_import` channel
+  verbatim, and `custom_css` may not contain `@import` or `url(`.
 - Weights actually used, and any weights explicitly avoided (e.g. "never use
   300 — reads too thin at print resolution").
 - Any `--text-*` steps the theme retunes, and any it adds beyond the scale.
@@ -59,10 +53,9 @@ theme actually moves.
 
 ## 3. Color
 
-- **Neutral ramp** — ink / mid / dim / ghost / rule / rule-light / pull-bg,
-  derived via a consistent OKLCH hue+chroma formula (see `newspaper.md`'s
-  neutral ramp for the reference values) — not hand-picked per token. A theme
-  that keeps the default ramp says so in one line and moves on.
+- **Neutral ramp** — ink / mid / dim / ghost / rule / rule-light / pull-bg on
+  a consistent OKLCH hue+chroma formula (`newspaper.md` has the reference
+  values), never hand-picked per token. Keeping the default ramp: say so.
 - **Accent(s)** — the theme's accent color(s) and any subtle/tint variant,
   with the token name each one binds to.
 - **Rationing rule** — where accent may and may not appear, per the no-fill

@@ -122,9 +122,8 @@ below hides it on screen and the shell's print rules hide it in print.)
      printed page; the dimension is immutable, content must fit it). */
   height: 1056px;
   margin: 0 0 var(--space-10);
-  /* Same page margin and chrome as a single sheet — an answer key prints with
-     the frame and margins its theme gave sheet one (the frame itself comes
-     from .page::before). */
+  /* Same margins and chrome as a single sheet, so an answer key prints with
+     the frame its theme gave sheet one. */
   padding: var(--page-margin-top) var(--page-margin-x) var(--page-margin-bottom);
   background: var(--color-paper) !important;
   box-shadow: var(--page-shadow);

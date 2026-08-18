@@ -11,29 +11,18 @@ the validator** — run Part B honestly, every time.
 ## Platform invariants — inherited by every theme
 
 Enforced by `assets/shell/document.css` or the checklist below. A theme spec
-must not restate them, and cannot opt out of them — it describes only what it
-changes on top of this baseline.
+must not restate them and cannot opt out — it describes only what it changes.
 
-- **Sheet and margin.** Fixed physical size (816x1056px letter portrait); the
-  sheet's padding IS the print margin, printed 1:1. `--page-margin-*` carries
-  it (64px top, 72px sides and bottom), giving a content box of ~672x920px
-  portrait, ~912x680px landscape. A theme may retune it; the content box moves
-  with it.
-- **Base unit** is 4px, via the `--space-*` scale.
-- **Nothing animates** — the printed artifact has no hover, focus, disabled or
-  motion state to specify.
-- **Pictorial artwork is stroked SVG** (rule 1a), never an icon font or an
-  emoji standing in for a drawn mark.
-- **Paper stays white** (rule 3), locked with a literal so a `--color-paper`
-  override cannot tint the sheet.
+- **Sheet and margin.** The sheet is a fixed physical size and its padding
+  (`--page-margin-*`, 4px base unit) IS the print margin, printed 1:1. A theme
+  may retune it; the content box (rule 5) moves with it.
 - **Empty and overflow.** An empty block keeps its frame and label (Principle
-  IV). Overflow drops the body type-scale one step, then shortens or splits the
-  content — never truncate, never spill past the sheet edge.
-- **Contrast and type floors.** WCAG AA: 4.5:1 body ink-on-paper, 3:1 large or
-  bold accent text. Body copy >=13.5px (16px+ for kids' content). The
-  label-font metadata roles — dateline, table text, table headers, footer — run
-  9-10.5px, metadata only and never body copy. A theme states the measured
-  ratios for its own accents.
+  IV). Overflow drops the body type-scale one step, then shortens or splits —
+  never truncate, never spill past the sheet edge.
+- **Contrast and type floors.** WCAG AA: 4.5:1 body, 3:1 large or bold accent.
+  Body copy >=13.5px, 16px+ for kids'. Label-font metadata (dateline, table
+  text, table headers, footer) runs 9-10.5px and is never body copy. A theme
+  states the measured ratios for its own accents.
 - **Tabular figures** are already set on tables and score displays.
 
 ---
@@ -56,13 +45,11 @@ changes on top of this baseline.
    `transparent`, `none`, or `inherit`. Never
    `var(--color-accent)` as a background.
 
-   Tables handle themselves (`th` inverted, even rows tinted — plain defaults a
-   theme may override). **Everywhere else use the `.invert` and `.tint` classes
-   rather than declaring a background**: the stylesheet strips backgrounds from
-   block elements inside `.page`, and the strip is value-blind, so a
-   hand-declared ink band loses its fill, keeps its paper-colored text, and
-   prints white-on-white. Small bands and headers only — an inverted block is
-   expensive in toner.
+   Tables handle themselves (`th` inverted, even rows tinted — defaults a theme
+   may override). **Elsewhere use the `.invert` and `.tint` classes rather than
+   declaring a background**: the strip is value-blind, so a hand-declared ink
+   band loses its fill, keeps its paper-colored text and prints white-on-white.
+   Small bands and headers only.
 
 1a. **Pictorial shapes are SVG, not CSS** — draw icons, balls, badges, stars, and
    any other pictorial artwork as inline SVG with `fill="none"` and stroked paths
@@ -155,11 +142,8 @@ runs most-fundamental-first. Empty `custom_css` passes items 1–7 trivially; em
    `none`, `inherit` — *exactly*: no `!important` suffix, no multi-part shorthand;
    the bare keyword or var() is the whole value. Every `background-image:` value
    is `none`. The properties `filter`, `backdrop-filter`, and `mix-blend-mode`
-   appear nowhere — the one exception is defining `--image-filter` inside
-   `:root`, which is how a theme sets its imagery treatment. No `box-shadow` contains `inset` (an inset shadow is a
-   disguised full-element fill). Better still, declare no background at all
-   outside `:root` — the sanctioned surfaces are the `.invert` and `.tint`
-   classes plus the automatic table fills (rule 1).
+   appear nowhere, except defining `--image-filter` inside `:root`. No `box-shadow` contains `inset` (an inset shadow is a
+   disguised full-element fill).
 
 5. **Shadows are print-flat.** In every `box-shadow` and `text-shadow` layer
    (layers are comma-separated), the third length — the blur radius — is `0` or

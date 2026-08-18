@@ -18,12 +18,10 @@ Platform invariants are in `design-rules.md`; only what Comic changes is below.
 - **Voice & microcopy:** short sentences. Capital letters for EMPHASIS. "WOW."
   as a standalone sentence is acceptable and encouraged. Slightly confused,
   always earnest — never sarcastic or knowing.
-- **What makes it distinctive:** the only shipped theme that puts a hard offset
-  shadow and a heavy ink border on the sheet, and the only one with a dedicated
-  narrator voice — where Newspaper's identity is restraint, Comic's is a frame
-  you can see from across the room. It's built to serve the kids-content category of the catalog
-  (chore charts, activity pages, birthday wishlists) — the loudest, most
-  personality-forward theme on purpose.
+- **What makes it distinctive:** the only shipped theme with a hard offset
+  shadow and a heavy ink border on the sheet, and the only one with a narrator
+  voice. Built for the kids-content category (chore charts, activity pages,
+  wishlists) — the loudest theme on purpose.
 
 ## 2. Typography
 
@@ -36,11 +34,9 @@ Platform invariants are in `design-rules.md`; only what Comic changes is below.
 `font_import`:
 `https://fonts.googleapis.com/css2?family=Bangers&family=Patrick+Hand&display=swap`
 
-- Weights: both are single-weight display/handwriting faces — no weight axis to
-  manage. Never substitute a heavier system font if they fail to load; fall
-  back to the `cursive` generic.
-- Scale changes — the body step moves up for this theme's audience, and the
-  display steps go bigger than Newspaper needs:
+- Weights: both are single-weight faces. If they fail to load, fall back to
+  the `cursive` generic, never a heavier system font.
+- Scale changes:
 
 | Token | Value | Why |
 |---|---|---|

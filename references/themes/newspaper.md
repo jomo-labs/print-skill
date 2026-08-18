@@ -1,11 +1,9 @@
 # Theme: Newspaper (default)
 
 The default theme, used whenever no style is named — and the **base layer
-itself**: these values are the ones declared in `assets/shell/document.css`, so
-a Newspaper page needs no `custom_css` at all. This file documents what every
-page already gets, and is the reference other themes' overrides are measured
-against; if it and that stylesheet disagree, one of them is wrong. Platform
-invariants live in `design-rules.md` and are not restated here.
+itself**: these are the values in `assets/shell/document.css`, so a Newspaper
+page needs no `custom_css`. If this file and that stylesheet disagree, one of
+them is wrong. Platform invariants live in `design-rules.md`.
 
 ## 1. Meta & Philosophy
 
@@ -22,12 +20,9 @@ invariants live in `design-rules.md` and are not restated here.
   in small caps ("TODAY'S AGENDA", not "Your Agenda!"). No exclamation points,
   no emoji. Bylines and datelines where the content calls for them (e.g.
   "Tuesday, June 17" under a masthead).
-- **What makes it distinctive:** it's the only shipped theme with zero chrome
-  flourish — no border on `.page`, no signature motif required.
-  Distinctiveness comes entirely from typography (Playfair Display display type
-  + Source Serif 4 body) and rule-based hierarchy (double rules, kicker
-  labels), not from a visual gimmick. This restraint is the brand
-  differentiator.
+- **What makes it distinctive:** zero chrome flourish — no frame, no required
+  motif. Its identity is typography (Playfair Display + Source Serif 4) and
+  rule-based hierarchy, not a visual gimmick.
 
 ## 2. Typography
 
@@ -39,12 +34,11 @@ invariants live in `design-rules.md` and are not restated here.
 
 `font_import`:
 `https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@300;400;500;600&display=swap`
-— already loaded by the page template for every page, themed or not, so a
-Newspaper page never sets `font_import`.
+— already in the page template, so Newspaper never sets `font_import`.
 
 - Weights used: Playfair Display 400/700/900 (+ italic); Source Serif 4 400/600
   (+ italic); Inter 300/400/500/600. No weight below 300 anywhere.
-- Type scale — the shipped values of the full scale:
+- Type scale:
 
 | Token | Value | Role |
 |---|---|---|
@@ -67,9 +61,9 @@ Newspaper page never sets `font_import`.
 | `--tracking-label` | 0.08em | section headings (h3) |
 | `--tracking-kicker` | 0.32em | `.kicker` and uppercase metadata rows |
 
-Kickers and section headings are **different roles**: `.kicker` is the wide-set
-(0.32-0.38em) uppercase label that opens a masthead or section; `h3` is a
-tighter-set (0.08em) heading inside running content. Don't collapse them.
+`.kicker` and `h3` are different roles: the wide-set (0.32em) uppercase label
+that opens a masthead or section, versus a tighter-set (0.08em) heading inside
+running content. Don't collapse them.
 
 ## 3. Color
 
@@ -86,9 +80,7 @@ tighter-set (0.08em) heading inside running content. Don't collapse them.
 | `--color-pull-bg` | `oklch(94% 0.009 78)` |
 
 - **Accent:** `--color-accent` `oklch(52% 0.150 78)` (warm amber). One accent
-  only — a lighter "subtle" variant has no legal use here, since the no-fill
-  rule bars it from a background and it is far too light to set type in. A
-  theme that wants a tinted surface retunes `--color-pull-bg` and uses
+  only; a theme wanting a tinted surface retunes `--color-pull-bg` and uses
   `.tint`.
 - **Rationing rule:** accent appears in kickers, pull-rules, star performers,
   score highlights, and the dateline only — never as a background.

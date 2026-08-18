@@ -163,7 +163,7 @@ A time-blocked daily or weekly planner. **Portrait.**
 - If it will be hole-punched or bound, add 0.25 in extra on the binding edge.
 
 *Default styling:* **section blocks** containing each zone, `--border-thin`
-outlines, time labels in the label font at `--text-2xs`.
+outlines, time labels `--text-2xs` label font.
 
 ### Weekly brief / week at a glance
 A one-sheet family week overview. **Portrait.**
@@ -198,8 +198,8 @@ with **work boxes** beneath each. **Portrait.**
   page-break inside `content_html`.
 
 *Default styling:*
-- Title line in the display font at `--text-xl`, naming the topic ("Math
-  Practice — Addition"); grade level in the label font at `--text-2xs`.
+- Title line display `--text-xl`, naming the topic ("Math
+  Practice — Addition"); grade level label `--text-2xs`.
 - 2-column layout for short problems (more fit per page); single column for
   longer problems or grids. Work box height ~80px for short answers, ~160px for
   showing work.
@@ -258,7 +258,7 @@ A single recipe formatted for kitchen use. **Portrait.**
   recipe.
 
 *Default styling:* two-column layout — ingredients left (~35%), steps right
-(~65%); step numbers in the display font at `--text-lg`; no images — clean text
+(~65%); step numbers display `--text-lg`; no images — clean text
 for a splattered kitchen environment.
 
 ### Flashcards
@@ -272,8 +272,8 @@ Printable study cards. **Portrait.**
   printing lines up.
 - 8–16 concise cards — one fact or concept per card.
 
-*Default styling:* front term centered in the display font at `--text-lg`; back
-definition centered in the body font at `--text-body`; high contrast.
+*Default styling:* front term centered display `--text-lg`; back
+definition centered body `--text-body`; high contrast.
 
 ### Certificate / award
 **Landscape** — set `orientation` to `landscape`. The page prints on a letter
@@ -332,7 +332,7 @@ quarter/inning line score, top 1–2 performers per team with stat lines, and a
 one-sentence recap. Multiple games stack as repeated score blocks.
 
 *Default styling:* score/stat table (tabular figures come from the base layer);
-final-score numbers in the display font at `--text-3xl`; status ("Final") in
+final-score numbers display `--text-3xl`; status ("Final") in
 the label font small caps at `--text-2xs`.
 
 ### Weather forecast
@@ -366,7 +366,7 @@ topic) with the date below; per story a headline, a dateline (SOURCE · DATE), a
 wastes ink.
 
 *Default styling:* 2-column grid for 3+ stories, single column for 1–2;
-headline in the display font at `--text-lg` bold; dateline in small caps via
+headline display `--text-lg` bold; dateline in small caps via
 `.kicker`; pull quote in a left-border box (`blockquote`); `--border-hair`
 rules between stories, not boxes.
 
@@ -419,7 +419,7 @@ figures; `--border-hair` dividers.
 area** (28px adult row spacing / 36px kids). Optionally a small quote or mood
 row.
 
-*Default styling:* prompt centered in the display font at `--text-lg`; rules in
+*Default styling:* prompt centered display `--text-lg`; rules in
 `var(--color-rule-light)` at `--border-hair`.
 
 ### On this day
@@ -457,7 +457,7 @@ Title + full-area **image block** of **pure black line art on white**.
   per the theme's `--image-filter`).
 - For a prompt-driven page with no image, use **Drawing prompt page** below.
 
-*Default styling:* title in the display font at `--text-xl`, centered above the
+*Default styling:* title display `--text-xl`, centered above the
 image; no frame around the art.
 
 ### Word search *(presentation-only — see the puzzle note)*
@@ -474,9 +474,9 @@ A letter-grid puzzle with a hidden word list. **Portrait.**
   capitals — then re-check that every listed word actually appears, and say the
   grid should be spot-checked.
 
-*Default styling:* cells in the label font at `--text-body`, weight 600, in
+*Default styling:* cells label `--text-body`, weight 600, in
 `var(--color-ink)`, with `--border-hair` `var(--color-rule-light)` borders;
-word list below the grid in the label font at `--text-xs`, 3 columns.
+word list below the grid label `--text-xs`, 3 columns.
 
 ### Maze *(presentation-only)*
 A rectangular cell maze. **Portrait.**
@@ -538,7 +538,7 @@ A bold prompt at the top with a generous blank drawing area. **Portrait.**
   not "Draw something fun".
 - Young kids: larger prompt type, simpler language, 36px-spaced caption lines.
 
-*Default styling:* prompt centered in the display font at `--text-xl`
+*Default styling:* prompt centered display `--text-xl`
 (`--text-2xl` for young kids); drawing frame `--border-thin`
 `var(--color-rule)`; a "Draw here ↓" label in `--color-dim` at `--text-2xs`
 just above the frame.
