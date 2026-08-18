@@ -57,8 +57,9 @@ weight, the content fills it.
 ## V — Type is set, not placed
 
 Curly quotes (“ ” ‘ ’), em dashes (—), proper ellipses (…), en dashes for
-ranges (3–2, 60–90 min), `font-variant-numeric: tabular-nums` on every table
-and score display. These are not pedantry — they are the difference between
+ranges (3–2, 60–90 min), and tabular figures wherever numbers stack (already
+set on `table` and `.score-box .score`; declare it yourself only for numeric
+columns built out of divs). These are not pedantry — they are the difference between
 text that was *set* (a craftsperson made decisions about it) and text that was
 *output* (a machine emitted it and moved on). A reader never consciously
 notices a straight apostrophe, but they feel the difference between a page

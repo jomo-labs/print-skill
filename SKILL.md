@@ -64,12 +64,13 @@ Two independent decisions:
 `references/page-types.md` (first match wins), then read that type's section for
 its functional requirements and default styling.
 
-**Themed?** The request is themed when it asks for a visual identity: "in the
-theme/style of X", "styled like/as X", "themed like/as X", "X-themed" (a
-concrete word before "-themed"), or "in a/an X style". It is NOT themed for
-phrases that merely refer to a theme — "keep the theme", "this theme", "the same
-style", "the default style". Judge from the request text plus any separate style
-instructions the user gave.
+**Themed?** The request is themed when it names a visual identity: "in the
+theme/style of X", "styled/themed like X", "X-themed", "in an X style", and the
+bare noun forms "X theme" / "X style" ("batman theme", "art deco style"). What
+matters is a concrete subject beside the word — character, place, era, genre,
+brand, material, mood. It is NOT themed when only a determiner or back-reference
+precedes it ("keep the theme", "the same style"). Judge from the request plus
+any separate style instructions.
 
 If themed: open `references/themes/README.md`, match the trigger phrases, and
 load the **one** matching spec — or follow its ad-hoc theme checklist when
@@ -86,7 +87,8 @@ fetching and write it directly.
 
 ### Step 3 — Author
 
-Read `references/design-rules.md` (Part A) before writing any CSS,
+Read `references/design-rules.md` — its platform invariants (what every page
+inherits and no theme overrides) and Part A — before writing any CSS,
 `references/principles.md` for the layout and typography craft (rank
 multi-item content, design empty states, set type properly, size the layout to
 the content), and `references/print-fundamentals.md` when physical exactness
@@ -95,7 +97,7 @@ matters (paper size, DPI, margins). Produce these channels:
 | Channel | Notes |
 |---|---|
 | `content_html` | The page content. It is inserted inside `<div class="page">` — no wrapper, no footer, no `<html>`/`<head>`/`<body>`. Wrap each top-level block in `<div data-mp-section="...">` (see design rules). Use `var(--color-*)` / `var(--font-*)` tokens everywhere. |
-| `custom_css` | Optional. `:root` token overrides + content-specific rules. |
+| `custom_css` | Optional. A `:root` token override block + content rules consuming those tokens. Token set: the section-to-token map in `references/themes/theme-spec-template.md`. |
 | `font_import` | Optional. Google Fonts URL — required whenever you name any font beyond Playfair Display / Source Serif 4 / Inter. |
 | `paper` | Size only: `a4`, `legal`, `half`, or empty (= letter). |
 | `orientation` | `landscape` or empty (= portrait). Independent of `paper` — any size×orientation combination works. The ONLY orientation mechanism. |

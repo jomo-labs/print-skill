@@ -112,7 +112,7 @@ below hides it on screen and the shell's print rules hide it in print.)
 ```html
 <style id="mp-nested-sheets">
 /* Two-sheet document: nested .page sheets inside the #page container. */
-#page { padding: 0 !important; box-shadow: none !important; background: transparent !important; }
+#page { padding: 0 !important; border: none !important; box-shadow: none !important; background: transparent !important; }
 #page > footer { display: none; }
 #page > .page {
   width: 100%;
@@ -121,10 +121,12 @@ below hides it on screen and the shell's print rules hide it in print.)
      sheet, in both screen and print (WYSIWYG: each nested sheet IS one full
      printed page; the dimension is immutable, content must fit it). */
   height: 1056px;
-  margin: 0 0 40px;
-  padding: 52px 60px 48px;
+  margin: 0 0 var(--space-10);
+  /* Same margins and chrome as a single sheet, so an answer key prints with
+     the frame its theme gave sheet one. */
+  padding: var(--page-margin-top) var(--page-margin-x) var(--page-margin-bottom);
   background: var(--color-paper) !important;
-  box-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
+  box-shadow: var(--page-shadow);
   display: flex;
   flex-direction: column;
 }

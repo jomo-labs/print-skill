@@ -26,13 +26,11 @@ There is a mechanical border the rollers grip:
 - often more at the **bottom** (up to ~0.5 in / 12 mm)
 
 Consequences:
-- **Keep all essential content inside a 0.5 in margin.** This is the safe
-  default.
+- **Keep all essential content inside a 0.5 in margin.** The default
+  `--page-margin-*` (0.67 in top, 0.75 in sides and bottom) already clears it.
 - **Do not design for full-bleed on home printers.** A background that runs to
   the edge will show a thin white frame. If the user wants edge-to-edge, that
   requires professional printing.
-- Decorative borders and frames should sit at the 0.5 in line, not at the paper
-  edge.
 
 ## Resolution and DPI
 
@@ -81,15 +79,18 @@ People print these. Ink is expensive.
 - **Landscape** — use for: weekly/monthly calendars (7 columns need width), wide
   scorecards, chore charts with many day columns, certificates
 
-Declare orientation only through the `paper` channel (assembly injects
-`applySize('landscape')` — see `assembly.md`). Never via `@page` or body sizing
-— see design rule 5 in `design-rules.md`.
+Declare orientation only through the `orientation` channel, which is
+independent of `paper` (the size axis) — assembly sets a `data-mp-orientation`
+attribute on `<body>` and the matching `@page` size (see `assembly.md`). Never
+via `@page` or body sizing of your own — see design rule 5 in
+`design-rules.md`.
 
 ## Margins and binding
 
 - **Default:** the shell's sheet padding IS the print margin — print is
-  WYSIWYG 1:1, nothing extra is added at print time — so keep content inside
-  the 0.5 in safe area.
+  WYSIWYG 1:1, nothing extra is added at print time. The `--page-margin-*`
+  tokens carry it (64px top, 72px sides and bottom by default); a theme that
+  retunes them moves the content box with them.
 - **Binding/punch:** add 0.25–0.5 in extra on the binding edge (left for
   portrait).
 - **Duplex:** mirror gutters so the inside margin is larger on both sides.

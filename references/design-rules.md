@@ -8,6 +8,25 @@ the validator** — run Part B honestly, every time.
 
 ---
 
+## Platform invariants — inherited by every theme
+
+Enforced by `assets/shell/document.css` or the checklist below. A theme spec
+must not restate them and cannot opt out — it describes only what it changes.
+
+- **Sheet and margin.** The sheet is a fixed physical size and its padding
+  (`--page-margin-*`, 4px base unit) IS the print margin, printed 1:1. A theme
+  may retune it; the content box (rule 5) moves with it.
+- **Empty and overflow.** An empty block keeps its frame and label (Principle
+  IV). Overflow drops the body type-scale one step, then shortens or splits —
+  never truncate, never spill past the sheet edge.
+- **Contrast and type floors.** WCAG AA: 4.5:1 body, 3:1 large or bold accent.
+  Body copy >=13.5px, 16px+ for kids'. Label-font metadata (dateline, table
+  text, table headers, footer) runs 9-10.5px and is never body copy. A theme
+  states the measured ratios for its own accents.
+- **Tabular figures** are already set on tables and score displays.
+
+---
+
 ## Part A — Design rules
 
 1. **No fill rule** — color lives only in text, strokes/borders, and print-flat
@@ -22,10 +41,15 @@ the validator** — run Part B honestly, every time.
    dithered ink (checked in the self-check below). The page border's own drop
    shadow is screen-only chrome — print strips it automatically, so never rely on
    any shadow for printed identity. The only backgrounds ever allowed are
-   `var(--color-ink)`, `var(--color-paper)`, `var(--color-bg)`,
-   `var(--color-pull-bg)`, `transparent`, `none`, or `inherit` — e.g. an inverted
-   ink-on-paper table header, or `var(--color-pull-bg)` for alternating table rows.
-   Never `var(--color-accent)` as a background.
+   `var(--color-ink)`, `var(--color-paper)`, `var(--color-pull-bg)`,
+   `transparent`, `none`, or `inherit`. Never
+   `var(--color-accent)` as a background.
+
+   Tables handle themselves (`th` inverted, even rows tinted — defaults a theme
+   may override). **Elsewhere use the `.invert` and `.tint` classes rather than
+   declaring a background**: the strip is value-blind, so a hand-declared ink
+   band loses its fill, keeps its paper-colored text and prints white-on-white.
+   Small bands and headers only.
 
 1a. **Pictorial shapes are SVG, not CSS** — draw icons, balls, badges, stars, and
    any other pictorial artwork as inline SVG with `fill="none"` and stroked paths
@@ -72,13 +96,15 @@ the validator** — run Part B honestly, every time.
    as a second page inside `content_html`. See `assembly.md`.)
 
 5. **Orientation** — judge it from the content's shape and declare it via the
-   `paper` channel only. Wide-grid content — monthly calendars, weekly meal grids,
-   seating charts, multi-column schedules, scoreboards, timelines, award
-   certificates — prints better LANDSCAPE: set `paper` to `landscape` and design
-   for a 1056px-wide × 816px-tall sheet (content box ~912px wide × ~680px tall),
+   `orientation` channel only, which is independent of `paper` (the size axis).
+   Wide-grid content — monthly calendars, weekly meal grids, seating charts,
+   multi-column schedules, scoreboards, timelines, award certificates — prints
+   better LANDSCAPE: set `orientation` to `landscape` and design for a
+   1056px-wide × 816px-tall sheet (content box ~912px wide × ~680px tall),
    filling the height. Tall, list-like content stays portrait (the default;
-   content box ~672px wide). Never express orientation yourself with `@page` or
-   body sizing — the `paper` channel is the only mechanism.
+   content box ~672px wide × ~920px tall). Never express orientation yourself
+   with `@page` or body sizing — the `orientation` channel is the only
+   mechanism.
 
 ### Section marking
 
@@ -112,11 +138,11 @@ runs most-fundamental-first. Empty `custom_css` passes items 1–7 trivially; em
 
 4. **Backgrounds from the allowlist only.** Every `background:` /
    `background-color:` value is exactly one of `var(--color-ink)`,
-   `var(--color-paper)`, `var(--color-bg)`, `var(--color-pull-bg)`, `transparent`,
+   `var(--color-paper)`, `var(--color-pull-bg)`, `transparent`,
    `none`, `inherit` — *exactly*: no `!important` suffix, no multi-part shorthand;
    the bare keyword or var() is the whole value. Every `background-image:` value
    is `none`. The properties `filter`, `backdrop-filter`, and `mix-blend-mode`
-   appear nowhere. No `box-shadow` contains `inset` (an inset shadow is a
+   appear nowhere, except defining `--image-filter` inside `:root`. No `box-shadow` contains `inset` (an inset shadow is a
    disguised full-element fill).
 
 5. **Shadows are print-flat.** In every `box-shadow` and `text-shadow` layer
