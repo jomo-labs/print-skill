@@ -38,12 +38,16 @@ function getActivePage() {
   return document.querySelector('.variant-page.active') || document.getElementById('page');
 }
 
+// The current paper is state, not the select's value: the paper picker lives
+// in the (lazily built) edit panel now, so it may not exist when size is
+// applied or read — applySize keeps it in sync whenever it does.
+let currentPaper = 'letter';
+
 function applySize(key) {
   const p = PAPERS[key] || PAPERS.letter;
-  // Keep the select in sync for programmatic callers that invoke applySize
-  // directly.
+  currentPaper = PAPERS[key] ? key : 'letter';
   const sel = document.getElementById('mp-paper-select');
-  if (sel && sel.value !== key) sel.value = key;
+  if (sel && sel.value !== currentPaper) sel.value = currentPaper;
   // WYSIWYG contract: the .page element IS the sheet, on screen and in print
   // alike — same width, same min-height, no print-time zoom, no extra @page
   // margin. Its padding is the page margin. min-height (not height) so a
@@ -116,7 +120,7 @@ function showVariant(n) {
   variantPages.forEach((el, i) => el.classList.toggle('active', i === n));
   document.getElementById('mp-variant-label').textContent = (n + 1) + ' / ' + variantTotal;
   // Re-apply size so width/transform/guides target the newly active variant
-  applySize(document.getElementById('mp-paper-select').value || 'letter');
+  applySize(currentPaper);
 }
 
 function initVariants() {
@@ -458,22 +462,8 @@ function injectChrome() {
     '<svg class="mp-icon-x" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
-  toolbar.appendChild(sep());
-
-  const select = document.createElement('select');
-  select.id = 'mp-paper-select';
-  select.title = 'Paper size';
-  for (const [value, label] of [
-    ['letter', 'US Letter'], ['landscape', 'Letter Landscape'], ['a4', 'A4'],
-    ['legal', 'Legal'], ['half', 'Half Letter'],
-  ]) {
-    const opt = document.createElement('option');
-    opt.value = value;
-    opt.textContent = label;
-    select.appendChild(opt);
-  }
-  select.addEventListener('change', () => applySize(select.value));
-  toolbar.appendChild(select);
+  // (The paper-size picker lives in the edit panel's setup strip — see
+  // chat.js buildPanel — not in this toolbar.)
 
   // Variant nav — hidden until initVariants() detects multiple .variant-page
   const vsep = sep();
@@ -541,10 +531,9 @@ function injectChrome() {
   // can re-apply its own saved choice via applySize after load.
   const configured = document.body.dataset.mpPaper;
   const savedPaper = PAPERS[configured] ? configured : 'letter';
-  document.getElementById('mp-paper-select').value = savedPaper;
 
   initVariants();
   applySize(savedPaper);
   initAutoReload();
-  window.addEventListener('resize', () => scaleToFit(PAPERS[document.getElementById('mp-paper-select').value]?.w || 816));
+  window.addEventListener('resize', () => scaleToFit(PAPERS[currentPaper]?.w || 816));
 })();

@@ -212,7 +212,7 @@
     panel = el('aside', null); panel.id = 'mp-chat-panel';
 
     const head = el('div', 'mp-chat-head');
-    head.appendChild(el('span', 'mp-chat-title', 'Chat'));
+    head.appendChild(el('span', 'mp-chat-title', 'Edit'));
     // Live toggle on every served page ('off' needs a way back, and dormant
     // pages are live-capable too); only file:// (no server) hides it.
     if (served()) {
@@ -240,6 +240,28 @@
     });
     head.appendChild(close);
     panel.appendChild(head);
+
+    // Page-setup strip: document-level controls, visually separated from the
+    // conversation scroller below it.
+    const setup = el('div', null); setup.id = 'mp-panel-setup';
+    const setupLabel = el('label', 'mp-setup-label', 'Paper size');
+    setupLabel.htmlFor = 'mp-paper-select';
+    setup.appendChild(setupLabel);
+    const select = document.createElement('select');
+    select.id = 'mp-paper-select';
+    for (const [value, label] of [
+      ['letter', 'US Letter'], ['landscape', 'Letter Landscape'], ['a4', 'A4'],
+      ['legal', 'Legal'], ['half', 'Half Letter'],
+    ]) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    }
+    select.value = currentPaper; // shell.js state; applySize keeps it synced
+    select.addEventListener('change', () => applySize(select.value));
+    setup.appendChild(select);
+    panel.appendChild(setup);
 
     log = el('div', null); log.id = 'mp-chat-log';
     panel.appendChild(log);
@@ -304,7 +326,7 @@
     if (!document.body.classList.contains('mp-chat-open')) {
       document.body.classList.add('mp-chat-open');
       ssSet('mpChatOpen', '1');
-      applySize(document.getElementById('mp-paper-select').value || 'letter');
+      applySize(currentPaper);
     }
     refreshMode();
   }
@@ -313,7 +335,7 @@
     document.body.classList.remove('mp-chat-open');
     ssSet('mpChatOpen', '');
     liveTransport.stop();
-    applySize(document.getElementById('mp-paper-select').value || 'letter');
+    applySize(currentPaper);
   }
 
   // The "/print live" guidance, in two variants sharing one content: the
