@@ -74,7 +74,8 @@ them. A theme describes only what it changes on top of this baseline.
    `var(--color-accent)` as a background.
 
    In tables this is automatic — the stylesheet already inverts `th` and tints
-   even rows. **Everywhere else, reach for the `.invert` and `.tint` utility
+   even rows, as ordinary defaults a theme may override with its own `th` /
+   `td` rules (they are not force-locked; only the paper surface is). **Everywhere else, reach for the `.invert` and `.tint` utility
    classes rather than declaring a background yourself.** The stylesheet strips
    backgrounds from block elements inside `.page` (`div`, `section`, `p`, `li`,
    `span`, and their siblings) and that strip is value-blind: it cannot tell a

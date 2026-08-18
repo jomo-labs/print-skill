@@ -199,9 +199,10 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
   background-color: transparent !important;
   background-image: none !important;
 }
-/* Restore legitimate structural fills */
-.page th                    { background: var(--color-ink)      !important; color: var(--color-paper) !important; }
-.page tr:nth-child(even) td { background: var(--color-pull-bg)  !important; }
+/* Table fills are NOT stripped above (no table element is in that list), so
+   the element defaults stand on their own and a theme can override them with
+   a plain `th { ... }` rule — Blueprint, for one, wants hairline headers
+   rather than an inverted band. Only the paper lock above is absolute. */
 
 /* The two fills the design rules sanction outside tables, as opt-in utilities.
    The blanket strip above is value-blind — it cannot tell an inverted masthead

@@ -153,7 +153,8 @@ Signature blocks:
 - **Table** — label font at `--text-xs` with tabular figures; header row
   inverted ink-on-paper at `--text-2xs` uppercase; `--border-hair` row rules;
   even rows tinted `--color-pull-bg`. This zebra striping is the shipped
-  default, not an opt-in.
+  default, not an opt-in — and both fills are plain defaults, so a theme can
+  replace them with its own `th` / `td` rules.
 - **Score box** (`.score-box`) — `--border-thin` accent frame, score at
   `--text-3xl` in the display font with tabular figures, team label at
   `--text-xs` in the label font.
