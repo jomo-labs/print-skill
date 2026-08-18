@@ -138,7 +138,10 @@ const EDITABLE_TAGS = new Set(['h1','h2','h3','h4','h5','h6','p','li','td','th',
 const ELEMENT_LABELS = {h1:'Title',h2:'Heading',h3:'Subheading',h4:'Subheading',h5:'Subheading',h6:'Subheading',p:'Paragraph',li:'List item',td:'Cell',th:'Header',blockquote:'Quote',figcaption:'Caption',span:'Text',a:'Link',strong:'Bold',em:'Italic',div:'Block'};
 
 let editMode = false, hoverBox = null, editListeners = null;
-const overlay = document.getElementById('mp-overlay');
+// Assigned by injectChrome() — the overlay is runtime-built chrome, so it
+// does not exist yet when this script parses (a const lookup here would bind
+// null and silently kill the hover boxes).
+let overlay = null;
 
 function clearHover() { if (hoverBox) { hoverBox.remove(); hoverBox = null; } }
 
@@ -503,6 +506,7 @@ function injectChrome() {
   ov.id = 'mp-overlay';
   document.body.prepend(ov);
   document.body.prepend(toolbar);
+  overlay = ov;
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────
