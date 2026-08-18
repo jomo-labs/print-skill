@@ -65,62 +65,43 @@ body { padding-top: 56px; /* toolbar height */ }
 
 #mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--color-rule-light); flex-shrink: 0; }
 
-/* Page-setup strip at the top of the edit panel: document-level controls,
-   set off from the conversation below by a muted band and rule. */
-#mp-panel-setup {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px;
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-rule-light);
-  flex-shrink: 0;
-}
-.mp-setup-row {
+/* Page setup in the toolbar: paper size + orientation as two combo boxes,
+   sitting right of the edit toggle. Quiet by design — outlined, ink on
+   paper, with the native chrome replaced by a small caret, so solid
+   ink-on-paper stays the Print button's alone. */
+#mp-page-setup {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
 }
-.mp-setup-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-mid);
-  white-space: nowrap;
-}
-
-/* Value pickers (paper size + orientation): one shared component, styled as
-   plain text switches — no box, no fill. The selected value is the only one
-   in ink, bold and underlined. Solid ink-on-paper is reserved for the
-   toolbar's Print button, which should stay the loudest thing on screen. */
-.mp-seg-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 30px;
-}
-.mp-seg-btn {
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
+.mp-combo {
+  height: 34px;
+  padding: 0 26px 0 10px;
   background: transparent;
-  color: var(--color-mid);
-  border: none;
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule-light);
+  border-radius: 3px;
   font-family: var(--font-label);
-  font-size: 10px;
-  letter-spacing: 0.05em;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
+  /* Custom caret: the native one can't be recolored, and its metrics differ
+     per platform — which would make the toolbar's height jump. */
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
 }
-.mp-seg-btn:hover { color: var(--color-ink); }
-.mp-seg-btn.active {
+.mp-combo:hover { background-color: var(--color-bg); }
+.mp-combo:focus-visible { outline: none; border-color: var(--color-mid); }
+/* The dropdown list itself renders in the OS popup, which ignores most of
+   the above — keep its rows legible rather than uppercase-cramped. */
+.mp-combo option {
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--color-ink);
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1.5px;
 }
 
 .mp-nav-btn {

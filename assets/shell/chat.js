@@ -203,44 +203,10 @@
     if (panel) return;
     panel = el('aside', null); panel.id = 'mp-chat-panel';
 
-    // Page-setup strip: document-level controls at the top of the panel,
-    // set off from the conversation below. Size and orientation are
-    // independent axes — any combination applies.
-    const setup = el('div', null); setup.id = 'mp-panel-setup';
-    // Both controls are the same component: plain text switches where the
-    // selected value is the only one in ink, bold and underlined.
-    const sizeRow = el('div', 'mp-setup-row');
-    sizeRow.appendChild(el('span', 'mp-setup-label', 'Paper size'));
-    const sizeGroup = el('div', 'mp-seg-group mp-paper-group');
-    for (const [value, label] of [
-      ['letter', 'Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half'],
-    ]) {
-      const b = el('button', 'mp-seg-btn mp-paper-btn', label);
-      b.type = 'button';
-      b.dataset.paper = value;
-      if (value === currentPaper) b.classList.add('active');
-      b.addEventListener('click', () => applySize(value));
-      sizeGroup.appendChild(b);
-    }
-    sizeRow.appendChild(sizeGroup);
-    setup.appendChild(sizeRow);
-    const orientRow = el('div', 'mp-setup-row');
-    orientRow.appendChild(el('span', 'mp-setup-label', 'Orientation'));
-    const group = el('div', 'mp-seg-group');
-    for (const o of ['portrait', 'landscape']) {
-      const b = el('button', 'mp-seg-btn mp-orient-btn', o === 'portrait' ? 'Portrait' : 'Landscape');
-      b.type = 'button';
-      b.dataset.orient = o;
-      if (o === currentOrientation) b.classList.add('active');
-      b.addEventListener('click', () => setOrientation(o));
-      group.appendChild(b);
-    }
-    orientRow.appendChild(group);
-    setup.appendChild(orientRow);
-    panel.appendChild(setup);
-
-    // The conversation: log, presence, input. No panel-level chrome — the
-    // toolbar's EDIT/Done button is the only thing that opens/closes it.
+    // Nothing but the conversation lives here: log, presence, input. Page
+    // setup (paper size, orientation) is toolbar chrome that shell.js owns,
+    // and the toolbar's EDIT/Done button is the only thing that opens or
+    // closes the panel.
     const body = el('div', null); body.id = 'mp-panel-body';
     panel.appendChild(body);
 
