@@ -24,7 +24,7 @@ translated by hand, and nothing else in the stylesheet needs restating.
 | Section | Tokens it sets |
 |---|---|
 | 2. Typography | `--font-display` `--font-body` `--font-label`; `--text-2xs` `--text-xs` `--text-body` `--text-md` `--text-lg` `--text-xl` `--text-2xl` `--text-3xl` `--text-4xl`; `--leading-display` `--leading-body` `--leading-label`; `--tracking-display` `--tracking-label` `--tracking-kicker` |
-| 3. Color | `--color-ink` `--color-mid` `--color-dim` `--color-ghost` `--color-rule` `--color-rule-light` `--color-pull-bg` `--color-bg`; `--color-accent` `--color-accent-subtle`; any theme-specific accent tokens it introduces (`--color-blue`, …). `--color-paper` is locked to white and may not be set. |
+| 3. Color | `--color-ink` `--color-mid` `--color-dim` `--color-ghost` `--color-rule` `--color-rule-light` `--color-pull-bg`; `--color-accent`; any theme-specific accent tokens it introduces (`--color-blue`, …). `--color-paper` is locked to white and may not be set. |
 | 4. Spacing & density | `--space-1` … `--space-20`; `--page-margin-top` `--page-margin-x` `--page-margin-bottom` |
 | 5. Surface & motifs | `--border-fat` `--border-mid` `--border-thin` `--border-hair`; `--page-border` `--page-shadow`; `--tilt-angle` `--tilt-angle-right` |
 | 1, 6, 7 | No tokens — voice, component structure, and contrast evidence are prose. |

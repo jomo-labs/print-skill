@@ -6,7 +6,6 @@
 
 /* ── Design tokens ── */
 :root {
-  --color-bg:         oklch(93% 0.010 78);
   --color-paper:      white;
   --color-ink:        oklch(11% 0.005 78);
   --color-mid:        oklch(44% 0.008 78);
@@ -16,7 +15,6 @@
   --color-rule-light: oklch(83% 0.005 78);
   --color-pull-bg:    oklch(94% 0.009 78);
   --color-accent:        oklch(52% 0.150 78);   /* accent — pull rules, kickers, scores */
-  --color-accent-subtle: oklch(93% 0.060 78);   /* very light tint for callouts         */
 
   --font-display: 'Playfair Display', Georgia, serif;
   --font-body:    'Source Serif 4', Georgia, serif;

@@ -91,10 +91,12 @@ tighter-set (0.08em) heading inside running content. Don't collapse them.
 | `--color-rule` | `oklch(11% 0.005 78)` |
 | `--color-rule-light` | `oklch(83% 0.005 78)` |
 | `--color-pull-bg` | `oklch(94% 0.009 78)` |
-| `--color-bg` | `oklch(93% 0.010 78)` |
 
-- **Accent:** `--color-accent` `oklch(52% 0.150 78)` (warm amber);
-  `--color-accent-subtle` `oklch(93% 0.060 78)`.
+- **Accent:** `--color-accent` `oklch(52% 0.150 78)` (warm amber). One accent
+  only — a lighter "subtle" variant has no legal use here, since the no-fill
+  rule bars it from a background and it is far too light to set type in. A
+  theme that wants a tinted surface retunes `--color-pull-bg` and uses
+  `.tint`.
 - **Rationing rule:** accent appears in kickers, pull-rules, star performers,
   score highlights, and the dateline only — never as a background.
 - **Semantic role mapping:** winner/star values in ink at full weight;

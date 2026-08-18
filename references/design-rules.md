@@ -27,11 +27,13 @@ them. A theme describes only what it changes on top of this baseline.
   loading state, and no motion of any kind — there is nothing to specify per
   theme. The only interactive chrome is the shell's toolbar and chat panel,
   which are not part of the document.
-- **Chrome inherits the page's tokens.** That toolbar and panel resolve
-  `--font-label`, `--color-ink`, `--color-paper` and `--color-rule-light` from
-  the page, so a theme's typography shows up in the surrounding UI as well as
-  on the sheet. Its state colors (edit-mode blue, connected green) are
-  deliberately fixed and never themed.
+- **Chrome is isolated from the page.** The toolbar and chat panel render in a
+  shadow root and resolve their own private `--mp-*` palette, so nothing a
+  theme redefines reaches them and nothing a page writes can break them. Style
+  the document; the surrounding UI stays put. The only styles the chrome puts
+  back into the document are its layout reservations (room under the toolbar,
+  the gutter beside the panel, the edit-mode selection outline), which live in
+  `chrome-host.css` in a first cascade layer and hold regardless of page CSS.
 - **Imagery is grayscale**, always — `img` carries `filter: grayscale(100%)`
   and author CSS may not use `filter`, so this is not a theme decision.
   Pictorial artwork is stroked SVG (rule 1a below), never an icon font or an
@@ -69,8 +71,8 @@ them. A theme describes only what it changes on top of this baseline.
    dithered ink (checked in the self-check below). The page border's own drop
    shadow is screen-only chrome — print strips it automatically, so never rely on
    any shadow for printed identity. The only backgrounds ever allowed are
-   `var(--color-ink)`, `var(--color-paper)`, `var(--color-bg)`,
-   `var(--color-pull-bg)`, `transparent`, `none`, or `inherit`. Never
+   `var(--color-ink)`, `var(--color-paper)`, `var(--color-pull-bg)`,
+   `transparent`, `none`, or `inherit`. Never
    `var(--color-accent)` as a background.
 
    In tables this is automatic — the stylesheet already inverts `th` and tints
@@ -173,7 +175,7 @@ runs most-fundamental-first. Empty `custom_css` passes items 1–7 trivially; em
 
 4. **Backgrounds from the allowlist only.** Every `background:` /
    `background-color:` value is exactly one of `var(--color-ink)`,
-   `var(--color-paper)`, `var(--color-bg)`, `var(--color-pull-bg)`, `transparent`,
+   `var(--color-paper)`, `var(--color-pull-bg)`, `transparent`,
    `none`, `inherit` — *exactly*: no `!important` suffix, no multi-part shorthand;
    the bare keyword or var() is the whole value. Every `background-image:` value
    is `none`. The properties `filter`, `backdrop-filter`, and `mix-blend-mode`
