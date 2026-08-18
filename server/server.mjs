@@ -5,8 +5,9 @@
 // renders deterministic PDFs via headless Chromium:
 //
 //   GET  /<page>.html      a generated page, wrapped with the skill's chrome
-//                          (chrome.css + shell.js + chat.js injected at serve
-//                          time — the file on disk is a pure document)
+//                          (chrome-host.css + chrome.css + shell.js + chat.js
+//                          injected at serve time — the file on disk is a pure
+//                          document)
 //   GET  /shell/*          shell assets (served dir first, skill assets as fallback)
 //   GET  /                 index of served pages
 //   GET  /healthz          liveness + identity probe
@@ -49,6 +50,7 @@ import { getStore, postMessage, awaitMessages, listening, closeAll as closeChat 
 
 const DEFAULT_PORT = 4949;
 const SKILL_ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets");
+const SHELL_DIR = path.join(SKILL_ASSETS, "shell");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -88,18 +90,63 @@ function etagFor(stat) {
 
 // Serve-time chrome wrap. Generated pages are pure documents (plain
 // printable HTML, no chrome references at all); serving one through this
-// server injects the chrome stylesheet and scripts so the toolbar/edit/chat
+// server injects the chrome stylesheets and scripts so the toolbar/edit/chat
 // functionality appears — always the skill's CURRENT chrome, since nothing
 // in the file can go stale. Legacy pages that still link shell.js themselves
 // are left alone (double-loading the shell would double the chrome).
 // serializeForSave strips [data-mp-chrome] tags, so PUT round-trips stay pure.
-const CHROME_HEAD = `<link rel="stylesheet" href="/shell/chrome.css" data-mp-chrome>`;
+//
+// Two stylesheets, injected at two different points, because they play two
+// different roles — the split is what keeps a page's own CSS off the chrome:
+//
+//   chrome-host.css  the handful of rules the chrome needs the DOCUMENT to
+//                    honor (room under the toolbar, the chat gutter). Injected
+//                    as the page's FIRST stylesheet, right after <head>, so
+//                    its `mp-chrome` cascade layer is the first layer declared
+//                    — important declarations in the first layer outrank
+//                    important declarations anywhere later, which is what
+//                    makes those reservations un-overridable by a themed page.
+//
+//   chrome.css       everything the chrome DRAWS. Injected inert, inside a
+//                    <template>: it never applies to the document at all.
+//                    shell.js clones it into the chrome's shadow root, where
+//                    page CSS cannot reach it (see injectChrome()). Inlining
+//                    it rather than linking it keeps that adoption synchronous,
+//                    so the chrome never paints unstyled.
 const CHROME_BODY = `<script src="/shell/shell.js" data-mp-chrome></script>\n<script src="/shell/chat.js" data-mp-chrome></script>`;
 
-function injectChromeTags(html) {
+// Shell CSS read straight from the skill's assets, re-read whenever the file
+// changes on disk (editing chrome.css and reloading the page is enough).
+const cssCache = new Map();
+async function shellCss(name) {
+  const file = path.join(SHELL_DIR, name);
+  const stat = await fs.stat(file);
+  const signature = `${stat.mtimeMs}-${stat.size}`;
+  const hit = cssCache.get(name);
+  if (hit && hit.signature === signature) return hit.text;
+  const text = await fs.readFile(file, "utf-8");
+  cssCache.set(name, { signature, text });
+  return text;
+}
+
+async function chromeAssets() {
+  const [host, chrome] = await Promise.all([shellCss("chrome-host.css"), shellCss("chrome.css")]);
+  return { host, chrome };
+}
+
+function injectChromeTags(html, assets) {
   if (html.includes("shell/shell.js")) return html; // legacy page: own links
   let out = html;
-  if (out.includes("</head>")) out = out.replace("</head>", `${CHROME_HEAD}\n</head>`);
+  const headOpen = out.match(/<head(?:\s[^>]*)?>/i);
+  const hostTag = `<style id="mp-chrome-host-css" data-mp-chrome>\n${assets.host}\n</style>`;
+  // First stylesheet in the document — see the layer note above. Without a
+  // <head> tag to anchor on, the fallback position still precedes the page's
+  // own trailing styles.
+  if (headOpen) out = out.replace(headOpen[0], `${headOpen[0]}\n${hostTag}`);
+  else if (out.includes("</head>")) out = out.replace("</head>", `${hostTag}\n</head>`);
+  const chromeTag =
+    `<template id="mp-chrome-css" data-mp-chrome><style>\n${assets.chrome}\n</style></template>`;
+  if (out.includes("</head>")) out = out.replace("</head>", `${chromeTag}\n</head>`);
   if (out.includes("</body>")) out = out.replace("</body>", `${CHROME_BODY}\n</body>`);
   return out;
 }
@@ -119,7 +166,7 @@ async function serveFile(req, res, filePath, stat, { wrapChrome = false } = {}) 
   }
   let body = await fs.readFile(filePath);
   if (wrapChrome && /\.html?$/i.test(filePath)) {
-    body = Buffer.from(injectChromeTags(body.toString("utf-8")));
+    body = Buffer.from(injectChromeTags(body.toString("utf-8"), await chromeAssets()));
   }
   res.writeHead(200, headers);
   res.end(body);

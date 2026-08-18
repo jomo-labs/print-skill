@@ -47,7 +47,9 @@ the validator** — run Part B honestly, every time.
    own page chrome — border weight, corner treatment, a non-inset drop-shadow — to
    match whatever theme, character, or mood the request implies. The one token you
    may never move is `--color-paper`: it must stay exactly `white` (or be left
-   alone).
+   alone). Every token you redefine applies to the printable document only: the
+   server's editing chrome (toolbar, chat panel) renders in a shadow root with a
+   private palette, so no override reaches it — and no override can break it.
 
 3a. **Font choice must always resolve to a real, loaded typeface** — the shell
    preloads ONLY the default trio (Playfair Display, Source Serif 4, Inter). Naming

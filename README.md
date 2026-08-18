@@ -20,7 +20,8 @@ edge. This skill packages print as a design discipline:
 - **Interactive output** — served pages get a **Print / Save PDF** button,
   double-click text editing with chat back to your model, and paper-size
   switching, all injected by the local server at view time (generated files
-  stay pure printable documents). Print is WYSIWYG: the on-screen sheet and
+  stay pure printable documents). That chrome renders in its own shadow root,
+  so however wildly a page is themed, the controls stay put. Print is WYSIWYG: the on-screen sheet and
   the printed sheet are dimension-identical, 1:1.
 - **Deterministic PDFs** — a bundled local server (Node + headless Chromium)
   serves your pages and renders pixel-identical PDFs on every machine, no

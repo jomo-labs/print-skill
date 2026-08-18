@@ -1,0 +1,64 @@
+/* chrome-host.css — the ONLY styles the chrome puts into the document.
+   Everything the chrome DRAWS lives in a shadow root (chrome.css) where no
+   page CSS can reach it; these few rules are the reverse direction — what the
+   chrome needs FROM the page: room under the fixed toolbar, a gutter beside
+   the open chat panel, the edit-mode cursor, the outline on a picked element,
+   and the embedded-mode trim. Nothing here styles chrome; nothing in
+   chrome.css depends on the page honoring it.
+
+   Why a layer, why the !important on every declaration: a generated page can
+   carry arbitrary CSS, including `body { padding: 0 !important }` from a
+   theme. Important declarations in a cascade layer beat important
+   declarations in later layers and in no layer at all, and the server injects
+   this stylesheet as the page's FIRST stylesheet — so `mp-chrome` is the
+   first layer, and these reservations hold no matter what the page does.
+
+   Screen-only, deliberately: print gets the document's own geometry,
+   untouched, exactly as a page opened without the server prints. */
+
+@layer mp-chrome {
+  @media screen {
+    /* Room for the fixed toolbar. */
+    body { padding-top: 56px !important; }
+    body.edit-active { cursor: text !important; }
+
+    /* The open chat panel shrinks the viewport rather than covering it.
+       (scaleToFit() shrinks the preview to match; anything that still
+       doesn't fit scrolls instead of hiding under the panel.) */
+    body.mp-chat-open .page-surround {
+      margin-left: 336px !important;
+      overflow-x: auto !important;
+    }
+
+    /* Element picked by double-click in edit mode. The outline sits on a
+       document node, so it belongs here — serializeForSave() strips the
+       class, and print never sees it (this whole block is screen-only). */
+    .mp-selected {
+      outline: 2px solid rgba(59, 130, 246, 0.7) !important;
+      outline-offset: 2px !important;
+    }
+
+    /* Embedded (iframe) mode — the host page provides its own chrome. */
+    body.mp-embedded { padding-top: 0 !important; }
+    body.mp-embedded .page-surround {
+      padding: 0 !important;
+      min-height: 0 !important;
+      background: transparent !important;
+    }
+    /* border-color, not border: none — the on-screen box must keep the exact
+       geometry print will have (print reuses this box 1:1), or the embedded
+       preview would wrap lines differently than the printed sheet. */
+    body.mp-embedded .page,
+    body.mp-embedded .variant-page {
+      box-shadow: none !important;
+      border-color: transparent !important;
+    }
+  }
+
+  /* The overflow guides are chrome drawn inside the sheet (they have to be —
+     they mark where the content breaks), so they are the one chrome element
+     print has to be told about here. */
+  @media print {
+    .page-break-guide { display: none !important; }
+  }
+}

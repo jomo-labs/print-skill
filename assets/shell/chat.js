@@ -174,7 +174,8 @@
       // file:// and older engines: hidden-textarea fallback
       const ta = document.createElement('textarea');
       ta.value = text;
-      ta.style.cssText = 'position:fixed;opacity:0';
+      ta.style.cssText = 'position:fixed!important;top:0!important;left:-9999px!important;' +
+                        'display:block!important;opacity:0!important;';
       document.body.appendChild(ta);
       ta.select();
       try { document.execCommand('copy'); } catch { /* leave the text visible for hand-copying */ }
@@ -284,7 +285,9 @@
     });
     body.appendChild(form);
 
-    document.body.appendChild(panel);
+    // Into the chrome's shadow root (shell.js), never the document: the panel
+    // is server-managed chrome and stays out of reach of the page's CSS.
+    chromeRoot.appendChild(panel);
   }
 
   // ── Panel state / mode rendering ─────────────────────────────────────────
@@ -299,7 +302,10 @@
   function openPanel() {
     buildPanel();
     if (!document.body.classList.contains('mp-chat-open')) {
+      // Both sides of one state: the body class opens the document's gutter
+      // (chrome-host.css), the host attribute shows the panel (chrome.css).
       document.body.classList.add('mp-chat-open');
+      setChromeState('data-mp-chat-open', true);
       ssSet('mpChatOpen', '1');
       applySize(currentPaper);
     }
@@ -308,6 +314,7 @@
 
   function closePanel() {
     document.body.classList.remove('mp-chat-open');
+    setChromeState('data-mp-chat-open', false);
     ssSet('mpChatOpen', '');
     liveTransport.stop();
     applySize(currentPaper);
@@ -465,7 +472,7 @@
   }
 
   function renderAttachChip() {
-    const row = document.getElementById('mp-chat-attach');
+    const row = mpq('#mp-chat-attach');
     if (!row) return;
     row.querySelector('.mp-attach-chip')?.remove();
     if (!attachCtx?.el) return;
