@@ -13,7 +13,7 @@ is fully self-contained. The chrome (`assets/shell/chrome.css`,
 panel) is injected by the local server at serve time, never baked into the
 page. It renders inside its own shadow root, so the two never collide: your
 `custom_css` cannot restyle the chrome, and the chrome adds nothing to the
-document beyond room for the toolbar and the chat panel's gutter. You never author or retype any of
+document beyond room for the toolbar and the chat panel's column. You never author or retype any of
 these files — **produce the copy with the commands below, then make targeted
 insertions at the anchors.**
 

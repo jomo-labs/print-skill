@@ -1,10 +1,10 @@
 /* chrome-host.css — the ONLY styles the chrome puts into the document.
    Everything the chrome DRAWS lives in a shadow root (chrome.css) where no
    page CSS can reach it; these few rules are the reverse direction — what the
-   chrome needs FROM the page: room under the fixed toolbar, a gutter beside
-   the open chat panel, the edit-mode cursor, the outline on a picked element,
-   and the embedded-mode trim. Nothing here styles chrome; nothing in
-   chrome.css depends on the page honoring it.
+   chrome needs FROM the page: room under the fixed toolbar, a column beside
+   the open chat panel, the canvas's own scroll region, the edit-mode cursor,
+   the outline on a picked element, and the embedded-mode trim. Nothing here
+   styles chrome; nothing in chrome.css depends on the page honoring it.
 
    Why a layer, why the !important on every declaration: a generated page can
    carry arbitrary CSS, including `body { padding: 0 !important }` from a
@@ -22,12 +22,22 @@
     body { padding-top: 56px !important; }
     body.edit-active { cursor: text !important; }
 
-    /* The open chat panel shrinks the viewport rather than covering it.
-       (scaleToFit() shrinks the preview to match; anything that still
-       doesn't fit scrolls instead of hiding under the panel.) */
-    body.mp-chat-open .page-surround {
-      margin-left: 336px !important;
-      overflow-x: auto !important;
+    /* The open chat panel takes a column of the viewport rather than covering
+       it. The reservation is made on the BODY, not on .page-surround: body is
+       the one element the chrome can count on existing, so the panel never
+       lands on top of page content, whatever markup the page carries.
+       (scaleToFit() shrinks the preview to match the narrower canvas.) */
+    body.mp-chat-open { padding-left: 336px !important; }
+
+    /* The canvas is the app's main region: it starts below the fixed toolbar,
+       takes all the width the toolbar and the panel leave, and scrolls
+       ITSELF when the sheet doesn't fit. Scrolling inside the region rather
+       than the window is what keeps the sheet from sliding under the toolbar
+       and keeps a wide sheet out from under the panel. */
+    .page-surround {
+      height: calc(100vh - 56px) !important;
+      overflow: auto !important;
+      margin-left: 0 !important;
     }
 
     /* Element picked by double-click in edit mode. The outline sits on a
@@ -40,9 +50,13 @@
 
     /* Embedded (iframe) mode — the host page provides its own chrome. */
     body.mp-embedded { padding-top: 0 !important; }
+    /* The embedding host sizes and scrolls the preview itself, so the canvas
+       gives up the viewport-height scroll region it owns when standalone. */
     body.mp-embedded .page-surround {
       padding: 0 !important;
       min-height: 0 !important;
+      height: auto !important;
+      overflow: visible !important;
       background: transparent !important;
     }
     /* border-color, not border: none — the on-screen box must keep the exact

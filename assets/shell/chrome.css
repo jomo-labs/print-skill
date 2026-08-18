@@ -17,7 +17,7 @@
 
    Consequence: theme a page in any direction and the chrome stays pixel
    identical. The only styles the chrome puts INTO the document — space for
-   the toolbar, the gutter beside the chat panel, the selection outline — live
+   the toolbar, the column beside the chat panel, the selection outline — live
    in chrome-host.css, deliberately small and deliberately one-directional. */
 
 :host {
@@ -174,7 +174,6 @@ button, input, textarea, select {
   letter-spacing: normal;
   color: var(--mp-ink);
 }
-}
 
 #mp-toolbar .mp-nav-btn {
   width: 28px; height: 28px;
@@ -237,9 +236,9 @@ button, input, textarea, select {
   text-transform: uppercase;
 }
 
-/* ── Chat panel — docked LEFT; the viewport shrinks beside it (no overlay) ──
-   The document-side half of that shrink (the .page-surround gutter) is in
-   chrome-host.css. */
+/* ── Chat panel — docked LEFT; the canvas takes the width beside it (never
+   under it) ── The document-side half of that split (body's reserved column
+   and the canvas's own scroll region) is in chrome-host.css. */
 #mp-chat-panel {
   position: fixed;
   top: 56px; left: 0; bottom: 0;
@@ -280,11 +279,24 @@ button, input, textarea, select {
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* User bubble: outlined, ink on paper (the 1px border eats into the padding
-   so both bubbles keep the same text box). The model's stays a soft fill —
-   neither competes with the Print button's solid ink. */
-.mp-msg-user  { align-self: flex-end; background: var(--mp-paper); color: var(--mp-ink); border: 1px solid var(--mp-dim); padding: 6px 10px; }
-.mp-msg-model { align-self: flex-start; background: var(--mp-surface); color: var(--mp-ink); }
+/* Only YOUR entries are bubbles. The model's reply is just ink on the panel's
+   paper — no fill, no outline, no inset — so the conversation reads as the
+   model talking on the page and your turns marked out against it. The soft
+   fill the model used to carry is what the user bubble wears now, and the
+   Send button wears the same fill, so one faint surface means "you". */
+.mp-msg-user {
+  align-self: flex-end;
+  background: var(--mp-surface);
+  color: var(--mp-ink);
+}
+.mp-msg-model {
+  align-self: flex-start;
+  max-width: 100%;
+  background: none;
+  color: var(--mp-ink);
+  padding: 0;
+  border-radius: 0;
+}
 .mp-msg-failed { opacity: 0.55; }
 
 .mp-chat-divider {
@@ -428,7 +440,7 @@ button, input, textarea, select {
 .mp-chat-send {
   width: 100%;
   padding: 8px 14px;
-  background: transparent;
+  background: var(--mp-surface);
   color: var(--mp-ink);
   border: 1px solid var(--mp-rule);
   font-size: 11px;
@@ -449,24 +461,40 @@ button, input, textarea, select {
   gap: 9px;
   max-width: 95%;
 }
-/* The command and its Copy button on one inset row, monospace. */
+/* A command and its Copy label on one row — and the row IS the button, so
+   the whole box is the press target rather than a small control inside it.
+   The pattern is generic: any copyable command the chrome offers uses it
+   (buildCopyRow() in chat.js). */
 .mp-copy-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  width: 100%;
+  text-align: left;
   background: var(--mp-paper);
   border: 1px solid var(--mp-rule);
   border-radius: 6px;
-  padding: 6px 7px 6px 11px;
-  box-shadow: inset 0 1px 3px oklch(0% 0 0 / 0.08);
+  padding: 7px 11px;
+  cursor: pointer;
 }
+.mp-copy-row:hover { background: var(--mp-bg); }
 .mp-copy-row code {
   font-family: var(--mp-font-mono);
   font-size: 12px;
   color: var(--mp-ink);
   white-space: nowrap;
 }
+/* The label carries no box of its own — the row around it is the box. */
+.mp-copy-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mp-mid);
+  flex-shrink: 0;
+}
+.mp-copy-row:hover .mp-copy-label { color: var(--mp-ink); }
 
 /* ── Print: chrome never prints ──
    Hiding the chrome's own elements (not the host) keeps this independent of
