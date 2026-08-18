@@ -67,6 +67,15 @@ function applySize(key, orientation) {
   if (sel && sel.value !== currentPaper) sel.value = currentPaper;
   document.querySelectorAll('.mp-orient-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.orient === currentOrientation));
+  // Persist the choice on the body dataset: the Print pipeline reloads the
+  // serialized DOM in headless Chromium, whose init() reads these attributes
+  // — without them a runtime paper/orientation change would silently reset
+  // to the assembly-time configuration in the rendered PDF. A text-edit save
+  // then also writes the choice into the file as document configuration.
+  if (currentPaper === 'letter') delete document.body.dataset.mpPaper;
+  else document.body.dataset.mpPaper = currentPaper;
+  if (currentOrientation === 'landscape') document.body.dataset.mpOrientation = 'landscape';
+  else delete document.body.dataset.mpOrientation;
   // WYSIWYG contract: the .page element IS the sheet, on screen and in print
   // alike — same width, same HEIGHT, no print-time zoom, no extra @page
   // margin. Its padding is the page margin. The dimension is IMMUTABLE —
@@ -204,7 +213,7 @@ function enableEditMode() {
   editMode = true;
   document.getElementById('mp-btn-edit').classList.add('active');
   const label = document.getElementById('mp-btn-edit-label');
-  if (label) label.textContent = 'Editing';
+  if (label) label.textContent = 'Done';
   document.body.classList.add('edit-active');
   // Editing and the chat panel are one combined mode — chat.js (when
   // present) opens the panel and auto-enables live through this hook. The
@@ -494,39 +503,12 @@ function injectChrome() {
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
 
-  // Page-setup controls (paper size + orientation), collapsed to zero width
-  // until edit mode — body.edit-active expands them with a pure-CSS
-  // transition, pushing the separator and Print button rightward.
-  const setup = document.createElement('div');
-  setup.id = 'mp-toolbar-setup';
-  const select = document.createElement('select');
-  select.id = 'mp-paper-select';
-  select.title = 'Paper size';
-  for (const [value, label] of [
-    ['letter', 'US Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half Letter'],
-  ]) {
-    const opt = document.createElement('option');
-    opt.value = value;
-    opt.textContent = label;
-    select.appendChild(opt);
-  }
-  select.value = currentPaper;
-  select.addEventListener('change', () => applySize(select.value));
-  setup.appendChild(select);
-  const group = document.createElement('div');
-  group.className = 'mp-orient-group';
-  for (const o of ['portrait', 'landscape']) {
-    const b = document.createElement('button');
-    b.className = 'mp-orient-btn';
-    b.textContent = o === 'portrait' ? 'Portrait' : 'Landscape';
-    b.type = 'button';
-    b.dataset.orient = o;
-    if (o === currentOrientation) b.classList.add('active');
-    b.addEventListener('click', () => setOrientation(o));
-    group.appendChild(b);
-  }
-  setup.appendChild(group);
-  toolbar.appendChild(setup);
+  // Quiet mode indicator on the bar itself — the button flips to "Done"
+  // while this says what's happening.
+  const note = document.createElement('span');
+  note.id = 'mp-editing-note';
+  note.textContent = 'Editing…';
+  toolbar.appendChild(note);
   toolbar.appendChild(sep());
 
   const print = document.createElement('button');

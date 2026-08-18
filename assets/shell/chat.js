@@ -6,25 +6,20 @@
 // server, how it formats as a copy/paste instruction); the transports and the
 // panel never change. dispatchIntent() picks the route per the current state:
 //
-//   live     served, toggle on, and a model is listening (presence from the
+//   live     served and a model is listening (presence from the
 //            server — the ground truth, regardless of the assembly-time
 //            flag): messages POST to /chat/<page>/messages and the model's
 //            replies/status stream back via the poll.
-//   ready    served, toggle on, LIVE_EDIT_SUPPORTED (assembly-injected — see
-//            shell.js), no model listening yet: messages still POST (they
-//            queue server-side and the model's first `wait` drains them);
-//            the panel shows how to connect ("/print live").
-//   dormant  served, toggle on, no flag: assembly judged live unavailable
-//            with this model — the overlay says so, but polling continues:
-//            presence is ground truth, so a model that connects anyway
-//            upgrades the panel to live.
-//   off      the user flipped the Live toggle off.
-//   file     file:// — no server exists, the one structurally impossible
-//            case.
+//   ready    served, LIVE_EDIT_SUPPORTED (assembly-injected — see shell.js),
+//            no model listening yet: messages still POST (they queue
+//            server-side and the model's first `wait` drains them).
+//   dormant  served, no flag (assembly judged live unavailable): same queue
+//            behavior, and polling continues — presence is ground truth, so
+//            a model that connects anyway upgrades the panel to live.
+//   file     file:// — no server exists; input is disabled.
 //
-// The panel is exclusively about live mode: in every non-live state a
-// translucent overlay covers the body (input disabled) with either the
-// "/print live" starter or a short unavailability message.
+// Until a model connects, the first entry in the conversation is a starter
+// card with the copyable "/print live" command.
 //
 // The panel is runtime-only chrome: built here on demand, stripped by
 // serializeForSave(), hidden in print and embedded modes. Chat never touches
@@ -37,18 +32,16 @@
   // ── Mode ──────────────────────────────────────────────────────────────────
 
   const served = () => location.protocol !== 'file:';
-  const toggleOn = () => lsGet('mpChatLive') !== 'off';
 
-  // 'live' | 'ready' | 'dormant' | 'off' | 'file' — see the header comment.
+  // 'live' | 'ready' | 'dormant' | 'file' — see the header comment.
   // Presence outranks the flag: a listening model means live, always.
   function panelState() {
     if (!served()) return 'file';
-    if (!toggleOn()) return 'off';
     if (modelListening) return 'live';
     return window.LIVE_EDIT_SUPPORTED === true ? 'ready' : 'dormant';
   }
   // States whose intents render copy/paste cards instead of POSTing.
-  const isPasteState = (s) => s === 'dormant' || s === 'off' || s === 'file';
+  const isPasteState = (s) => s === 'file';
 
   const pageFileName = () =>
     served() ? decodeURIComponent(location.pathname.replace(/^\//, ''))
@@ -81,8 +74,7 @@
   /**
    * Route an intent. Opens the panel, then: live/ready → POST to the server
    * (optimistic bubble; a failed POST falls back to a paste card so a message
-   * is never lost); overlay-locked states → paste card into the log (only
-   * reachable programmatically — the overlay disables the input).
+   * is never lost); file:// → paste card into the log.
    */
   async function dispatchIntent(intent) {
     openPanel();
@@ -133,7 +125,7 @@
     start() {
       // Polls in dormant too — presence is how a flag-less page discovers a
       // model connected anyway and upgrades itself to live.
-      if (pollTimer || !served() || !toggleOn()) return;
+      if (pollTimer || !served()) return;
       const tick = async () => {
         try {
           const res = await fetch(`${chatUrl()}?after=${cursor}&from=any`, { cache: 'no-store' });
@@ -197,7 +189,7 @@
 
   // ── Panel DOM ─────────────────────────────────────────────────────────────
 
-  let panel = null, log = null, presenceEl = null, inputEl = null, sendEl = null, toggleEl = null;
+  let panel = null, log = null, presenceEl = null, inputEl = null, sendEl = null;
   let attachCtx = null; // { el } — the element double-click selected in edit mode
 
   function el(tag, className, text) {
@@ -211,39 +203,45 @@
     if (panel) return;
     panel = el('aside', null); panel.id = 'mp-chat-panel';
 
-    const head = el('div', 'mp-chat-head');
-    head.appendChild(el('span', 'mp-chat-title', 'Edit'));
-    // Live toggle on every served page ('off' needs a way back, and dormant
-    // pages are live-capable too); only file:// (no server) hides it.
-    if (served()) {
-      const label = el('label', 'mp-live-toggle');
-      toggleEl = document.createElement('input');
-      toggleEl.type = 'checkbox';
-      toggleEl.checked = lsGet('mpChatLive') !== 'off';
-      toggleEl.title = 'Live: send messages straight to your model. Off: get copy/paste instructions instead.';
-      toggleEl.addEventListener('change', () => {
-        lsSet('mpChatLive', toggleEl.checked ? 'on' : 'off');
-        refreshMode();
-      });
-      label.appendChild(toggleEl);
-      label.appendChild(el('span', null, 'Live'));
-      head.appendChild(label);
+    // Page-setup strip: document-level controls at the top of the panel,
+    // set off from the conversation below. Size and orientation are
+    // independent axes — any combination applies.
+    const setup = el('div', null); setup.id = 'mp-panel-setup';
+    const sizeRow = el('div', 'mp-setup-row');
+    const sizeLabel = el('label', 'mp-setup-label', 'Paper size');
+    sizeLabel.htmlFor = 'mp-paper-select';
+    sizeRow.appendChild(sizeLabel);
+    const select = document.createElement('select');
+    select.id = 'mp-paper-select';
+    for (const [value, label] of [
+      ['letter', 'US Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half Letter'],
+    ]) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
     }
-    const close = el('button', 'mp-chat-close', '×');
-    close.type = 'button';
-    close.title = 'Exit editing';
-    // Panel and edit mode are one combined state: closing the panel exits
-    // edit mode, whose hook closes the panel.
-    close.addEventListener('click', () => {
-      if (typeof disableEditMode === 'function') disableEditMode();
-      else closePanel();
-    });
-    head.appendChild(close);
-    panel.appendChild(head);
+    select.value = currentPaper; // shell.js state; applySize keeps it synced
+    select.addEventListener('change', () => applySize(select.value));
+    sizeRow.appendChild(select);
+    setup.appendChild(sizeRow);
+    const orientRow = el('div', 'mp-setup-row');
+    orientRow.appendChild(el('span', 'mp-setup-label', 'Orientation'));
+    const group = el('div', 'mp-orient-group');
+    for (const o of ['portrait', 'landscape']) {
+      const b = el('button', 'mp-orient-btn', o === 'portrait' ? 'Portrait' : 'Landscape');
+      b.type = 'button';
+      b.dataset.orient = o;
+      if (o === currentOrientation) b.classList.add('active');
+      b.addEventListener('click', () => setOrientation(o));
+      group.appendChild(b);
+    }
+    orientRow.appendChild(group);
+    setup.appendChild(orientRow);
+    panel.appendChild(setup);
 
-    // The panel body is exclusively the live-mode conversation; page-setup
-    // controls live in the toolbar (shell.js). The wrapper is the positioning
-    // context for the not-connected overlay.
+    // The conversation: log, presence, input. No panel-level chrome — the
+    // toolbar's EDIT/Done button is the only thing that opens/closes it.
     const body = el('div', null); body.id = 'mp-panel-body';
     panel.appendChild(body);
 
@@ -292,17 +290,11 @@
 
   // ── Panel state / mode rendering ─────────────────────────────────────────
 
-  // Combined mode: shell.js owns the EDIT toggle and calls this hook when
-  // edit mode flips. Entering edit auto-enables live where the page supports
-  // it — un-doing a previous explicit toggle-off the moment the user starts
-  // editing (the header toggle still turns it off again mid-session).
+  // Combined mode: shell.js owns the EDIT/Done button and calls this hook
+  // when edit mode flips — the panel has no chrome of its own to close it.
   window.mpChatOnEditMode = (on) => {
-    if (on) {
-      if (window.LIVE_EDIT_SUPPORTED === true && served()) lsSet('mpChatLive', 'on');
-      openPanel();
-    } else {
-      closePanel();
-    }
+    if (on) openPanel();
+    else closePanel();
   };
 
   function openPanel() {
@@ -322,59 +314,44 @@
     applySize(currentPaper);
   }
 
-  // Not-connected overlay: a translucent scrim over the whole panel body.
-  // The panel is exclusively about live mode — until a model is connected it
-  // shows either the "/print live" starter (live is possible) or a short
-  // unavailability message. Dismissed the moment presence arrives.
-  function buildLiveOverlay(state) {
-    const ov = el('div', 'mp-live-overlay');
-    if (state === 'ready') {
-      ov.appendChild(el('div', 'mp-overlay-title', 'Start live mode'));
-      ov.appendChild(el('p', 'mp-overlay-note', 'Send this to your model:'));
-      // The command and its Copy button share one inset, monospace row.
+  // Until a model connects, the conversation opens with a starter card: how
+  // to go live, with the command in its own copyable row. Removed the moment
+  // presence arrives; re-added if the connection lapses.
+  function buildStarter(state) {
+    const card = el('div', 'mp-starter');
+    if (state === 'file') {
+      card.appendChild(el('p', null,
+        'Live editing needs the local server — open this page through it to chat with your model.'));
+    } else {
+      card.appendChild(el('p', null,
+        'Connect with your model and edit live! Just copy/paste the command below.'));
       const row = el('div', 'mp-copy-row');
       row.appendChild(el('code', null, '/print live'));
       const copy = el('button', 'mp-copy-btn', 'Copy');
       copy.type = 'button';
       copy.addEventListener('click', () => copyText('/print live', copy));
       row.appendChild(copy);
-      ov.appendChild(row);
-      const wait = el('div', 'mp-overlay-wait');
-      wait.appendChild(el('span', 'mp-spinner'));
-      wait.appendChild(el('span', null, 'Waiting for your model to connect…'));
-      ov.appendChild(wait);
-    } else {
-      const msg = state === 'off' ? 'Live is off — flip Live above to reconnect.'
-        : state === 'file' ? 'Live mode needs the local server.'
-        : 'Live mode is unavailable with this model.';
-      ov.appendChild(el('p', 'mp-overlay-msg', msg));
+      card.appendChild(row);
     }
-    return ov;
+    return card;
   }
 
-  // Re-render the state-dependent chrome (overlay, presence, polling, input
-  // enablement). Called on open, toggle flips, presence changes, and after
-  // each dispatched intent.
+  // Re-render the state-dependent chrome (starter card, presence, polling,
+  // input enablement). Called on open, presence changes, and after each
+  // dispatched intent.
   function refreshMode() {
     if (!panel) return;
     const state = panelState();
     panel.dataset.mode = state;
-    if (toggleEl) toggleEl.checked = toggleOn();
 
-    panel.querySelector('.mp-live-overlay')?.remove();
-    const locked = state !== 'live';
-    if (inputEl) inputEl.disabled = locked;
-    if (sendEl) sendEl.disabled = locked;
+    log.querySelector('.mp-starter')?.remove();
+    if (state !== 'live') log.prepend(buildStarter(state));
 
-    if (state === 'live') {
-      liveTransport.start();
-    } else {
-      // ready/dormant keep polling — presence is what dismisses the overlay
-      // (dormant included: a model connecting anyway upgrades the panel).
-      if (state === 'ready' || state === 'dormant') liveTransport.start();
-      else liveTransport.stop();
-      document.getElementById('mp-panel-body')?.appendChild(buildLiveOverlay(state));
-    }
+    const isFile = state === 'file';
+    if (inputEl) inputEl.disabled = isFile;
+    if (sendEl) sendEl.disabled = isFile;
+    if (isFile) liveTransport.stop();
+    else liveTransport.start();
     renderPresence();
   }
 
@@ -393,9 +370,7 @@
   function renderPresence() {
     if (!presenceEl) return;
     const state = panelState();
-    if (state !== 'live') {
-      // ready has the takeover's spinner; dormant shows nothing until
-      // presence appears (which flips it to live)
+    if (state === 'file') {
       presenceEl.textContent = '';
       presenceEl.className = '';
       return;
