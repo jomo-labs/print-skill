@@ -88,6 +88,27 @@ function etagFor(stat) {
   return `"${stat.mtimeMs}-${stat.size}"`;
 }
 
+// A served page is its file PLUS the chrome injected into it, so its freshness
+// signature has to cover both: edit chrome.css or shell.js and every open tab
+// polling its own URL sees a new ETag and reloads itself. Without this, chrome
+// changes only appeared on a manual refresh — indistinguishable from the
+// server having gone stale, which it doesn't (assets are re-read from disk;
+// only changes to server.mjs itself need a restart).
+async function pageEtagFor(stat) {
+  const chrome = await chromeSignature();
+  return `"${stat.mtimeMs}-${stat.size}-${chrome}"`;
+}
+
+// The file half of a page ETag. PUT's If-Match is about one thing — did the
+// FILE change under this tab — so a chrome update must not turn a save into a
+// 412 (which costs the user the edit they were saving). The full signature is
+// still what the response carries, keeping the tab's poll baseline aligned
+// with what HEAD returns.
+function fileEtagPart(etag) {
+  const [mtime, size] = String(etag || "").replace(/"/g, "").split("-");
+  return `${mtime}-${size}`;
+}
+
 // Serve-time chrome wrap. Generated pages are pure documents (plain
 // printable HTML, no chrome references at all); serving one through this
 // server injects the chrome stylesheets and scripts so the toolbar/edit/chat
@@ -134,6 +155,23 @@ async function chromeAssets() {
   return { host, chrome };
 }
 
+// mtime+size of every asset a served page carries — the two inlined
+// stylesheets and the two scripts it links. Cheap enough to stat on each
+// request (four stats, no reads); a missing file just drops out of the
+// signature rather than failing the response.
+const CHROME_ASSET_FILES = ["chrome-host.css", "chrome.css", "shell.js", "chat.js"];
+async function chromeSignature() {
+  const parts = await Promise.all(CHROME_ASSET_FILES.map(async (name) => {
+    try {
+      const stat = await fs.stat(path.join(SHELL_DIR, name));
+      return `${stat.mtimeMs}-${stat.size}`;
+    } catch {
+      return "-";
+    }
+  }));
+  return crypto.createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 12);
+}
+
 function injectChromeTags(html, assets) {
   if (html.includes("shell/shell.js")) return html; // legacy page: own links
   let out = html;
@@ -152,9 +190,10 @@ function injectChromeTags(html, assets) {
 }
 
 async function serveFile(req, res, filePath, stat, { wrapChrome = false } = {}) {
+  const wrapping = wrapChrome && /\.html?$/i.test(filePath);
   const headers = {
     "Content-Type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream",
-    "ETag": etagFor(stat),
+    "ETag": wrapping ? await pageEtagFor(stat) : etagFor(stat),
     "Last-Modified": stat.mtime.toUTCString(),
     // Always revalidate (cheap with ETags): heuristic browser caching would
     // otherwise keep serving stale shell js/css after a skill update.
@@ -165,7 +204,7 @@ async function serveFile(req, res, filePath, stat, { wrapChrome = false } = {}) 
     return res.end();
   }
   let body = await fs.readFile(filePath);
-  if (wrapChrome && /\.html?$/i.test(filePath)) {
+  if (wrapping) {
     body = Buffer.from(injectChromeTags(body.toString("utf-8"), await chromeAssets()));
   }
   res.writeHead(200, headers);
@@ -244,8 +283,8 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     // last loaded/saved it (the model edited it mid-browser-edit). Reject so
     // the newer version is never clobbered; the shell reloads on 412.
     const ifMatch = req.headers["if-match"];
-    if (ifMatch && ifMatch !== etagFor(stat)) {
-      return fail(412, "file changed on disk", { "ETag": etagFor(stat) });
+    if (ifMatch && fileEtagPart(ifMatch) !== fileEtagPart(etagFor(stat))) {
+      return fail(412, "file changed on disk", { "ETag": await pageEtagFor(stat) });
     }
     let html;
     try {
@@ -260,7 +299,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     const saved = await fs.stat(filePath);
     // The new ETag becomes the saving tab's poll baseline so it doesn't
     // reload on its own write (other open tabs of this page do — that's sync).
-    res.writeHead(200, { "Content-Type": "application/json", "ETag": etagFor(saved) });
+    res.writeHead(200, { "Content-Type": "application/json", "ETag": await pageEtagFor(saved) });
     res.end(JSON.stringify({ ok: true }));
   }
 

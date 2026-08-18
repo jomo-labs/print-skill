@@ -17,7 +17,7 @@
 
    Consequence: theme a page in any direction and the chrome stays pixel
    identical. The only styles the chrome puts INTO the document — space for
-   the toolbar, the gutter beside the chat panel, the selection outline — live
+   the toolbar, the column beside the chat panel, the selection outline — live
    in chrome-host.css, deliberately small and deliberately one-directional. */
 
 :host {
@@ -41,6 +41,12 @@
      boundary does not stop them); generic families cannot be redefined. */
   --mp-font-ui:   ui-sans-serif, system-ui, sans-serif;
   --mp-font-mono: ui-monospace, monospace;
+
+  /* The panel's slide. chrome-host.css restates these numbers for the
+     document side of the same motion (custom properties don't reach out of
+     the shadow root) — change them together. */
+  --mp-slide: 220ms;
+  --mp-ease:  cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 /* The shadow tree gets no UA-reset from the page's own `* { }` rule, and
@@ -74,7 +80,10 @@ button, input, textarea, select {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 24px;
+  /* Left inset matches the chat panel's content inset (the 14px on #mp-chat-log
+     and #mp-chat-form), so Print and everything in the panel below it share one
+     left edge down the window. */
+  padding: 0 24px 0 14px;
   z-index: 200;
 }
 
@@ -174,7 +183,6 @@ button, input, textarea, select {
   letter-spacing: normal;
   color: var(--mp-ink);
 }
-}
 
 #mp-toolbar .mp-nav-btn {
   width: 28px; height: 28px;
@@ -237,21 +245,46 @@ button, input, textarea, select {
   text-transform: uppercase;
 }
 
-/* ── Chat panel — docked LEFT; the viewport shrinks beside it (no overlay) ──
-   The document-side half of that shrink (the .page-surround gutter) is in
-   chrome-host.css. */
+/* ── Chat panel — docked LEFT; the canvas takes the width beside it (never
+   under it) ── The document-side half of that split (body's reserved column
+   and the canvas's own scroll region) is in chrome-host.css. */
 #mp-chat-panel {
   position: fixed;
   top: 56px; left: 0; bottom: 0;
   width: 336px;
   background: var(--mp-paper);
   border-right: 1px solid var(--mp-rule);
-  display: none;
+  display: flex;
   flex-direction: column;
   z-index: 150; /* under the toolbar (200); the pointer-events-none overlay (9000) doesn't block clicks */
   font-size: 12px;
+
+  /* Closed is parked off the left edge, not `display: none` — display can't
+     be transitioned, a transform can, and the panel is only ever 336px of
+     layout either way. visibility flips at the END of the slide out (and
+     instantly on the way in) so a closed panel is untabbable and inert
+     without cutting the animation short. */
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform var(--mp-slide) var(--mp-ease),
+              visibility 0s linear var(--mp-slide);
 }
-:host([data-mp-chat-open]) #mp-chat-panel { display: flex; }
+:host([data-mp-chat-open]) #mp-chat-panel {
+  transform: none;
+  visibility: visible;
+  transition: transform var(--mp-slide) var(--mp-ease), visibility 0s;
+}
+/* The FIRST open inserts the panel into the shadow root already matching the
+   open state, so there is no previous value to animate from — @starting-style
+   supplies one. (Engines without it simply show the panel at once; nothing
+   else depends on this rule.) */
+@starting-style {
+  :host([data-mp-chat-open]) #mp-chat-panel { transform: translateX(-100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #mp-chat-panel,
+  :host([data-mp-chat-open]) #mp-chat-panel { transition: none; }
+}
 
 /* Panel body: the live conversation plus the not-connected overlay's
    positioning context. */
@@ -280,11 +313,24 @@ button, input, textarea, select {
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* User bubble: outlined, ink on paper (the 1px border eats into the padding
-   so both bubbles keep the same text box). The model's stays a soft fill —
-   neither competes with the Print button's solid ink. */
-.mp-msg-user  { align-self: flex-end; background: var(--mp-paper); color: var(--mp-ink); border: 1px solid var(--mp-dim); padding: 6px 10px; }
-.mp-msg-model { align-self: flex-start; background: var(--mp-surface); color: var(--mp-ink); }
+/* Only YOUR entries are bubbles. The model's reply is just ink on the panel's
+   paper — no fill, no outline, no inset — so the conversation reads as the
+   model talking on the page and your turns marked out against it. The soft
+   fill the model used to carry is what the user bubble wears now, and the
+   Send button wears the same fill, so one faint surface means "you". */
+.mp-msg-user {
+  align-self: flex-end;
+  background: var(--mp-surface);
+  color: var(--mp-ink);
+}
+.mp-msg-model {
+  align-self: flex-start;
+  max-width: 100%;
+  background: none;
+  color: var(--mp-ink);
+  padding: 0;
+  border-radius: 0;
+}
 .mp-msg-failed { opacity: 0.55; }
 
 .mp-chat-divider {
@@ -414,6 +460,8 @@ button, input, textarea, select {
   flex-shrink: 0;
 }
 .mp-attach-clear:hover { color: var(--mp-ink); }
+/* Paper white, deliberately: the faint surface marks the Send button and your
+   sent turns — the field you type into stays the brightest thing in the panel. */
 #mp-chat-input {
   font-size: 12px;
   line-height: 1.5;
@@ -428,7 +476,7 @@ button, input, textarea, select {
 .mp-chat-send {
   width: 100%;
   padding: 8px 14px;
-  background: transparent;
+  background: var(--mp-surface);
   color: var(--mp-ink);
   border: 1px solid var(--mp-rule);
   font-size: 11px;
@@ -443,30 +491,50 @@ button, input, textarea, select {
 
 /* ── Starter: the first conversation entry until a model connects — a
    regular model bubble stacking its text over the copy row. ── */
+/* Full width of the log, inset only by the log's own padding — a boxed row
+   like the command below reads as part of the panel, not as a bubble tucked
+   against the left edge. */
 .mp-starter {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  max-width: 95%;
+  align-self: stretch;
+  max-width: 100%;
 }
-/* The command and its Copy button on one inset row, monospace. */
+/* A command and its Copy label on one row — and the row IS the button, so
+   the whole box is the press target rather than a small control inside it.
+   The pattern is generic: any copyable command the chrome offers uses it
+   (buildCopyRow() in chat.js). */
 .mp-copy-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  width: 100%;
+  text-align: left;
   background: var(--mp-paper);
   border: 1px solid var(--mp-rule);
   border-radius: 6px;
-  padding: 6px 7px 6px 11px;
-  box-shadow: inset 0 1px 3px oklch(0% 0 0 / 0.08);
+  padding: 7px 11px;
+  cursor: pointer;
 }
+.mp-copy-row:hover { background: var(--mp-bg); }
 .mp-copy-row code {
   font-family: var(--mp-font-mono);
   font-size: 12px;
   color: var(--mp-ink);
   white-space: nowrap;
 }
+/* The label carries no box of its own — the row around it is the box. */
+.mp-copy-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mp-mid);
+  flex-shrink: 0;
+}
+.mp-copy-row:hover .mp-copy-label { color: var(--mp-ink); }
 
 /* ── Print: chrome never prints ──
    Hiding the chrome's own elements (not the host) keeps this independent of

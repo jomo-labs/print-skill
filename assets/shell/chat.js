@@ -188,6 +188,21 @@
     }
   }
 
+  // A command the user is meant to copy, rendered as ONE press target: the
+  // whole row is the button, with the command on the left and a bold COPY
+  // label on the right (no box of its own — the row is the box). Every
+  // copyable command the chrome offers should use this.
+  function buildCopyRow(text) {
+    const row = el('button', 'mp-copy-row');
+    row.type = 'button';
+    row.title = 'Copy ' + text;
+    row.appendChild(el('code', null, text));
+    const label = el('span', 'mp-copy-label', 'Copy');
+    row.appendChild(label);
+    row.addEventListener('click', () => copyText(text, label));
+    return row;
+  }
+
   // ── Panel DOM ─────────────────────────────────────────────────────────────
 
   let panel = null, log = null, presenceEl = null, inputEl = null, sendEl = null;
@@ -299,13 +314,7 @@
     } else {
       card.appendChild(el('p', null,
         'Connect with your model and edit live! Just copy/paste the command below.'));
-      const row = el('div', 'mp-copy-row');
-      row.appendChild(el('code', null, '/print live'));
-      const copy = el('button', 'mp-copy-btn', 'Copy');
-      copy.type = 'button';
-      copy.addEventListener('click', () => copyText('/print live', copy));
-      row.appendChild(copy);
-      card.appendChild(row);
+      card.appendChild(buildCopyRow('/print live'));
     }
     return card;
   }

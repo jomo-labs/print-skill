@@ -65,7 +65,7 @@ button, input, textarea, select, option, code, pre, i, svg, span, div, aside, fo
 #mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, #mp-page-setup,
 #mp-btn-edit, #mp-btn-print, #mp-chat-input, #mp-chat-log, #mp-chat-presence,
 #mp-paper-select, #mp-orient-select, .mp-combo, .mp-chat-send, .mp-msg,
-.mp-copy-row, .mp-starter, [data-mp-chrome] {
+.mp-copy-row, .mp-copy-label, .mp-starter, [data-mp-chrome] {
   display: none !important;
   visibility: hidden !important;
   position: static !important;
@@ -79,7 +79,8 @@ html > div { display: none !important; }
 @font-face { font-family: 'Inter'; src: local('Times New Roman'); }
 @font-face { font-family: 'system-ui'; src: local('Times New Roman'); }
 /* Reclaim what the chrome reserves in the document. */
-body.mp-chat-open .page-surround { margin-left: 0 !important; }
+body.mp-chat-open { padding-left: 0 !important; }
+.page-surround { height: auto !important; overflow: visible !important; margin-left: 336px !important; }
 body.edit-active { cursor: crosshair !important; }
 .mp-selected { outline: none !important; outline-offset: 0 !important; }
 `;
@@ -90,7 +91,7 @@ const PROBES = [
   "#mp-page-setup", "#mp-paper-select", "#mp-orient-select", ".mp-combo",
   "#mp-overlay", "#mp-chat-panel", "#mp-chat-log", "#mp-chat-presence", "#mp-chat-form",
   "#mp-chat-input", ".mp-chat-send", ".mp-msg-model", ".mp-starter", ".mp-copy-row",
-  ".mp-copy-row code", ".mp-copy-btn", "#mp-chat-attach", ".mp-attach-chip",
+  ".mp-copy-row code", ".mp-copy-label", "#mp-chat-attach", ".mp-attach-chip",
   ".mp-attach-label", ".mp-attach-clear",
 ];
 // The hover box traces whatever page element it is over, and the hostile page
@@ -150,6 +151,11 @@ async function inspect(browser, url) {
     .getElementById("mp-btn-edit").click());
   await page.waitForFunction(() => document.getElementById("mp-chrome-root").shadowRoot
     .querySelector("#mp-chat-panel .mp-starter"));
+  // The panel slides in and the canvas gives up its column over ~220ms — every
+  // measurement below is of the settled layout, never a frame of that motion.
+  await page.waitForFunction(() => getComputedStyle(document.body).paddingLeft === "336px"
+    && document.getElementById("mp-chrome-root").shadowRoot
+       .getElementById("mp-chat-panel").getBoundingClientRect().left === 0);
   // Drive the two edit-mode gestures so their chrome exists to be compared:
   // double-click selects (chip + outline), hover draws the element box.
   await page.dblclick("#probe");
@@ -159,11 +165,18 @@ async function inspect(browser, url) {
   const chrome = await chromeSnapshot(page, [...PROBES, ...APPEARANCE_ONLY]);
   const document_ = await page.evaluate(() => {
     const cs = getComputedStyle(window.document.body);
-    const surround = getComputedStyle(window.document.querySelector(".page-surround"));
+    const surroundEl = window.document.querySelector(".page-surround");
+    const surround = getComputedStyle(surroundEl);
+    const surroundBox = surroundEl.getBoundingClientRect();
     return {
       bodyPaddingTop: cs.paddingTop,
+      bodyPaddingLeft: cs.paddingLeft,
       cursor: cs.cursor,
       surroundMarginLeft: surround.marginLeft,
+      surroundOverflowY: surround.overflowY,
+      canvasTop: Math.round(surroundBox.top),
+      canvasLeft: Math.round(surroundBox.left),
+      canvasHeight: Math.round(surroundBox.height),
       selectedOutline: getComputedStyle(window.document.getElementById("probe")).outlineWidth,
     };
   });
@@ -215,7 +228,19 @@ test("page CSS cannot reach the server-managed chrome", async (t) => {
   // The document-side reservations hold too (chrome-host.css).
   assert.equal(hostile.document_.bodyPaddingTop, "56px", "the page reclaimed the toolbar's space");
   assert.equal(hostile.document_.cursor, "text", "edit-mode cursor overridden by the page");
-  assert.equal(hostile.document_.surroundMarginLeft, "336px", "the page closed the chat gutter");
+  // The panel's column is reserved on the body, and the canvas keeps its own
+  // scroll region below the toolbar — so the panel never lands on content.
+  assert.equal(hostile.document_.bodyPaddingLeft, "336px", "the page closed the chat panel's column");
+  assert.equal(hostile.document_.surroundMarginLeft, "0px", "the page re-opened a gutter beside the reserved column");
+  assert.equal(hostile.document_.surroundOverflowY, "auto", "the page took away the canvas's scroll region");
+  assert.equal(plain.document_.canvasLeft, 336, "the canvas does not start beside the panel");
+  assert.equal(plain.document_.canvasTop, 56, "the canvas does not start below the toolbar");
+  assert.equal(plain.document_.canvasHeight, 1000 - 56, "the canvas is not the viewport below the toolbar");
+  // The hostile page's own margins and borders move its canvas a few px in —
+  // that is its box model, not a lost reservation. What must hold is that it
+  // never reaches back into the panel's column or under the toolbar.
+  assert.ok(hostile.document_.canvasLeft >= 336, "the hostile canvas reached under the panel");
+  assert.ok(hostile.document_.canvasTop >= 56, "the hostile canvas reached under the toolbar");
   assert.equal(hostile.document_.selectedOutline, "2px", "the page erased the selection outline");
   assert.equal(plain.document_.selectedOutline, "2px");
 

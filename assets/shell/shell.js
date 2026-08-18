@@ -158,9 +158,9 @@ function setOrientation(o) {
 }
 
 function scaleToFit(w) {
-  // The open chat panel narrows the viewport; only the screen-fit transform
-  // reacts — sheet width/min-height/padding (the WYSIWYG print geometry)
-  // never change. chat.js re-applies size on panel open/close.
+  // The open chat panel takes a column of the viewport; only the screen-fit
+  // transform reacts — sheet width/min-height/padding (the WYSIWYG print
+  // geometry) never change. chat.js re-applies size on panel open/close.
   const chatW = document.body.classList.contains('mp-chat-open') ? 336 : 0;
   const available = window.innerWidth - 80 - chatW;
   const s = Math.min(available / w, 1);
@@ -540,7 +540,7 @@ function mpAll(sel) { return chromeRoot ? Array.from(chromeRoot.querySelectorAll
 
 // Screen-state flags the chrome styles itself by (chrome.css :host([...])).
 // The matching body classes stay too — chrome-host.css reads those for the
-// document side of the same state (toolbar space, chat gutter).
+// document side of the same state (toolbar space, the panel's column).
 function setChromeState(name, on) { if (chromeHost) chromeHost.toggleAttribute(name, !!on); }
 
 // The chrome's stylesheet. Served pages carry it inline in an inert
@@ -578,6 +578,17 @@ function injectChrome() {
     return s;
   };
 
+  // Print is the toolbar's first control and never moves: it is the one
+  // action every page has in every mode, and anchoring it at the left edge
+  // keeps it under the same pixel whether or not edit mode has expanded the
+  // controls to its right.
+  const print = document.createElement('button');
+  print.id = 'mp-btn-print';
+  print.textContent = 'Print / Save PDF';
+  toolbar.appendChild(print);
+
+  toolbar.appendChild(sep());
+
   // Combined edit+chat toggle: pencil when idle; X + "Editing" while active.
   // chat.js (when present) opens/closes the side panel through the mode hook.
   const edit = document.createElement('button');
@@ -588,7 +599,8 @@ function injectChrome() {
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
 
-  // Page setup, right of the edit toggle: paper size and orientation as two
+  // Page setup, right of the edit toggle (so the controls edit mode adds all
+  // grow rightward, away from Print): paper size and orientation as two
   // combo boxes. They're independent axes — any size combines with either
   // orientation — so they stay two controls, not one product list. Built
   // always, shown only in edit mode (chrome.css gates them on the host's
@@ -610,7 +622,7 @@ function injectChrome() {
     return s;
   };
   const paperSel = combo('mp-paper-select', [
-    ['letter', 'Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half'],
+    ['letter', 'US Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half'],
   ]);
   paperSel.title = 'Paper size';
   paperSel.setAttribute('aria-label', 'Paper size');
@@ -622,13 +634,6 @@ function injectChrome() {
   orientSel.setAttribute('aria-label', 'Orientation');
   orientSel.addEventListener('change', () => setOrientation(orientSel.value));
   toolbar.appendChild(setup);
-
-  toolbar.appendChild(sep());
-
-  const print = document.createElement('button');
-  print.id = 'mp-btn-print';
-  print.textContent = 'Print / Save PDF';
-  toolbar.appendChild(print);
 
   // Variant nav — hidden until initVariants() detects multiple .variant-page
   const vsep = sep();
