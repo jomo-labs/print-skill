@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "print": {
+      "source": "jomo-labs/print-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "200ca34785657f52c33f39ed8f31cf5540a2f5fea20d398400922232d1ac6943"
+    }
+  }
+}
