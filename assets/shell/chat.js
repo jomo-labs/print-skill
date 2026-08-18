@@ -207,8 +207,8 @@
     // set off from the conversation below. Size and orientation are
     // independent axes — any combination applies.
     const setup = el('div', null); setup.id = 'mp-panel-setup';
-    // Both controls are the same segmented component: the selected value
-    // renders white-on-ink in each.
+    // Both controls are the same component: plain text switches where the
+    // selected value is the only one in ink, bold and underlined.
     const sizeRow = el('div', 'mp-setup-row');
     sizeRow.appendChild(el('span', 'mp-setup-label', 'Paper size'));
     const sizeGroup = el('div', 'mp-seg-group mp-paper-group');
