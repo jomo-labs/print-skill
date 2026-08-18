@@ -49,10 +49,20 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 #mp-toolbar, #mp-chat-panel, #mp-overlay {
   font-family: var(--mp-font-ui);
+  /* The chrome's own typographic baseline. It used to fall out of the
+     document's body line-height, which is precisely the kind of inheritance
+     the shadow boundary now cuts — so state it here instead. */
+  line-height: 1.5;
   color: var(--mp-ink);
   pointer-events: auto; /* the host is pointer-events:none so it never eats page clicks */
 }
-button, input, textarea { font: inherit; color: inherit; }
+/* Form controls don't inherit type by default. Font and color only — leaving
+   line-height at the UA's `normal` is what keeps button heights compact. */
+button, input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
 
 /* ── Toolbar ── */
 #mp-toolbar {
@@ -95,7 +105,7 @@ button, input, textarea { font: inherit; color: inherit; }
 
 /* Combined edit+chat toggle: pencil when idle, X + "Editing" while active
    (active = solid ink so exiting is obvious). */
-#mp-btn-edit {
+#mp-toolbar #mp-btn-edit {
   background: transparent;
   color: var(--mp-mid);
   border: 1px solid var(--mp-rule);
@@ -103,7 +113,7 @@ button, input, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: 6px;
 }
-#mp-btn-edit:hover {
+#mp-toolbar #mp-btn-edit:hover {
   background: var(--mp-bg);
   color: var(--mp-ink);
 }
@@ -122,61 +132,51 @@ button, input, textarea { font: inherit; color: inherit; }
   letter-spacing: 0.04em;
 }
 
-/* Page-setup strip at the top of the edit panel: document-level controls,
-   set off from the conversation below by a muted band and rule. */
-#mp-panel-setup {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px;
-  background: var(--mp-bg);
-  border-bottom: 1px solid var(--mp-rule);
-  flex-shrink: 0;
-}
-.mp-setup-row {
-  display: flex;
+/* Page setup in the toolbar: paper size + orientation as two combo boxes,
+   sitting right of the edit toggle. Edit-mode only — they're setup controls,
+   so they appear with the rest of the editing surface and leave the resting
+   toolbar to Edit and Print. Quiet by design — outlined, ink on paper, with
+   the native chrome replaced by a small caret, so solid ink-on-paper stays
+   the Print button's alone. */
+#mp-page-setup {
+  display: none;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
 }
-.mp-setup-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--mp-mid);
-  white-space: nowrap;
-}
-
-/* Segmented value pickers (paper size + orientation): one shared component,
-   selected value white-on-ink, identical 30px height. */
-.mp-seg-group {
-  display: flex;
+/* Edit mode reaches the chrome as a host attribute (shell.js sets it
+   alongside the body class the document side reads). */
+:host([data-mp-edit-active]) #mp-page-setup { display: flex; }
+.mp-combo {
+  height: 34px;
+  padding: 0 26px 0 10px;
+  background: transparent;
+  color: var(--mp-ink);
   border: 1px solid var(--mp-rule);
   border-radius: 3px;
-  overflow: hidden;
-  height: 30px;
-}
-.mp-seg-btn {
-  padding: 0 10px;
-  display: inline-flex;
-  align-items: center;
-  background: var(--mp-paper);
-  color: var(--mp-mid);
-  border: none;
-  font-size: 10px;
-  letter-spacing: 0.05em;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
+  /* Custom caret: the native one can't be recolored, and its metrics differ
+     per platform — which would make the toolbar's height jump. */
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
 }
-.mp-seg-btn + .mp-seg-btn { border-left: 1px solid var(--mp-rule); }
-.mp-seg-btn:hover { color: var(--mp-ink); }
-.mp-seg-btn.active {
-  background: var(--mp-ink);
-  color: var(--mp-paper);
+.mp-combo:hover { background-color: var(--mp-bg); }
+.mp-combo:focus-visible { outline: none; border-color: var(--mp-mid); }
+/* The dropdown list itself renders in the OS popup, which ignores most of
+   the above — keep its rows legible rather than uppercase-cramped. */
+.mp-combo option {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--mp-ink);
+}
 }
 
-.mp-nav-btn {
+#mp-toolbar .mp-nav-btn {
   width: 28px; height: 28px;
   border: 1px solid var(--mp-rule);
   background: transparent;
@@ -191,7 +191,7 @@ button, input, textarea { font: inherit; color: inherit; }
   flex-shrink: 0;
   line-height: 1;
 }
-.mp-nav-btn:hover {
+#mp-toolbar .mp-nav-btn:hover {
   background: var(--mp-bg);
   color: var(--mp-ink);
 }
@@ -280,7 +280,10 @@ button, input, textarea { font: inherit; color: inherit; }
   white-space: pre-wrap;
   word-break: break-word;
 }
-.mp-msg-user  { align-self: flex-end; background: var(--mp-ink); color: var(--mp-paper); }
+/* User bubble: outlined, ink on paper (the 1px border eats into the padding
+   so both bubbles keep the same text box). The model's stays a soft fill —
+   neither competes with the Print button's solid ink. */
+.mp-msg-user  { align-self: flex-end; background: var(--mp-paper); color: var(--mp-ink); border: 1px solid var(--mp-dim); padding: 6px 10px; }
 .mp-msg-model { align-self: flex-start; background: var(--mp-surface); color: var(--mp-ink); }
 .mp-msg-failed { opacity: 0.55; }
 
@@ -316,16 +319,16 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .mp-copy-btn {
   padding: 3px 10px;
-  background: var(--mp-ink);
-  color: var(--mp-paper);
-  border: none;
+  background: transparent;
+  color: var(--mp-ink);
+  border: 1px solid var(--mp-rule);
   font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   border-radius: 3px;
   cursor: pointer;
 }
-.mp-copy-btn:hover { opacity: 0.8; }
+.mp-copy-btn:hover { background: var(--mp-bg); }
 .mp-paste-hint { font-size: 10px; color: var(--mp-dim); }
 
 #mp-chat-presence {
@@ -425,16 +428,16 @@ button, input, textarea { font: inherit; color: inherit; }
 .mp-chat-send {
   width: 100%;
   padding: 8px 14px;
-  background: var(--mp-ink);
-  color: var(--mp-paper);
-  border: none;
+  background: transparent;
+  color: var(--mp-ink);
+  border: 1px solid var(--mp-rule);
   font-size: 11px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   border-radius: 3px;
   cursor: pointer;
 }
-.mp-chat-send:hover { opacity: 0.8; }
+.mp-chat-send:hover { background: var(--mp-bg); }
 
 #mp-chat-input:disabled, .mp-chat-send:disabled { opacity: 0.45; cursor: default; }
 

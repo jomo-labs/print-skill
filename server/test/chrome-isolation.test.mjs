@@ -50,7 +50,7 @@ body {
   letter-spacing: 3px !important;
   line-height: 4 !important;
 }
-button, input, textarea, select, code, pre, i, svg, span, div, aside, form, p {
+button, input, textarea, select, option, code, pre, i, svg, span, div, aside, form, p {
   background: #ff0000 !important;
   color: #00ff00 !important;
   font-size: 40px !important;
@@ -62,9 +62,10 @@ button, input, textarea, select, code, pre, i, svg, span, div, aside, form, p {
   opacity: 0.3 !important;
 }
 /* Aimed at the chrome by name. */
-#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, #mp-panel-setup,
+#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, #mp-page-setup,
 #mp-btn-edit, #mp-btn-print, #mp-chat-input, #mp-chat-log, #mp-chat-presence,
-.mp-seg-btn, .mp-chat-send, .mp-msg, .mp-copy-row, .mp-starter, [data-mp-chrome] {
+#mp-paper-select, #mp-orient-select, .mp-combo, .mp-chat-send, .mp-msg,
+.mp-copy-row, .mp-starter, [data-mp-chrome] {
   display: none !important;
   visibility: hidden !important;
   position: static !important;
@@ -86,8 +87,8 @@ body.edit-active { cursor: crosshair !important; }
 // Chrome elements and the properties that would move if page CSS got through.
 const PROBES = [
   "#mp-toolbar", "#mp-btn-edit", "#mp-btn-edit-label", "#mp-btn-print", "#mp-toolbar .mp-sep",
-  "#mp-overlay", "#mp-chat-panel", "#mp-panel-setup", ".mp-setup-label", ".mp-seg-group",
-  ".mp-seg-btn", ".mp-seg-btn.active", "#mp-chat-log", "#mp-chat-presence", "#mp-chat-form",
+  "#mp-page-setup", "#mp-paper-select", "#mp-orient-select", ".mp-combo",
+  "#mp-overlay", "#mp-chat-panel", "#mp-chat-log", "#mp-chat-presence", "#mp-chat-form",
   "#mp-chat-input", ".mp-chat-send", ".mp-msg-model", ".mp-starter", ".mp-copy-row",
   ".mp-copy-row code", ".mp-copy-btn", "#mp-chat-attach", ".mp-attach-chip",
   ".mp-attach-label", ".mp-attach-clear",
