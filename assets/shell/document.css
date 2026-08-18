@@ -53,19 +53,25 @@ body {
   overflow-x: hidden;
 }
 
-/* The sheet. Width and min-height are the exact paper dimensions (statics
-   below are US Letter; applySize rewrites them per selected paper), and the
+/* The sheet. Width and HEIGHT are the exact paper dimensions (statics below
+   are US Letter; applySize rewrites them per selected paper), and the
    padding is the page margin — print reuses this box 1:1 inside a zero-margin
-   page box, so the boundary you see on screen is the paper edge you get. */
+   page box, so the boundary you see on screen is the paper edge you get.
+   The dimension is IMMUTABLE: paper is a fixed physical size, so content
+   must be made to fit — overflow spills visibly past the sheet edge (an
+   error state to fix in the content), it never stretches the page. */
 .page {
   position: relative;
   width: 816px;
-  min-height: 1056px;
+  height: 1056px;
   background: var(--color-paper);
   padding: 64px 72px 72px;
   box-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
   flex-shrink: 0;
 }
+/* Two-sheet assemblies: #page is a transparent container around nested
+   sheets, not a sheet itself — it grows around them. */
+#page:has(> .page) { height: auto; }
 
 /* Multi-variant mode: hide all variants, show only .active */
 .variant-page { display: none; }
@@ -76,16 +82,16 @@ body {
    same dimensions as inline styles at runtime; these cover the script-less
    case via the assembly-set body attribute. (Assembly also rewrites the
    static @page size in #dynamic-page-css to match.) */
-body[data-mp-paper="a4"] .page        { width: 793px;  min-height: 1122px; }
-body[data-mp-paper="legal"] .page     { width: 816px;  min-height: 1344px; }
-body[data-mp-paper="half"] .page      { width: 528px;  min-height: 816px;  }
+body[data-mp-paper="a4"] .page        { width: 793px;  height: 1122px; }
+body[data-mp-paper="legal"] .page     { width: 816px;  height: 1344px; }
+body[data-mp-paper="half"] .page      { width: 528px;  height: 816px;  }
 /* Orientation is a separate axis: landscape swaps each size's dimensions.
    (data-mp-paper="landscape" is the legacy letter-landscape alias.) */
-body[data-mp-paper="landscape"] .page { width: 1056px; min-height: 816px;  }
-body[data-mp-orientation="landscape"] .page                        { width: 1056px; min-height: 816px; }
-body[data-mp-paper="a4"][data-mp-orientation="landscape"] .page    { width: 1122px; min-height: 793px; }
-body[data-mp-paper="legal"][data-mp-orientation="landscape"] .page { width: 1344px; min-height: 816px; }
-body[data-mp-paper="half"][data-mp-orientation="landscape"] .page  { width: 816px;  min-height: 528px; }
+body[data-mp-paper="landscape"] .page { width: 1056px; height: 816px;  }
+body[data-mp-orientation="landscape"] .page                        { width: 1056px; height: 816px; }
+body[data-mp-paper="a4"][data-mp-orientation="landscape"] .page    { width: 1122px; height: 793px; }
+body[data-mp-paper="legal"][data-mp-orientation="landscape"] .page { width: 1344px; height: 816px; }
+body[data-mp-paper="half"][data-mp-orientation="landscape"] .page  { width: 816px;  height: 528px; }
 
 /* ── Element defaults (adapt per content type) ── */
 h1 { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; line-height: 1.1; margin-bottom: 0.2em; }
@@ -178,7 +184,7 @@ footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-r
 @media print {
   body { padding: 0 !important; background: white; }
   .page-surround { background: white; padding: 0 !important; margin: 0 !important; display: block; min-height: 0 !important; }
-  /* WYSIWYG: print reuses the on-screen sheet 1:1 — width, min-height,
+  /* WYSIWYG: print reuses the on-screen sheet 1:1 — width, fixed height,
      padding, and themed border all stay, inside a zero-margin @page box the
      same size as the sheet. No zoom, no re-layout: only the screen-fit
      transform and the drop shadow are stripped. */
@@ -208,6 +214,7 @@ footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-r
     break-inside: auto !important;
     border: none !important;
     min-height: 0 !important;
+    height: auto !important;
   }
   /* The container's own footer would spill past the last sheet's boundary —
      nested sheets carry their own footers (or none). */

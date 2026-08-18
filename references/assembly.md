@@ -113,10 +113,10 @@ below hides it on screen and the shell's print rules hide it in print.)
 #page > .page {
   width: 100%;
   /* Sheet height fallback only — the shell's applySize() sets the exact
-     min-height for the selected paper as an inline style on every nested
+     fixed height for the selected paper as an inline style on every nested
      sheet, in both screen and print (WYSIWYG: each nested sheet IS one full
-     printed page). */
-  min-height: 1056px;
+     printed page; the dimension is immutable, content must fit it). */
+  height: 1056px;
   margin: 0 0 40px;
   padding: 52px 60px 48px;
   background: var(--color-paper) !important;

@@ -68,19 +68,32 @@ function applySize(key, orientation) {
   document.querySelectorAll('.mp-orient-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.orient === currentOrientation));
   // WYSIWYG contract: the .page element IS the sheet, on screen and in print
-  // alike — same width, same min-height, no print-time zoom, no extra @page
-  // margin. Its padding is the page margin. min-height (not height) so a
-  // genuine overflow stays visible past the boundary instead of being
-  // silently scaled or clipped — overflow is a content-length bug to fix at
-  // generation time, and it spills onto a second printed sheet exactly as
-  // the on-screen guides show.
+  // alike — same width, same HEIGHT, no print-time zoom, no extra @page
+  // margin. Its padding is the page margin. The dimension is IMMUTABLE —
+  // paper is a fixed physical size, so content must be made to fit it, never
+  // the reverse: overflow spills visibly past the sheet's bottom edge (an
+  // error state to fix at generation time, marked by the break guides below)
+  // instead of silently stretching the page.
+  const nested = document.querySelector('#page > .page');
   document.querySelectorAll('.variant-page, #page').forEach(el => {
     el.style.width = p.w + 'px';
-    el.style.minHeight = p.h + 'px';
+    if (nested && el.id === 'page') {
+      // Two-sheet assemblies: #page is a transparent container around the
+      // nested sheets, not a sheet itself — it must grow around them.
+      el.style.height = 'auto';
+    } else {
+      el.style.height = p.h + 'px';
+    }
+    // '0', not '' — older generated pages carry min-height sheet rules in
+    // their frozen inline stylesheet, and CSS min-height would beat the
+    // fixed inline height; an inline 0 neutralizes it everywhere.
+    el.style.minHeight = '0';
   });
-  // Nested multi-page assemblies (#page is then a transparent container):
-  // each nested sheet is one full page too.
-  document.querySelectorAll('#page > .page').forEach(el => { el.style.minHeight = p.h + 'px'; });
+  // Nested multi-page assemblies: each nested sheet is one full fixed page.
+  document.querySelectorAll('#page > .page').forEach(el => {
+    el.style.height = p.h + 'px';
+    el.style.minHeight = '0';
+  });
   // Page-break guides only on the active page, and only when its content
   // actually overflows one sheet. Skipped for nested multi-page assemblies —
   // their sheets are discrete .page elements, there is no fragmentation to
@@ -92,13 +105,14 @@ function applySize(key, orientation) {
   // the guides mark the latest possible break.
   document.querySelectorAll('.page-break-guide').forEach(g => g.remove());
   const activePg = getActivePage();
-  const nested = document.querySelector('#page > .page');
-  if (!nested && activePg.offsetHeight > p.h) {
+  // Fixed sheet height means overflow no longer grows the element —
+  // scrollHeight is where the content actually ends.
+  if (!nested && activePg.scrollHeight > p.h + 1) {
     const cs = getComputedStyle(activePg);
     const decoTop = parseFloat(cs.paddingTop) + parseFloat(cs.borderTopWidth);
     const decoBottom = parseFloat(cs.paddingBottom) + parseFloat(cs.borderBottomWidth);
     const step = Math.max(p.h - decoTop - decoBottom, 1);
-    for (let y = p.h - decoBottom; y < activePg.offsetHeight; y += step) {
+    for (let y = p.h - decoBottom; y < activePg.scrollHeight; y += step) {
       const guide = document.createElement('div');
       guide.className = 'page-break-guide';
       guide.style.cssText = `position:absolute;left:0;right:0;top:${y}px;height:2px;` +
