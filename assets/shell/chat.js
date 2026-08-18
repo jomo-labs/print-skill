@@ -207,29 +207,28 @@
     // set off from the conversation below. Size and orientation are
     // independent axes — any combination applies.
     const setup = el('div', null); setup.id = 'mp-panel-setup';
+    // Both controls are the same segmented component: the selected value
+    // renders white-on-ink in each.
     const sizeRow = el('div', 'mp-setup-row');
-    const sizeLabel = el('label', 'mp-setup-label', 'Paper size');
-    sizeLabel.htmlFor = 'mp-paper-select';
-    sizeRow.appendChild(sizeLabel);
-    const select = document.createElement('select');
-    select.id = 'mp-paper-select';
+    sizeRow.appendChild(el('span', 'mp-setup-label', 'Paper size'));
+    const sizeGroup = el('div', 'mp-seg-group mp-paper-group');
     for (const [value, label] of [
-      ['letter', 'US Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half Letter'],
+      ['letter', 'Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half'],
     ]) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      select.appendChild(opt);
+      const b = el('button', 'mp-seg-btn mp-paper-btn', label);
+      b.type = 'button';
+      b.dataset.paper = value;
+      if (value === currentPaper) b.classList.add('active');
+      b.addEventListener('click', () => applySize(value));
+      sizeGroup.appendChild(b);
     }
-    select.value = currentPaper; // shell.js state; applySize keeps it synced
-    select.addEventListener('change', () => applySize(select.value));
-    sizeRow.appendChild(select);
+    sizeRow.appendChild(sizeGroup);
     setup.appendChild(sizeRow);
     const orientRow = el('div', 'mp-setup-row');
     orientRow.appendChild(el('span', 'mp-setup-label', 'Orientation'));
-    const group = el('div', 'mp-orient-group');
+    const group = el('div', 'mp-seg-group');
     for (const o of ['portrait', 'landscape']) {
-      const b = el('button', 'mp-orient-btn', o === 'portrait' ? 'Portrait' : 'Landscape');
+      const b = el('button', 'mp-seg-btn mp-orient-btn', o === 'portrait' ? 'Portrait' : 'Landscape');
       b.type = 'button';
       b.dataset.orient = o;
       if (o === currentOrientation) b.classList.add('active');
@@ -318,7 +317,9 @@
   // to go live, with the command in its own copyable row. Removed the moment
   // presence arrives; re-added if the connection lapses.
   function buildStarter(state) {
-    const card = el('div', 'mp-starter');
+    // A regular model chat bubble — the conversation starts with the model
+    // telling you how to connect.
+    const card = el('div', 'mp-msg mp-msg-model mp-starter');
     if (state === 'file') {
       card.appendChild(el('p', null,
         'Live editing needs the local server — open this page through it to chat with your model.'));
@@ -358,13 +359,31 @@
   function setListening(v) {
     if (v === modelListening) return;
     modelListening = v;
+    if (v) addBubble('model', 'Connected!');
     refreshMode();
   }
 
-  let statusState = null;
+  // The model's working state renders in the conversation itself (animated
+  // dots + label, kept last); the presence line below stays about the
+  // connection. Re-posted `status working "<note>"` updates the label.
+  let workingEl = null;
   function setStatus(state, text) {
-    statusState = state === 'working' ? (text || 'Working…') : null;
-    renderPresence();
+    if (state === 'working') {
+      const label = text || 'Working…';
+      if (workingEl?.isConnected) {
+        workingEl.querySelector('.mp-working-label').textContent = label;
+      } else {
+        workingEl = el('div', 'mp-msg mp-msg-model mp-working');
+        const dots = el('span', 'mp-dots');
+        for (let i = 0; i < 3; i++) dots.appendChild(el('i'));
+        workingEl.appendChild(dots);
+        workingEl.appendChild(el('span', 'mp-working-label', label));
+        scrolled(() => log.appendChild(workingEl));
+      }
+    } else {
+      workingEl?.remove();
+      workingEl = null;
+    }
   }
 
   function renderPresence() {
@@ -375,16 +394,8 @@
       presenceEl.className = '';
       return;
     }
-    if (statusState) {
-      // Model is working on something from this panel: animated "…" dots.
-      presenceEl.textContent = '';
-      presenceEl.className = 'mp-presence-working';
-      const dots = el('span', 'mp-dots');
-      for (let i = 0; i < 3; i++) dots.appendChild(el('i'));
-      presenceEl.appendChild(dots);
-      presenceEl.appendChild(el('span', null, statusState));
-    } else if (modelListening) {
-      presenceEl.textContent = 'Model is listening';
+    if (modelListening) {
+      presenceEl.textContent = 'Model is connected';
       presenceEl.className = 'mp-presence-live';
     } else {
       presenceEl.textContent = 'Messages queue until your model connects';
@@ -402,7 +413,10 @@
   }
 
   function addBubble(role, text) {
-    return scrolled(() => log.appendChild(el('div', `mp-msg ${role === 'user' ? 'mp-msg-user' : 'mp-msg-model'}`, text)));
+    const node = scrolled(() => log.appendChild(el('div', `mp-msg ${role === 'user' ? 'mp-msg-user' : 'mp-msg-model'}`, text)));
+    // The working indicator reads as "typing" — keep it below new messages.
+    if (workingEl?.isConnected) log.appendChild(workingEl);
+    return node;
   }
 
   function addDivider(text) {

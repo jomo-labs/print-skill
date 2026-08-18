@@ -43,7 +43,8 @@ function getActivePage() {
 
 // Current paper/orientation are state, not control values: the pickers live
 // in the (lazily built) edit panel, so they may not exist when size is
-// applied or read — applySize keeps them in sync whenever they do.
+// applied or read — applySize keeps them in sync whenever they do. (The
+// #mp-paper-select sync survives only for legacy pages' baked select.)
 let currentPaper = 'letter';
 let currentOrientation = 'portrait';
 
@@ -63,8 +64,11 @@ function applySize(key, orientation) {
   currentPaper = PAPERS[key] ? key : 'letter';
   if (orientation === 'portrait' || orientation === 'landscape') currentOrientation = orientation;
   const p = paperDims();
-  const sel = document.getElementById('mp-paper-select');
+  // Sync the panel's segmented controls (when built): active = current value.
+  const sel = document.getElementById('mp-paper-select'); // legacy pages only
   if (sel && sel.value !== currentPaper) sel.value = currentPaper;
+  document.querySelectorAll('.mp-paper-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.paper === currentPaper));
   document.querySelectorAll('.mp-orient-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.orient === currentOrientation));
   // Persist the choice on the body dataset: the Print pipeline reloads the
@@ -213,7 +217,7 @@ function enableEditMode() {
   editMode = true;
   document.getElementById('mp-btn-edit').classList.add('active');
   const label = document.getElementById('mp-btn-edit-label');
-  if (label) label.textContent = 'Done';
+  if (label) label.textContent = 'Stop Editing';
   document.body.classList.add('edit-active');
   // Editing and the chat panel are one combined mode — chat.js (when
   // present) opens the panel and auto-enables live through this hook. The
@@ -502,13 +506,6 @@ function injectChrome() {
     '<svg class="mp-icon-x" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
-
-  // Quiet mode indicator on the bar itself — the button flips to "Done"
-  // while this says what's happening.
-  const note = document.createElement('span');
-  note.id = 'mp-editing-note';
-  note.textContent = 'Editing…';
-  toolbar.appendChild(note);
   toolbar.appendChild(sep());
 
   const print = document.createElement('button');

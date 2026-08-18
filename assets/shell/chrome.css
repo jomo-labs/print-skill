@@ -35,6 +35,14 @@ body { padding-top: 56px; /* toolbar height */ }
   white-space: nowrap;
 }
 #mp-toolbar button:hover { opacity: 0.8; }
+
+/* The two primary toolbar buttons share one exact height — the outlined
+   EDIT would otherwise run 2px taller than the borderless Print button. */
+#mp-btn-edit, #mp-btn-print {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+}
 #mp-toolbar button:disabled { opacity: 0.6; cursor: default; pointer-events: none; }
 
 /* Combined edit+chat toggle: pencil when idle, X + "Editing" while active
@@ -54,17 +62,6 @@ body { padding-top: 56px; /* toolbar height */ }
 #mp-btn-edit .mp-icon-x { display: none; }
 #mp-btn-edit.active .mp-icon-pencil { display: none; }
 #mp-btn-edit.active .mp-icon-x { display: inline; }
-
-/* Quiet mode indicator on the bar while editing (the button says "Done"). */
-#mp-editing-note {
-  display: none;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-mid);
-  white-space: nowrap;
-}
-body.edit-active #mp-editing-note { display: inline; }
 
 #mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--color-rule-light); flex-shrink: 0; }
 
@@ -94,14 +91,19 @@ body.edit-active #mp-editing-note { display: inline; }
   white-space: nowrap;
 }
 
-.mp-orient-group {
+/* Segmented value pickers (paper size + orientation): one shared component,
+   selected value white-on-ink, identical 30px height. */
+.mp-seg-group {
   display: flex;
   border: 1px solid var(--color-rule-light);
   border-radius: 3px;
   overflow: hidden;
+  height: 30px;
 }
-.mp-orient-btn {
-  padding: 6px 12px;
+.mp-seg-btn {
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
   background: var(--color-paper);
   color: var(--color-mid);
   border: none;
@@ -111,27 +113,12 @@ body.edit-active #mp-editing-note { display: inline; }
   text-transform: uppercase;
   cursor: pointer;
 }
-.mp-orient-btn + .mp-orient-btn { border-left: 1px solid var(--color-rule-light); }
-.mp-orient-btn:hover { color: var(--color-ink); }
-.mp-orient-btn.active {
+.mp-seg-btn + .mp-seg-btn { border-left: 1px solid var(--color-rule-light); }
+.mp-seg-btn:hover { color: var(--color-ink); }
+.mp-seg-btn.active {
   background: var(--color-ink);
   color: var(--color-paper);
 }
-#mp-paper-select {
-  font-family: var(--font-label);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  padding: 6px 8px;
-  border: 1px solid var(--color-rule-light);
-  background: var(--color-paper);
-  color: var(--color-mid);
-  border-radius: 3px;
-  cursor: pointer;
-  height: 30px;
-  flex: 1;
-  max-width: 200px;
-}
-#mp-paper-select:hover { color: var(--color-ink); }
 
 .mp-nav-btn {
   width: 28px; height: 28px;
@@ -312,10 +299,18 @@ body.mp-chat-open .page-surround {
   vertical-align: 1px;
 }
 #mp-chat-presence:empty::before { content: none; }
-.mp-presence-live { color: var(--color-accent); }
-.mp-presence-queued { color: var(--color-dim); }
-.mp-presence-working { color: var(--color-mid); }
-.mp-presence-working::before { content: none; } /* the animated dots replace the static dot */
+/* Status green — connected is a state, not a theme accent. ID-qualified so
+   the class color actually beats #mp-chat-presence's base color. */
+#mp-chat-presence.mp-presence-live { color: oklch(52% 0.14 150); }
+#mp-chat-presence.mp-presence-queued { color: var(--color-dim); }
+
+/* Model-working indicator: a chat entry (not the status line) — animated
+   dots plus a label, always the last thing in the conversation. */
+.mp-working {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 
 /* Subtle "model is working" indicator: three dots pulsing in sequence. */
 .mp-dots {
@@ -410,17 +405,13 @@ body.mp-chat-open .page-surround {
   }
 }
 
-/* ── Starter card: first conversation entry until a model connects ── */
+/* ── Starter: the first conversation entry until a model connects — a
+   regular model bubble stacking its text over the copy row. ── */
 .mp-starter {
-  background: var(--color-accent-subtle);
-  border: 1px solid var(--color-rule-light);
-  border-radius: 8px;
-  padding: 11px 12px;
   display: flex;
   flex-direction: column;
   gap: 9px;
-  line-height: 1.5;
-  color: var(--color-ink);
+  max-width: 95%;
 }
 /* The command and its Copy button on one inset row, monospace. */
 .mp-copy-row {
