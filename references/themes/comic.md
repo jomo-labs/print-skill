@@ -3,9 +3,7 @@
 **Trigger phrases:** "Dog Man", "comic book", "comic strip", "Captain
 Underpants", "kids comic", or similar.
 
-Platform invariants (sheet geometry, no animation, grayscale imagery,
-empty/overflow behavior, contrast floors, tabular figures) are in
-`design-rules.md` and are not restated here — only what Comic changes is below.
+Platform invariants are in `design-rules.md`; only what Comic changes is below.
 
 ## 1. Meta & Philosophy
 

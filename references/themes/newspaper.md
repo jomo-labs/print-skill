@@ -1,18 +1,11 @@
 # Theme: Newspaper (default)
 
-The default theme, and the theme every other theme is judged against. If a user
-names no style, generate in this theme.
-
-Newspaper is also the **base layer itself**: its token values are the ones
-declared in `assets/shell/document.css`, and the element defaults there are its
-components. So a Newspaper page needs no `custom_css` at all — the values below
-are documentation of what a page already gets, and the reference every other
-theme's overrides are measured against. Keep this file and that stylesheet in
-step: if one changes, the other is wrong.
-
-The universal print rules — sheet geometry, no animation, grayscale imagery,
-empty/overflow behavior, contrast floors, tabular figures — are in
-`design-rules.md`'s "Platform invariants" section and are not restated here.
+The default theme, used whenever no style is named — and the **base layer
+itself**: these values are the ones declared in `assets/shell/document.css`, so
+a Newspaper page needs no `custom_css` at all. This file documents what every
+page already gets, and is the reference other themes' overrides are measured
+against; if it and that stylesheet disagree, one of them is wrong. Platform
+invariants live in `design-rules.md` and are not restated here.
 
 ## 1. Meta & Philosophy
 
@@ -128,6 +121,7 @@ tighter-set (0.08em) heading inside running content. Don't collapse them.
 | `--border-hair` | 1px — table rules, `hr`, footer rule |
 | `--page-border` | `none` |
 | `--page-shadow` | `0 6px 48px oklch(0% 0 0 / 0.16)` (screen only; print strips it) |
+| `--image-filter` | `grayscale(100%)` |
 
 - **Page chrome:** no border, soft drop shadow. Newspaper is the only shipped
   theme whose sheet carries no frame onto paper — the restraint is the point.
@@ -136,8 +130,10 @@ tighter-set (0.08em) heading inside running content. Don't collapse them.
   `.chapter-label`, `.halftone`) exist in the base layer for any theme to use,
   and Newspaper applies none of them by default. It reads as itself with zero
   motifs.
-- **Marks and imagery:** no icon system. Where a page needs a small mark (a
-  checkbox, a divider), use a styled `<span>` or a hairline rule.
+- **Marks and imagery:** no icon system — a small mark (checkbox, divider) is a
+  styled `<span>` or a hairline rule. Images run grayscale (`--image-filter`):
+  an editorial page is ink on paper, and color halftones dither on a home
+  printer.
 
 ## 6. Components & Patterns
 
@@ -147,38 +143,33 @@ Signature blocks:
   display-font title, optional `.kicker` above it.
 - **Kicker** (`.kicker`) — `--text-2xs`, uppercase, `--tracking-kicker`, in
   `--color-mid`.
-- **Dateline** (`.dateline`) — `--text-2xs` in `--color-accent`, sitting under
-  the masthead. The one place accent carries small text, by convention.
+- **Dateline** (`.dateline`) — `--text-2xs` in `--color-accent`, under the
+  masthead. The one place accent carries small text.
 - **Pull-quote** — `--color-pull-bg` tint via `.tint`, or a
   `--border-mid` accent stripe (`blockquote`'s default: mid-weight left rule,
   italic, `--color-mid`).
-- **Table** — label font at `--text-xs` with tabular figures; header row
-  inverted ink-on-paper at `--text-2xs` uppercase; `--border-hair` row rules;
-  even rows tinted `--color-pull-bg`. This zebra striping is the shipped
-  default, not an opt-in — and both fills are plain defaults, so a theme can
-  replace them with its own `th` / `td` rules.
+- **Table** — label font at `--text-xs`, tabular figures; header row inverted
+  at `--text-2xs` uppercase; `--border-hair` row rules; even rows tinted
+  `--color-pull-bg`. Both fills ship by default and a theme may override them
+  with its own `th` / `td` rules.
 - **Score box** (`.score-box`) — `--border-thin` accent frame, score at
   `--text-3xl` in the display font with tabular figures, team label at
   `--text-xs` in the label font.
-- **Column grids** (`.columns-2`, `.columns-3`) — equal-width grids at 1.5em /
-  1em gaps. Per Principle III, reach for them only when the items really are
-  equal.
-- **Footer** — every sheet carries one: `--space-8` above, `--border-hair` top
-  rule, `--text-2xs` label font in `--color-dim`, two slots spaced apart.
-- **Inverted band** (`.invert`) — ink surface, paper text, for a masthead strip
-  or a header row. Small bands only.
+- **Column grids** (`.columns-2`, `.columns-3`) — equal widths, 1.5em / 1em
+  gaps. Per Principle III, only when the items really are equal.
+- **Footer** — on every sheet: `--space-8` above, `--border-hair` top rule,
+  `--text-2xs` label font in `--color-dim`, two slots.
+- **Inverted band** (`.invert`) — ink surface, paper text; small bands only.
 
-Newspaper follows the baseline's empty and overflow behavior with no
-deviations.
+Empty and overflow behavior: the baseline's, unchanged.
 
 ## 7. Contrast evidence
 
 - `--color-ink` `oklch(11% 0.005 78)` on white measures well above the 4.5:1
   body floor.
 - `--color-accent` `oklch(52% 0.150 78)` on white clears the 3:1 large/bold
-  floor. It is used for small metadata in exactly one place — `.dateline` at
-  `--text-2xs` — which is an accepted exception: a date line is redundant
-  metadata, never the page's information payload.
+  floor. `.dateline` at `--text-2xs` is an accepted exception — redundant
+  metadata, never the page's payload.
 - Body type floor: 13.5px adult, 16px+ for kids' content.
 - Screen-legibility: no concerns — Source Serif 4 and Inter are both designed
   for screen and print at these sizes.

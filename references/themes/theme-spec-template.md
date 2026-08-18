@@ -6,12 +6,9 @@ satisfy before it's usable. A theme spec lives at
 file is the checklist that spec must fill out, not a spec itself.
 
 **A theme spec describes only what its theme changes.** Everything universal to
-print — the sheet and its margins, the no-animation rule, grayscale imagery,
-empty/overflow behavior, contrast floors, tabular figures — lives once in the
-"Platform invariants" section of `design-rules.md`, which every run reads
-anyway. Do not restate any of it per theme. If a section below doesn't apply to
-a given theme, say so in one line with the reason; never pad it with baseline
-boilerplate ("page margin: unchanged", "motion: none").
+print lives once in the "Platform invariants" section of `design-rules.md`;
+never restate it per theme. If a section below doesn't apply, say so in one line
+with the reason — never pad it with boilerplate ("page margin: unchanged").
 
 ## Section-to-token map
 
@@ -26,7 +23,7 @@ translated by hand, and nothing else in the stylesheet needs restating.
 | 2. Typography | `--font-display` `--font-body` `--font-label`; `--text-2xs` `--text-xs` `--text-body` `--text-md` `--text-lg` `--text-xl` `--text-2xl` `--text-3xl` `--text-4xl`; `--leading-display` `--leading-body` `--leading-label`; `--tracking-display` `--tracking-label` `--tracking-kicker` |
 | 3. Color | `--color-ink` `--color-mid` `--color-dim` `--color-ghost` `--color-rule` `--color-rule-light` `--color-pull-bg`; `--color-accent`; any theme-specific accent tokens it introduces (`--color-blue`, …). `--color-paper` is locked to white and may not be set. |
 | 4. Spacing & density | `--space-1` … `--space-20`; `--page-margin-top` `--page-margin-x` `--page-margin-bottom` |
-| 5. Surface & motifs | `--border-fat` `--border-mid` `--border-thin` `--border-hair`; `--page-border` `--page-shadow`; `--tilt-angle` `--tilt-angle-right` |
+| 5. Surface & motifs | `--border-fat` `--border-mid` `--border-thin` `--border-hair`; `--page-border` `--page-shadow`; `--tilt-angle` `--tilt-angle-right`; `--image-filter` |
 | 1, 6, 7 | No tokens — voice, component structure, and contrast evidence are prose. |
 
 A token the spec doesn't list keeps its default value. State only the ones the
@@ -97,11 +94,11 @@ the default rhythm says so in one line.
   These utilities are theme-neutral and applied by nothing unless a theme
   calls for them — a theme with no motifs states "none" rather than inventing
   one to fill the section.
-- **Marks and imagery direction**, if the theme has one — a substitute for
-  drawn icons (Comic's typographic sound effects), or the kind of mark a
-  checkbox or status indicator should be. The no-fill, stroked-SVG,
-  grayscale-imagery baseline already applies; state only the theme's own
-  direction, or "no icon system".
+- **Marks and imagery** — `--image-filter` (default `grayscale(100%)`; color
+  photos dither badly on home printers, so `none` is a deliberate choice), plus
+  any substitute this theme uses for drawn icons (Comic's typographic sound
+  effects) or the kind of mark a checkbox should be. State "no icon system" if
+  it has none.
 
 ## 6. Components & Patterns
 

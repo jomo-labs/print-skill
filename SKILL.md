@@ -64,16 +64,14 @@ Two independent decisions:
 `references/page-types.md` (first match wins), then read that type's section for
 its functional requirements and default styling.
 
-**Themed?** The request is themed when it asks for a visual identity: "in the
-theme/style of X", "styled like/as X", "themed like/as X", "X-themed", or "in
-a/an X style" — and equally in the bare noun forms "X theme" and "X style"
-("batman theme", "art deco style", "make it Dog Man style"). What matters is
-that a concrete subject sits next to the word: a character, place, era, genre,
-brand, material, or mood. It is NOT themed when the word is preceded only by a
-determiner or a back-reference — "keep the theme", "this theme", "the same
-style", "the default style" — which point at styling already chosen rather than
-naming a new identity. Judge from the request text plus any separate style
-instructions the user gave.
+**Themed?** The request is themed when it names a visual identity: "in the
+theme/style of X", "styled/themed like X", "X-themed", "in an X style", and the
+bare noun forms "X theme" / "X style" ("batman theme", "art deco style"). What
+matters is a concrete subject beside the word — character, place, era, genre,
+brand, material, mood. It is NOT themed when only a determiner or back-reference
+precedes it ("keep the theme", "this theme", "the same style"), which points at
+styling already chosen. Judge from the request plus any separate style
+instructions.
 
 If themed: open `references/themes/README.md`, match the trigger phrases, and
 load the **one** matching spec — or follow its ad-hoc theme checklist when
@@ -171,11 +169,9 @@ every page this project generates.
   the file automatically), then click **Print / Save PDF** for an exact PDF.
   For font or color changes, ask me to regenerate the page with new style
   instructions."
-- If the page was themed from dark source material (a night-time setting, a
-  black-and-neon brand), add one line saying the page reads as ink and frame
-  on white paper — printables are ink-on-white by design, so the theme comes
-  through in type, rules, and motifs rather than a dark background. Say it
-  once, without apologizing for it.
+- If the theme came from dark source material, add one line: the page reads as
+  ink and frame on white paper by design, with the theme in type, rules and
+  motifs rather than a dark background. Once, without apologizing.
 - If `live_edit` was `yes`, add: "Press **Edit** on the page to edit text and
   open the chat panel — send me `/print live` and I'll connect to it, so you
   can request changes right from the page." If not, add: "Press **Edit** on

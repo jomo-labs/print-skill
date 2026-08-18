@@ -72,6 +72,11 @@
   --page-border: none;
   --page-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
 
+  /* Imagery treatment. Grayscale is the default because color photos dither
+     into muddy ink on a home printer — a theme that genuinely wants color
+     images sets this to `none` and owns that trade-off. */
+  --image-filter: grayscale(100%);
+
   /* Motif geometry — consumed by the opt-in utilities near the end of this
      file. A theme that uses no motifs can ignore them. */
   --tilt-angle:       -0.6deg;
@@ -180,10 +185,8 @@ hr { border: none; border-top: var(--border-hair) solid var(--color-rule-light);
 
 blockquote { border-left: var(--border-mid) solid var(--color-accent); padding: 0.5em 0 0.5em 1em; margin: 0.75em 0; color: var(--color-mid); font-style: italic; }
 
-/* Imagery is always grayscale — a platform invariant, not a theme choice:
-   colour photos print as muddy dithered ink, and author CSS may not use
-   filter to undo it (see design-rules.md Part A). */
-img { max-width: 100%; height: auto; filter: grayscale(100%); display: block; }
+/* Imagery treatment comes from --image-filter (grayscale by default). */
+img { max-width: 100%; height: auto; filter: var(--image-filter); display: block; }
 
 footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: var(--border-hair) solid var(--color-rule-light); font-family: var(--font-label); font-size: var(--text-2xs); color: var(--color-dim); display: flex; justify-content: space-between; }
 

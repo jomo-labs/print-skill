@@ -54,25 +54,15 @@ a classroom set.
 
 ### Theming interaction
 
-Every type below is written in two parts:
-
-- ***Functional requirements*** — what the page must contain and do to be that
-  kind of page: the data, the blocks, the physical dimensions a real-world use
-  depends on (index-card proportions, a panel big enough to draw in), the
-  correctness rules. These **always** hold.
-- ***Default styling*** — how it looks when no theme is named: fonts, type
-  steps, rule weights, decoration. This is Newspaper's execution of the type,
-  expressed in tokens.
+Each type below separates ***Functional requirements*** — the data, blocks,
+physical dimensions and correctness rules that make it that kind of page —
+from ***Default styling***, how it looks when no theme is named, written in
+tokens.
 
 When the request is **themed** (see `themes/README.md`), the functional
-requirements still hold and the default styling is **dropped entirely** — the
-theme spec (or ad-hoc theme design) governs everything visual instead. This is
-deliberate: mixing a type's default decoration with a theme dilutes the theme.
-
-Default styling is written in `--text-*`, `--space-*`, `--border-*` and
-`--color-*` tokens rather than raw px, so a theme that retunes the scale
-retunes these types with it, and dropping the default styling never strands a
-literal value behind.
+requirements still hold and the default styling is **dropped entirely**: the
+theme governs everything visual. Mixing a type's default decoration with a
+theme dilutes the theme.
 
 ---
 
@@ -143,11 +133,10 @@ One-week view. **Landscape** (7 columns fill the width better).
   for events.
 - Use the **calendar grid** block; no filled cell backgrounds.
 
-*Default styling:* weekday abbreviation in the label font at `--text-2xs`
-uppercase; date number in the display font at `--text-xl` (drop to `--text-lg`
-for a dense personal planner); event space in the body font at `--text-xs`;
-`--border-hair` cell rules. For a family/fridge version: roomier cells, larger
-numbers.
+*Default styling:* weekday abbreviation `--text-2xs` uppercase label font;
+date number `--text-xl` display (`--text-lg` if dense); event space
+`--text-xs` body; `--border-hair` cell rules. Fridge version: roomier cells,
+bigger numbers.
 
 ### Monthly calendar
 Classic month grid, 7 columns × 5–6 rows. **Landscape** for writing room;
@@ -161,9 +150,9 @@ portrait for a wall look.
   the dates on the wrong weekdays is worse than no calendar.
 - Month/year header, correct day layout, optional holidays/events.
 
-*Default styling:* month/year in the display font at `--text-2xl`; weekday
-header row in the label font at `--text-2xs` uppercase; `--border-hair` cell
-rules; date numbers top-left of each cell in `--color-mid`.
+*Default styling:* month/year at `--text-2xl` display; weekday header row
+`--text-2xs` uppercase label font; `--border-hair` cell rules; date numbers
+top-left in `--color-mid`.
 
 ### Planner page
 A time-blocked daily or weekly planner. **Portrait.**
@@ -329,11 +318,10 @@ Fredoka). The award title or recipient name is the hero element.
 Game scorecards, brackets, point tallies, bingo. Primarily a **score/stat
 table** block. **Landscape** if wide.
 
-*Functional requirements:* pre-fill team/player names if known; leave the score
-cells empty and large enough to write in.
+*Functional requirements:* pre-fill team/player names if known; score cells
+empty and large enough to write in.
 
-*Default styling:* the base `table` defaults — label font, tabular figures,
-inverted header row, `--border-hair` rules.
+*Default styling:* base `table` defaults.
 
 ### Sports box score / game recap
 **Portrait** or landscape depending on how many games.
@@ -355,9 +343,8 @@ the label font small caps at `--text-2xs`.
 table (Time | Temp | Condition | Precip%), and a compact 7-day grid (Day | High
 | Low | Condition | Rain%). Text glyphs ☀ ⛅ 🌧 ❄ print as black shapes.
 
-*Default styling:* current temperature as the hero at `--text-3xl` (or
-`--text-4xl` for a wall version); tables in the base `table` defaults; labels
-in the label font at `--text-2xs`.
+*Default styling:* temperature as the hero at `--text-3xl`; base `table`
+defaults; labels at `--text-2xs`.
 
 ### Financial / market summary
 **Portrait.** Data-dense.
@@ -368,8 +355,7 @@ then a stock table (Ticker | Company | Price | Change | % Change | 52W High |
 52W Low) with right-aligned amounts, and an "As of market close, DATE" stamp.
 
 *Default styling:* label font throughout, display font for the header only;
-positive values bold in ink, negative in `var(--color-dim)`; tabular figures
-from the base layer keep the columns aligned.
+positive values bold in ink, negative in `var(--color-dim)`.
 
 ### News digest
 **Portrait.** 1–2 pages of content, fetched fresh.
@@ -443,8 +429,8 @@ row.
 badges, notable births, a "did you know". Use your own knowledge or fetch; keep
 each entry to 1–2 sentences.
 
-*Default styling:* year badges via `.badge` or a `.kicker` label; entries
-separated by `--border-hair` rules.
+*Default styling:* year badges via `.badge` or `.kicker`; `--border-hair`
+rules between entries.
 
 ### Astronomy page
 **Portrait.**
@@ -465,11 +451,10 @@ Title + full-area **image block** of **pure black line art on white**.
 - Clean black outlines, no shading, no fill, white background. Bold simple
   lines for young kids; finer detail for adults. Verify it's line art, not a
   shaded illustration.
-- Image resolution: at 300 DPI the portrait content box (~672×920px on screen,
-  i.e. 7.0 × 9.6 in) wants roughly **2100×2875px**. Larger is fine — the image
-  scales down; smaller prints soft.
-- If the user provided an image file, embed it as a data URI (it renders
-  grayscale — see the platform invariants in `design-rules.md`).
+- Image resolution: ~**2100×2875px** (300 DPI across the 7.0 × 9.6 in portrait
+  content box). Larger is fine; smaller prints soft.
+- A user-provided image file is embedded as a data URI (grayscale by default,
+  per the theme's `--image-filter`).
 - For a prompt-driven page with no image, use **Drawing prompt page** below.
 
 *Default styling:* title in the display font at `--text-xl`, centered above the
@@ -514,8 +499,8 @@ clue columns below or beside. Lay out user-supplied grids and clues; a
 self-generated crossword is very hard to get right — prefer asking for the
 content.
 
-*Default styling:* cell numbers at `--text-2xs`; block cells `.invert`; clue
-columns in the label font at `--text-xs`.
+*Default styling:* cell numbers `--text-2xs`; block cells `.invert`; clue
+columns `--text-xs` label font.
 
 ### Sudoku *(presentation-only)*
 9×9 grid. **Portrait.**
@@ -573,8 +558,7 @@ Always: a clear title/masthead at top; body at `--text-body` or larger with
 URL.
 
 *Default styling:* the base layer as shipped — display-font title, `.kicker`
-for any label above it, `--border-hair` rules between zones, and the base
-`table` defaults for tabular content. This type adds no decoration of its own.
+labels, `--border-hair` rules, base `table` defaults. No decoration of its own.
 
 ---
 

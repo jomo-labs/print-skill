@@ -26,20 +26,15 @@ There is a mechanical border the rollers grip:
 - often more at the **bottom** (up to ~0.5 in / 12 mm)
 
 Consequences:
-- **Keep all essential content inside a 0.5 in margin.** The shell's default
-  page margin already does this for you: `--page-margin-*` gives 0.67 in at
-  the top and 0.75 in at the sides and bottom, comfortably clear of the
-  mechanical border.
+- **Keep all essential content inside a 0.5 in margin.** The default
+  `--page-margin-*` (0.67 in top, 0.75 in sides and bottom) already clears it.
 - **Do not design for full-bleed on home printers.** A background that runs to
   the edge will show a thin white frame. If the user wants edge-to-edge, that
   requires professional printing.
-- **A frame on the sheet itself sits at the paper edge.** `--page-border` (the
-  themed border on `.page`) is drawn at the very edge of the sheet, which is
-  exactly where a home printer cannot print — it renders correctly on screen
-  and in the generated PDF, and may be clipped or dropped on a desktop
-  printer. When a theme's frame has to survive a home print run, draw it as a
-  bordered wrapper `<div>` at the top of `content_html` instead, inside the
-  page margin, and leave `--page-border` for the screen and PDF look.
+- **A frame on the sheet sits at the paper edge.** `--page-border` is drawn at
+  the sheet's outer edge — exact on screen and in the PDF, but clippable by a
+  desktop printer. A frame that must survive a home print run goes inside the
+  margin as a bordered wrapper `<div>` in `content_html` instead.
 
 ## Resolution and DPI
 
