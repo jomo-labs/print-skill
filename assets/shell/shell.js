@@ -17,6 +17,10 @@ function setLiveEditSupported(v) { window.LIVE_EDIT_SUPPORTED = !!v; }
 
 // ── Paper size ──────────────────────────────────────────────────────────────
 
+// Base paper sizes, portrait dimensions. Orientation is a SEPARATE axis —
+// any size combines with portrait/landscape (dimensions swap; the @page css
+// gains the landscape keyword, or swaps explicit lengths where a named
+// page-size keyword doesn't exist).
 const PAPERS = {
   letter: { w: 816,  h: 1056, css: 'letter' },
   // A4 is 793.7 x 1122.5 CSS px — floored, not rounded. The sheet element is
@@ -27,27 +31,42 @@ const PAPERS = {
   a4:     { w: 793,  h: 1122, css: 'A4' },
   legal:  { w: 816,  h: 1344, css: 'legal' },
   // 'half-letter' is not a CSS page-size keyword (Chromium drops it and falls
-  // back to the printer default) — explicit dimensions are required here.
-  half:   { w: 528,  h: 816,  css: '5.5in 8.5in' },
-  // Letter rotated — wide formats (certificates, banners). A page declares it
-  // at assembly time via an injected applySize('landscape') call.
-  landscape: { w: 1056, h: 816, css: 'letter landscape' },
+  // back to the printer default) — explicit dimensions are required here, and
+  // per spec the landscape keyword doesn't combine with lengths, so the
+  // landscape variant swaps them instead.
+  half:   { w: 528,  h: 816,  css: '5.5in 8.5in', cssLandscape: '8.5in 5.5in' },
 };
 
 function getActivePage() {
   return document.querySelector('.variant-page.active') || document.getElementById('page');
 }
 
-// The current paper is state, not the select's value: the paper picker lives
-// in the (lazily built) edit panel now, so it may not exist when size is
-// applied or read — applySize keeps it in sync whenever it does.
+// Current paper/orientation are state, not control values: the pickers live
+// in the (lazily built) edit panel, so they may not exist when size is
+// applied or read — applySize keeps them in sync whenever they do.
 let currentPaper = 'letter';
+let currentOrientation = 'portrait';
 
-function applySize(key) {
-  const p = PAPERS[key] || PAPERS.letter;
+// Effective sheet dimensions + @page size for the current paper×orientation.
+function paperDims() {
+  const p = PAPERS[currentPaper] || PAPERS.letter;
+  if (currentOrientation === 'landscape') {
+    return { w: p.h, h: p.w, css: p.cssLandscape || `${p.css} landscape` };
+  }
+  return { w: p.w, h: p.h, css: p.css };
+}
+
+function applySize(key, orientation) {
+  // Legacy alias: 'landscape' was once a paper key meaning letter-landscape
+  // (older pages carry applySize('landscape') lines or data-mp-paper values).
+  if (key === 'landscape') { key = 'letter'; orientation = 'landscape'; }
   currentPaper = PAPERS[key] ? key : 'letter';
+  if (orientation === 'portrait' || orientation === 'landscape') currentOrientation = orientation;
+  const p = paperDims();
   const sel = document.getElementById('mp-paper-select');
   if (sel && sel.value !== currentPaper) sel.value = currentPaper;
+  document.querySelectorAll('.mp-orient-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.orient === currentOrientation));
   // WYSIWYG contract: the .page element IS the sheet, on screen and in print
   // alike — same width, same min-height, no print-time zoom, no extra @page
   // margin. Its padding is the page margin. min-height (not height) so a
@@ -94,8 +113,12 @@ function applySize(key) {
   // safe-margin control can layer on top of this later by reserving space
   // INSIDE the sheet, never by changing the page box.)
   document.getElementById('dynamic-page-css').textContent = `@page { size: ${p.css}; margin: 0; }`;
-  lsSet('mpPaper', key);
+  lsSet('mpPaper', currentPaper);
   scaleToFit(p.w);
+}
+
+function setOrientation(o) {
+  applySize(currentPaper, o === 'landscape' ? 'landscape' : 'portrait');
 }
 
 function scaleToFit(w) {
@@ -529,11 +552,14 @@ function injectChrome() {
   // half-blank sheets. Every standalone page opens at its own configured
   // paper; the toolbar picker still works per visit, and an embedding host
   // can re-apply its own saved choice via applySize after load.
+  // data-mp-paper may carry the legacy 'landscape' alias (applySize resolves
+  // it); data-mp-orientation is the separate-axis form.
   const configured = document.body.dataset.mpPaper;
-  const savedPaper = PAPERS[configured] ? configured : 'letter';
+  const savedPaper = (PAPERS[configured] || configured === 'landscape') ? configured : 'letter';
+  const configuredOrient = document.body.dataset.mpOrientation === 'landscape' ? 'landscape' : undefined;
 
   initVariants();
-  applySize(savedPaper);
+  applySize(savedPaper, configuredOrient);
   initAutoReload();
-  window.addEventListener('resize', () => scaleToFit(PAPERS[currentPaper]?.w || 816));
+  window.addEventListener('resize', () => scaleToFit(paperDims().w));
 })();

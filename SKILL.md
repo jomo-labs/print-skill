@@ -93,7 +93,8 @@ matters (paper size, DPI, margins). Produce these channels:
 | `content_html` | The page content. It is inserted inside `<div class="page">` — no wrapper, no footer, no `<html>`/`<head>`/`<body>`. Wrap each top-level block in `<div data-mp-section="...">` (see design rules). Use `var(--color-*)` / `var(--font-*)` tokens everywhere. |
 | `custom_css` | Optional. `:root` token overrides + content-specific rules. |
 | `font_import` | Optional. Google Fonts URL — required whenever you name any font beyond Playfair Display / Source Serif 4 / Inter. |
-| `paper` | `landscape`, `a4`, `legal`, `half`, or empty (= letter portrait). The ONLY orientation mechanism. |
+| `paper` | Size only: `a4`, `legal`, `half`, or empty (= letter). |
+| `orientation` | `landscape` or empty (= portrait). Independent of `paper` — any size×orientation combination works. The ONLY orientation mechanism. |
 | `live_edit` | `yes` or empty. Decide per `references/harness-support.md`: `yes` only if the user's browser can reach the local server (reachability gate — cloud sandboxes fail this) AND your harness can run the bounded listen loop (capability ladder). Unknown harness: apply the ladder, don't guess from the name. Empty = the page's Chat panel runs in manual copy/paste mode. |
 | `title` | Page title; also becomes the filename. |
 | `answer_key_html` | Worksheets with an answer key only; otherwise empty. Never author the key as a second page inside `content_html`. |
@@ -113,9 +114,10 @@ from `assets/page_template.html` with the step-1 sed (it inlines the document
 stylesheet — the generated file is fully self-contained, no sidecar), then
 make the anchored insertions — nested-sheet CSS (two-sheet only), font
 `<link>`, `custom_css` into `<style id="content-overrides">`, the `<body>`
-data attributes (`data-mp-paper`, `data-mp-live-edit`) when paper/live_edit
-are set, and finally replace `<!-- CONTENT -->` with your content. Use the
-given commands — never retype template or stylesheet.
+data attributes (`data-mp-paper`, `data-mp-orientation`, `data-mp-live-edit`)
+when paper/orientation/live_edit are set, and finally replace
+`<!-- CONTENT -->` with your content. Use the given commands — never retype
+template or stylesheet.
 
 ### Step 6 — Verify
 

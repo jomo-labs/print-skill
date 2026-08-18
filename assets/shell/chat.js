@@ -242,16 +242,18 @@
     panel.appendChild(head);
 
     // Page-setup strip: document-level controls, visually separated from the
-    // conversation scroller below it.
+    // conversation scroller below it. Size and orientation are independent
+    // axes — any combination applies.
     const setup = el('div', null); setup.id = 'mp-panel-setup';
+
+    const sizeRow = el('div', 'mp-setup-row');
     const setupLabel = el('label', 'mp-setup-label', 'Paper size');
     setupLabel.htmlFor = 'mp-paper-select';
-    setup.appendChild(setupLabel);
+    sizeRow.appendChild(setupLabel);
     const select = document.createElement('select');
     select.id = 'mp-paper-select';
     for (const [value, label] of [
-      ['letter', 'US Letter'], ['landscape', 'Letter Landscape'], ['a4', 'A4'],
-      ['legal', 'Legal'], ['half', 'Half Letter'],
+      ['letter', 'US Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half Letter'],
     ]) {
       const opt = document.createElement('option');
       opt.value = value;
@@ -260,7 +262,22 @@
     }
     select.value = currentPaper; // shell.js state; applySize keeps it synced
     select.addEventListener('change', () => applySize(select.value));
-    setup.appendChild(select);
+    sizeRow.appendChild(select);
+    setup.appendChild(sizeRow);
+
+    const orientRow = el('div', 'mp-setup-row');
+    orientRow.appendChild(el('span', 'mp-setup-label', 'Orientation'));
+    const group = el('div', 'mp-orient-group');
+    for (const o of ['portrait', 'landscape']) {
+      const b = el('button', 'mp-orient-btn', o === 'portrait' ? 'Portrait' : 'Landscape');
+      b.type = 'button';
+      b.dataset.orient = o;
+      if (o === currentOrientation) b.classList.add('active');
+      b.addEventListener('click', () => setOrientation(o));
+      group.appendChild(b);
+    }
+    orientRow.appendChild(group);
+    setup.appendChild(orientRow);
     panel.appendChild(setup);
 
     log = el('div', null); log.id = 'mp-chat-log';

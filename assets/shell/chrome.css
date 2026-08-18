@@ -66,13 +66,41 @@ body { padding-top: 56px; /* toolbar height */ }
    set off from the conversation scroller by a muted band and rule. */
 #mp-panel-setup {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 9px 14px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-rule-light);
   flex-shrink: 0;
+}
+.mp-setup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mp-orient-group {
+  display: flex;
+  border: 1px solid var(--color-rule-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.mp-orient-btn {
+  padding: 6px 12px;
+  background: var(--color-paper);
+  color: var(--color-mid);
+  border: none;
+  font-family: var(--font-label);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mp-orient-btn + .mp-orient-btn { border-left: 1px solid var(--color-rule-light); }
+.mp-orient-btn:hover { color: var(--color-ink); }
+.mp-orient-btn.active {
+  background: var(--color-ink);
+  color: var(--color-paper);
 }
 .mp-setup-label {
   font-size: 10px;

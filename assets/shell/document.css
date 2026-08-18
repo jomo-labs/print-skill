@@ -79,7 +79,13 @@ body {
 body[data-mp-paper="a4"] .page        { width: 793px;  min-height: 1122px; }
 body[data-mp-paper="legal"] .page     { width: 816px;  min-height: 1344px; }
 body[data-mp-paper="half"] .page      { width: 528px;  min-height: 816px;  }
+/* Orientation is a separate axis: landscape swaps each size's dimensions.
+   (data-mp-paper="landscape" is the legacy letter-landscape alias.) */
 body[data-mp-paper="landscape"] .page { width: 1056px; min-height: 816px;  }
+body[data-mp-orientation="landscape"] .page                        { width: 1056px; min-height: 816px; }
+body[data-mp-paper="a4"][data-mp-orientation="landscape"] .page    { width: 1122px; min-height: 793px; }
+body[data-mp-paper="legal"][data-mp-orientation="landscape"] .page { width: 1344px; min-height: 816px; }
+body[data-mp-paper="half"][data-mp-orientation="landscape"] .page  { width: 816px;  min-height: 528px; }
 
 /* ── Element defaults (adapt per content type) ── */
 h1 { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; line-height: 1.1; margin-bottom: 0.2em; }
