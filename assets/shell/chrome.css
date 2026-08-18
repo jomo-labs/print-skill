@@ -80,7 +80,10 @@ button, input, textarea, select {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 24px;
+  /* Left inset matches the chat panel's content inset (the 14px on #mp-chat-log
+     and #mp-chat-form), so Print and everything in the panel below it share one
+     left edge down the window. */
+  padding: 0 24px 0 14px;
   z-index: 200;
 }
 
@@ -457,6 +460,8 @@ button, input, textarea, select {
   flex-shrink: 0;
 }
 .mp-attach-clear:hover { color: var(--mp-ink); }
+/* Paper white, deliberately: the faint surface marks the Send button and your
+   sent turns — the field you type into stays the brightest thing in the panel. */
 #mp-chat-input {
   font-size: 12px;
   line-height: 1.5;
@@ -486,11 +491,15 @@ button, input, textarea, select {
 
 /* ── Starter: the first conversation entry until a model connects — a
    regular model bubble stacking its text over the copy row. ── */
+/* Full width of the log, inset only by the log's own padding — a boxed row
+   like the command below reads as part of the panel, not as a bubble tucked
+   against the left edge. */
 .mp-starter {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  max-width: 95%;
+  align-self: stretch;
+  max-width: 100%;
 }
 /* A command and its Copy label on one row — and the row IS the button, so
    the whole box is the press target rather than a small control inside it.
