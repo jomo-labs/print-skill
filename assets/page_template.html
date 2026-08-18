@@ -22,9 +22,11 @@
 <!-- Pure document, fully self-contained. Opened directly, this is a plain
      printable HTML file — its styles are inlined above, no chrome, no
      sidecar files at all. The local server wraps it at serve time: it
-     injects chrome.css + shell.js + chat.js (toolbar, edit mode, chat
+     injects the chrome stylesheets and scripts (toolbar, edit mode, chat
      panel), so chrome updates apply automatically to every
-     already-generated page. The only per-page configuration is
+     already-generated page. That chrome renders inside a shadow root of its
+     own, so this document's styles and the chrome's never reach each other.
+     The only per-page configuration is
      assembly-set data attributes on the body tag: data-mp-paper
      (non-letter paper) and data-mp-live-edit (live chat).
      (This comment deliberately never spells the body tag itself — assembly

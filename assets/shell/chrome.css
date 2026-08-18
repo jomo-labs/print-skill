@@ -1,31 +1,89 @@
 /* chrome.css — the skill's editing chrome: toolbar, edit mode, chat panel.
    Injected by the local server at serve time (with shell.js/chat.js), never
    referenced by the document itself — so chrome updates apply automatically
-   to every already-generated page. */
+   to every already-generated page.
 
-body { padding-top: 56px; /* toolbar height */ }
+   ISOLATION. This stylesheet is applied INSIDE the chrome's shadow root (see
+   injectChrome() in shell.js), never to the document. That makes the chrome
+   unreachable from a generated page's CSS in both directions:
+
+     - selectors — nothing a page writes (`button`, `*`, `#mp-toolbar`, an
+       ad-hoc `!important` rule) crosses the shadow boundary;
+     - inheritance — the host element is `all: initial !important`, so the
+       page's font, color, and text settings stop at the boundary;
+     - tokens — the chrome resolves every value from its own `--mp-*` tokens
+       defined on :host below, never from the document's `--color-*`/`--font-*`
+       design tokens, which a themed page redefines at will.
+
+   Consequence: theme a page in any direction and the chrome stays pixel
+   identical. The only styles the chrome puts INTO the document — space for
+   the toolbar, the gutter beside the chat panel, the selection outline — live
+   in chrome-host.css, deliberately small and deliberately one-directional. */
+
+:host {
+  /* The chrome's own palette and type. These mirror the shell's default
+     look, but they are private copies on purpose: the document's --color-*
+     tokens move with the page's theme, and the chrome must not move with
+     them. Custom properties inherit through the shadow boundary, so defining
+     every --mp-* token here also shadows any --mp-* a page happens to set. */
+  --mp-paper:   white;
+  --mp-bg:      oklch(93% 0.010 78);
+  --mp-ink:     oklch(11% 0.005 78);
+  --mp-mid:     oklch(44% 0.008 78);
+  --mp-dim:     oklch(67% 0.006 78);
+  --mp-rule:    oklch(83% 0.005 78);
+  --mp-surface: oklch(94% 0.009 78);
+  --mp-live:    oklch(52% 0.14 150);          /* connected — a state, not a theme accent */
+  --mp-select:  rgba(59, 130, 246, 0.7);      /* hover/selection blue                    */
+
+  /* Generic families only. A page can @font-face any real family name out
+     from under the chrome (font faces are document-global — the shadow
+     boundary does not stop them); generic families cannot be redefined. */
+  --mp-font-ui:   ui-sans-serif, system-ui, sans-serif;
+  --mp-font-mono: ui-monospace, monospace;
+}
+
+/* The shadow tree gets no UA-reset from the page's own `* { }` rule, and
+   inherits nothing through the `all: initial` host — so the chrome states
+   its own reset and names its own font on every subtree root. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+#mp-toolbar, #mp-chat-panel, #mp-overlay {
+  font-family: var(--mp-font-ui);
+  /* The chrome's own typographic baseline. It used to fall out of the
+     document's body line-height, which is precisely the kind of inheritance
+     the shadow boundary now cuts — so state it here instead. */
+  line-height: 1.5;
+  color: var(--mp-ink);
+  pointer-events: auto; /* the host is pointer-events:none so it never eats page clicks */
+}
+/* Form controls don't inherit type by default. Font and color only — leaving
+   line-height at the UA's `normal` is what keeps button heights compact. */
+button, input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
 
 /* ── Toolbar ── */
 #mp-toolbar {
   position: fixed;
   top: 0; left: 0; right: 0;
   height: 56px;
-  background: var(--color-paper);
-  border-bottom: 1px solid var(--color-rule-light);
+  background: var(--mp-paper);
+  border-bottom: 1px solid var(--mp-rule);
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 24px;
   z-index: 200;
-  font-family: var(--font-label);
 }
 
 #mp-toolbar button {
   padding: 7px 18px;
-  background: var(--color-ink);
-  color: var(--color-paper);
+  background: var(--mp-ink);
+  color: var(--mp-paper);
   border: none;
-  font-family: var(--font-label);
+  font-family: var(--mp-font-ui);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -47,23 +105,32 @@ body { padding-top: 56px; /* toolbar height */ }
 
 /* Combined edit+chat toggle: pencil when idle, X + "Editing" while active
    (active = solid ink so exiting is obvious). */
-#mp-btn-edit {
-  background: transparent !important;
-  color: var(--color-mid) !important;
-  border: 1px solid var(--color-rule-light) !important;
+#mp-toolbar #mp-btn-edit {
+  background: transparent;
+  color: var(--mp-mid);
+  border: 1px solid var(--mp-rule);
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-#mp-btn-edit:hover {
-  background: var(--color-bg) !important;
-  color: var(--color-ink) !important;
+#mp-toolbar #mp-btn-edit:hover {
+  background: var(--mp-bg);
+  color: var(--mp-ink);
 }
 #mp-btn-edit .mp-icon-x { display: none; }
 #mp-btn-edit.active .mp-icon-pencil { display: none; }
 #mp-btn-edit.active .mp-icon-x { display: inline; }
 
-#mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--color-rule-light); flex-shrink: 0; }
+#mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--mp-rule); flex-shrink: 0; }
+
+/* Variant nav — shell.js flips it to flex once it finds multiple variants. */
+#mp-variant-nav { display: none; align-items: center; gap: 8px; }
+#mp-variant-label {
+  font-size: 11px;
+  color: var(--mp-mid);
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
 
 /* Page setup in the toolbar: paper size + orientation as two combo boxes,
    sitting right of the edit toggle. Edit-mode only — they're setup controls,
@@ -76,15 +143,16 @@ body { padding-top: 56px; /* toolbar height */ }
   align-items: center;
   gap: 6px;
 }
-body.edit-active #mp-page-setup { display: flex; }
+/* Edit mode reaches the chrome as a host attribute (shell.js sets it
+   alongside the body class the document side reads). */
+:host([data-mp-edit-active]) #mp-page-setup { display: flex; }
 .mp-combo {
   height: 34px;
   padding: 0 26px 0 10px;
   background: transparent;
-  color: var(--color-ink);
-  border: 1px solid var(--color-rule-light);
+  color: var(--mp-ink);
+  border: 1px solid var(--mp-rule);
   border-radius: 3px;
-  font-family: var(--font-label);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -97,21 +165,22 @@ body.edit-active #mp-page-setup { display: flex; }
   background-repeat: no-repeat;
   background-position: right 9px center;
 }
-.mp-combo:hover { background-color: var(--color-bg); }
-.mp-combo:focus-visible { outline: none; border-color: var(--color-mid); }
+.mp-combo:hover { background-color: var(--mp-bg); }
+.mp-combo:focus-visible { outline: none; border-color: var(--mp-mid); }
 /* The dropdown list itself renders in the OS popup, which ignores most of
    the above — keep its rows legible rather than uppercase-cramped. */
 .mp-combo option {
   text-transform: none;
   letter-spacing: normal;
-  color: var(--color-ink);
+  color: var(--mp-ink);
+}
 }
 
-.mp-nav-btn {
+#mp-toolbar .mp-nav-btn {
   width: 28px; height: 28px;
-  border: 1px solid var(--color-rule-light) !important;
-  background: transparent !important;
-  color: var(--color-mid) !important;
+  border: 1px solid var(--mp-rule);
+  background: transparent;
+  color: var(--mp-mid);
   border-radius: 3px;
   cursor: pointer;
   font-size: 14px;
@@ -120,31 +189,25 @@ body.edit-active #mp-page-setup { display: flex; }
   justify-content: center;
   padding: 0;
   flex-shrink: 0;
-  font-family: var(--font-label);
   line-height: 1;
 }
-.mp-nav-btn:hover {
-  background: var(--color-bg) !important;
-  color: var(--color-ink) !important;
+#mp-toolbar .mp-nav-btn:hover {
+  background: var(--mp-bg);
+  color: var(--mp-ink);
 }
 
 /* ── Embedded (iframe) mode — strip chrome that the host page provides ──
    Screen-only: the printed artifact keeps its themed chrome (borders) even
-   when printed from inside an embedding host like create.html. */
+   when printed from inside an embedding host like create.html. The matching
+   document-side trimming (.page-surround padding, sheet shadow) lives in
+   chrome-host.css. */
 @media screen {
-  body.mp-embedded { padding-top: 0 !important; }
-  body.mp-embedded #mp-toolbar { display: none !important; }
-  body.mp-embedded #mp-chat-panel { display: none !important; } /* the host provides its own conversation surface */
-  body.mp-embedded .page-surround { padding: 0 !important; min-height: 0 !important; background: transparent !important; }
-  /* border-color, not border: none — the on-screen box must keep the exact
-     geometry print will have (print reuses this box 1:1), or the embedded
-     preview would wrap lines differently than the printed sheet. */
-  body.mp-embedded .page,
-  body.mp-embedded .variant-page { box-shadow: none !important; border-color: transparent !important; }
+  :host([data-mp-embedded]) #mp-toolbar { display: none; }
+  /* the host provides its own conversation surface */
+  :host([data-mp-embedded]) #mp-chat-panel { display: none; }
 }
 
 /* ── Edit mode ── */
-body.edit-active { cursor: text; }
 
 #mp-overlay {
   position: fixed;
@@ -156,17 +219,16 @@ body.edit-active { cursor: text; }
 
 .mp-hover-box {
   position: fixed;
-  border: 2px dashed rgba(59,130,246,0.7);
+  border: 2px dashed var(--mp-select);
   border-radius: 2px;
   pointer-events: none;
 }
 .mp-hover-label {
   position: absolute;
   top: -24px; left: -2px;
-  background: rgba(59,130,246,0.9);
+  background: rgba(59, 130, 246, 0.9);
   color: #fff;
   font-size: 9px;
-  font-family: system-ui, sans-serif;
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 3px;
@@ -175,28 +237,21 @@ body.edit-active { cursor: text; }
   text-transform: uppercase;
 }
 
-/* ── Chat panel — docked LEFT; the viewport shrinks beside it (no overlay) ── */
+/* ── Chat panel — docked LEFT; the viewport shrinks beside it (no overlay) ──
+   The document-side half of that shrink (the .page-surround gutter) is in
+   chrome-host.css. */
 #mp-chat-panel {
   position: fixed;
   top: 56px; left: 0; bottom: 0;
   width: 336px;
-  background: var(--color-paper);
-  border-right: 1px solid var(--color-rule-light);
+  background: var(--mp-paper);
+  border-right: 1px solid var(--mp-rule);
   display: none;
   flex-direction: column;
   z-index: 150; /* under the toolbar (200); the pointer-events-none overlay (9000) doesn't block clicks */
-  font-family: var(--font-label);
   font-size: 12px;
 }
-body.mp-chat-open #mp-chat-panel { display: flex; }
-body.mp-chat-open .page-surround {
-  margin-left: 336px;
-  /* scaleToFit already shrinks the preview for the reduced viewport; anything
-     that still doesn't fit scrolls instead of hiding under the panel. */
-  overflow-x: auto;
-}
-
-
+:host([data-mp-chat-open]) #mp-chat-panel { display: flex; }
 
 /* Panel body: the live conversation plus the not-connected overlay's
    positioning context. */
@@ -228,25 +283,26 @@ body.mp-chat-open .page-surround {
 /* User bubble: outlined, ink on paper (the 1px border eats into the padding
    so both bubbles keep the same text box). The model's stays a soft fill —
    neither competes with the Print button's solid ink. */
-.mp-msg-user  { align-self: flex-end; background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-dim); padding: 6px 10px; }
-.mp-msg-model { align-self: flex-start; background: var(--color-pull-bg); color: var(--color-ink); }
+.mp-msg-user  { align-self: flex-end; background: var(--mp-paper); color: var(--mp-ink); border: 1px solid var(--mp-dim); padding: 6px 10px; }
+.mp-msg-model { align-self: flex-start; background: var(--mp-surface); color: var(--mp-ink); }
 .mp-msg-failed { opacity: 0.55; }
 
 .mp-chat-divider {
   align-self: center;
   font-size: 10px;
-  color: var(--color-dim);
+  color: var(--mp-dim);
   letter-spacing: 0.04em;
   padding: 2px 0;
 }
 
 .mp-paste-card {
-  border: 1px solid var(--color-rule-light);
+  border: 1px solid var(--mp-rule);
   border-radius: 6px;
   overflow: hidden;
 }
 .mp-paste-card pre {
-  background: var(--color-pull-bg);
+  background: var(--mp-surface);
+  font-family: var(--mp-font-mono);
   padding: 9px 11px;
   font-size: 11px;
   line-height: 1.5;
@@ -262,24 +318,24 @@ body.mp-chat-open .page-surround {
   padding: 7px 9px;
 }
 .mp-copy-btn {
-  padding: 3px 10px !important;
-  background: transparent !important;
-  color: var(--color-ink) !important;
-  border: 1px solid var(--color-rule-light) !important;
-  font-size: 10px !important;
+  padding: 3px 10px;
+  background: transparent;
+  color: var(--mp-ink);
+  border: 1px solid var(--mp-rule);
+  font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   border-radius: 3px;
   cursor: pointer;
 }
-.mp-copy-btn:hover { background: var(--color-bg) !important; }
-.mp-paste-hint { font-size: 10px; color: var(--color-dim); }
+.mp-copy-btn:hover { background: var(--mp-bg); }
+.mp-paste-hint { font-size: 10px; color: var(--mp-dim); }
 
 #mp-chat-presence {
   padding: 5px 14px;
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--color-dim);
+  color: var(--mp-dim);
   min-height: 21px;
 }
 #mp-chat-presence::before {
@@ -291,8 +347,8 @@ body.mp-chat-open .page-surround {
 #mp-chat-presence:empty::before { content: none; }
 /* Status green — connected is a state, not a theme accent. ID-qualified so
    the class color actually beats #mp-chat-presence's base color. */
-#mp-chat-presence.mp-presence-live { color: oklch(52% 0.14 150); }
-#mp-chat-presence.mp-presence-queued { color: var(--color-dim); }
+#mp-chat-presence.mp-presence-live { color: var(--mp-live); }
+#mp-chat-presence.mp-presence-queued { color: var(--mp-dim); }
 
 /* Model-working indicator: a chat entry (not the status line) — animated
    dots plus a label, always the last thing in the conversation. */
@@ -325,7 +381,7 @@ body.mp-chat-open .page-surround {
 
 /* Stacked: chip row, textarea, then a full-width Send underneath. */
 #mp-chat-form {
-  border-top: 1px solid var(--color-rule-light);
+  border-top: 1px solid var(--mp-rule);
   padding: 10px 14px 12px;
   display: flex;
   flex-direction: column;
@@ -337,63 +393,53 @@ body.mp-chat-open .page-surround {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--color-pull-bg);
-  border: 1px solid var(--color-rule-light);
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-rule);
   border-radius: 10px;
   padding: 3px 9px 3px 6px;
   font-size: 10px;
-  color: var(--color-ink);
+  color: var(--mp-ink);
   max-width: 100%;
 }
 .mp-attach-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Removal X sits on the LEFT of the chip */
 .mp-attach-clear {
-  background: transparent !important;
-  border: none !important;
-  color: var(--color-mid) !important;
-  padding: 0 !important;
+  background: transparent;
+  border: none;
+  color: var(--mp-mid);
+  padding: 0;
   font-size: 10px;
   cursor: pointer;
   line-height: 1;
   flex-shrink: 0;
 }
-.mp-attach-clear:hover { color: var(--color-ink) !important; }
+.mp-attach-clear:hover { color: var(--mp-ink); }
 #mp-chat-input {
-  font-family: var(--font-label);
   font-size: 12px;
   line-height: 1.5;
   padding: 7px 9px;
-  border: 1px solid var(--color-rule-light);
+  border: 1px solid var(--mp-rule);
   border-radius: 4px;
   resize: none;
-  color: var(--color-ink);
-  background: var(--color-paper);
+  color: var(--mp-ink);
+  background: var(--mp-paper);
 }
-#mp-chat-input:focus { outline: none; border-color: var(--color-mid); }
+#mp-chat-input:focus { outline: none; border-color: var(--mp-mid); }
 .mp-chat-send {
   width: 100%;
-  padding: 8px 14px !important;
-  background: transparent !important;
-  color: var(--color-ink) !important;
-  border: 1px solid var(--color-rule-light) !important;
-  font-size: 11px !important;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--mp-ink);
+  border: 1px solid var(--mp-rule);
+  font-size: 11px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   border-radius: 3px;
   cursor: pointer;
 }
-.mp-chat-send:hover { background: var(--color-bg) !important; }
+.mp-chat-send:hover { background: var(--mp-bg); }
 
 #mp-chat-input:disabled, .mp-chat-send:disabled { opacity: 0.45; cursor: default; }
-
-/* Element selected via double-click (chip in the chat area). Screen-only —
-   never printed, and serializeForSave strips the class from saved files. */
-@media screen {
-  .mp-selected {
-    outline: 2px solid rgba(59, 130, 246, 0.7);
-    outline-offset: 2px;
-  }
-}
 
 /* ── Starter: the first conversation entry until a model connects — a
    regular model bubble stacking its text over the copy row. ── */
@@ -409,20 +455,24 @@ body.mp-chat-open .page-surround {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: var(--color-paper);
-  border: 1px solid var(--color-rule-light);
+  background: var(--mp-paper);
+  border: 1px solid var(--mp-rule);
   border-radius: 6px;
   padding: 6px 7px 6px 11px;
   box-shadow: inset 0 1px 3px oklch(0% 0 0 / 0.08);
 }
 .mp-copy-row code {
-  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--mp-font-mono);
   font-size: 12px;
-  color: var(--color-ink);
+  color: var(--mp-ink);
   white-space: nowrap;
 }
 
-/* ── Print: chrome never prints ── */
+/* ── Print: chrome never prints ──
+   Hiding the chrome's own elements (not the host) keeps this independent of
+   how the host is styled from the document side. The page's break guides are
+   document nodes; chrome-host.css hides those. */
 @media print {
-  #mp-toolbar, #mp-overlay, .page-break-guide, #mp-chat-panel { display: none !important; }
+  :host { display: none !important; }
+  #mp-toolbar, #mp-overlay, #mp-chat-panel { display: none !important; }
 }

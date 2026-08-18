@@ -43,7 +43,9 @@ faithfully, adapted to your output channels:
    spec's Voice & microcopy register. The theme lives in the words as much as
    the CSS.
 5. The design rules still apply: no color fills, no literal colors outside the
-   `:root` override, `--color-paper` stays white.
+   `:root` override, `--color-paper` stays white. ("Page chrome" above
+   means the `.page` sheet itself — the server's toolbar and chat panel render
+   in a shadow root and never take a theme.)
 
 ## Ad-hoc theme (no matching spec)
 
@@ -61,7 +63,9 @@ execute ALL of:
 4. **Voice** — write every headline, label, and body sentence in the theme's
    characteristic voice and vocabulary.
 5. The design rules still apply: no color fills, no literal colors outside the
-   `:root` override, `--color-paper` stays white.
+   `:root` override, `--color-paper` stays white. ("Page chrome" above
+   means the `.page` sheet itself — the server's toolbar and chat panel render
+   in a shadow root and never take a theme.)
 
 ## Adding a new theme
 

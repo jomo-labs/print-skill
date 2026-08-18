@@ -1,3 +1,8 @@
+// Where this script was loaded from — the base for resolving sibling shell
+// assets (chrome.css) on pages the server didn't wrap. Read at parse time:
+// document.currentScript is only meaningful while the script is executing.
+const SHELL_SRC = document.currentScript?.src || location.href;
+
 // localStorage throws in opaque-origin contexts (e.g. Playwright's
 // page.set_content(), sandboxed embeds). Writes go through this accessor so
 // applySize() completes — and the print pipeline still works — even where
@@ -64,11 +69,12 @@ function applySize(key, orientation) {
   currentPaper = PAPERS[key] ? key : 'letter';
   if (orientation === 'portrait' || orientation === 'landscape') currentOrientation = orientation;
   const p = paperDims();
-  // Sync the toolbar's combo boxes (and any legacy page's baked select) so
-  // they read the current state, however it was set.
-  const sel = document.getElementById('mp-paper-select');
+  // Sync the toolbar's combo boxes so they read the current state, however it
+  // was set. They live in the chrome's shadow root — the document fallback is
+  // only for a legacy page's baked select.
+  const sel = mpq('#mp-paper-select') || document.getElementById('mp-paper-select');
   if (sel && sel.value !== currentPaper) sel.value = currentPaper;
-  const osel = document.getElementById('mp-orient-select');
+  const osel = mpq('#mp-orient-select') || document.getElementById('mp-orient-select');
   if (osel && osel.value !== currentOrientation) osel.value = currentOrientation;
   // Persist the choice on the body dataset: the Print pipeline reloads the
   // serialized DOM in headless Chromium, whose init() reads these attributes
@@ -127,9 +133,13 @@ function applySize(key, orientation) {
     for (let y = p.h - decoBottom; y < activePg.scrollHeight; y += step) {
       const guide = document.createElement('div');
       guide.className = 'page-break-guide';
-      guide.style.cssText = `position:absolute;left:0;right:0;top:${y}px;height:2px;` +
-        `background:repeating-linear-gradient(90deg,oklch(67% 0.006 78) 0 6px,transparent 6px 12px);` +
-        `pointer-events:none;`;
+      // !important throughout: these are chrome nodes living in the page's
+      // own flow, so inline importance is what keeps page CSS off them.
+      guide.style.cssText =
+        `position:absolute!important;left:0!important;right:0!important;top:${y}px!important;` +
+        `height:2px!important;margin:0!important;border:0!important;opacity:1!important;` +
+        `display:block!important;z-index:1!important;pointer-events:none!important;` +
+        `background:repeating-linear-gradient(90deg,oklch(67% 0.006 78) 0 6px,transparent 6px 12px)!important;`;
       activePg.appendChild(guide);
     }
   }
@@ -167,7 +177,7 @@ let variantPages = [], variantTotal = 0, variantCurrent = 0;
 function showVariant(n) {
   variantCurrent = n;
   variantPages.forEach((el, i) => el.classList.toggle('active', i === n));
-  document.getElementById('mp-variant-label').textContent = (n + 1) + ' / ' + variantTotal;
+  mpq('#mp-variant-label').textContent = (n + 1) + ' / ' + variantTotal;
   // Re-apply size so width/transform/guides target the newly active variant
   applySize(currentPaper);
 }
@@ -176,11 +186,11 @@ function initVariants() {
   variantPages = Array.from(document.querySelectorAll('.variant-page'));
   variantTotal = variantPages.length;
   if (variantTotal < 2) return;
-  document.getElementById('mp-variant-sep').style.display = '';
-  document.getElementById('mp-variant-nav').style.display = 'flex';
-  document.getElementById('mp-btn-prev').addEventListener('click', () =>
+  mpq('#mp-variant-sep').style.display = '';
+  mpq('#mp-variant-nav').style.display = 'flex';
+  mpq('#mp-btn-prev').addEventListener('click', () =>
     showVariant((variantCurrent - 1 + variantTotal) % variantTotal));
-  document.getElementById('mp-btn-next').addEventListener('click', () =>
+  mpq('#mp-btn-next').addEventListener('click', () =>
     showVariant((variantCurrent + 1) % variantTotal));
   showVariant(0);
 }
@@ -191,6 +201,7 @@ const EDITABLE_TAGS = new Set(['h1','h2','h3','h4','h5','h6','p','li','td','th',
 const ELEMENT_LABELS = {h1:'Title',h2:'Heading',h3:'Subheading',h4:'Subheading',h5:'Subheading',h6:'Subheading',p:'Paragraph',li:'List item',td:'Cell',th:'Header',blockquote:'Quote',figcaption:'Caption',span:'Text',a:'Link',strong:'Bold',em:'Italic',div:'Block'};
 
 let editMode = false, hoverBox = null, editListeners = null;
+
 // Assigned by injectChrome() — the overlay is runtime-built chrome, so it
 // does not exist yet when this script parses (a const lookup here would bind
 // null and silently kill the hover boxes).
@@ -214,10 +225,14 @@ function showHover(el) {
 
 function enableEditMode() {
   editMode = true;
-  document.getElementById('mp-btn-edit').classList.add('active');
-  const label = document.getElementById('mp-btn-edit-label');
+  mpq('#mp-btn-edit').classList.add('active');
+  const label = mpq('#mp-btn-edit-label');
   if (label) label.textContent = 'Stop Editing';
+  // Both sides of the state again: the body class carries the edit cursor
+  // (chrome-host.css), the host attribute reveals the toolbar's page-setup
+  // controls (chrome.css).
   document.body.classList.add('edit-active');
+  setChromeState('data-mp-edit-active', true);
   // Editing and the chat panel are one combined mode — chat.js (when
   // present) opens the panel and auto-enables live through this hook. The
   // shell stays fully functional without it.
@@ -285,10 +300,11 @@ function blurActiveEdit() {
 
 function disableEditMode() {
   editMode = false;
-  document.getElementById('mp-btn-edit').classList.remove('active');
-  const label = document.getElementById('mp-btn-edit-label');
+  mpq('#mp-btn-edit').classList.remove('active');
+  const label = mpq('#mp-btn-edit-label');
   if (label) label.textContent = 'Edit';
   document.body.classList.remove('edit-active');
+  setChromeState('data-mp-edit-active', false);
   blurActiveEdit();
   clearHover();
   document.querySelectorAll('.mp-selected').forEach(s => s.classList.remove('mp-selected'));
@@ -324,11 +340,11 @@ function serializeForSave() {
   // first save of a legacy page (baked-in chrome) into a cleanse.
   // data-mp-edited markers on content are NOT stripped — persisting them is
   // how the model finds user edits in the file.
-  root.querySelector('#mp-toolbar')?.remove();
-  root.querySelector('#mp-overlay')?.remove();
-  root.querySelector('#mp-chat-panel')?.remove();
-  // The server's serve-time wrap added these; the file on disk never has them.
-  root.querySelectorAll('[data-mp-chrome]').forEach(el => el.remove());
+  // Chrome lives in one shadow host ([data-mp-chrome]); the serve-time wrap
+  // (its stylesheet, its scripts) is tagged the same way, and legacy pages
+  // carry the old baked-in chrome by id. The file on disk keeps none of it.
+  root.querySelectorAll('[data-mp-chrome], #mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel')
+      .forEach(el => el.remove());
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
   root.querySelectorAll('.mp-selected').forEach(el => {
     el.classList.remove('mp-selected');
@@ -380,7 +396,7 @@ async function savePage() {
 // (offline, server error) falls back from the catch block. The fallback is
 // only a different renderer, not a different layout.
 async function printThisPage() {
-  const btn = document.getElementById('mp-btn-print');
+  const btn = mpq('#mp-btn-print');
   if (location.protocol === 'file:') { window.print(); return; }
   // The tab must open synchronously inside the click so popup blockers don't
   // eat it; it navigates to the PDF once rendering finishes.
@@ -457,7 +473,7 @@ function initAutoReload() {
     // Deferred while typing in the chat panel for the same reason as an
     // in-progress text edit: a reload would eat the half-typed input.
     if (saving || document.activeElement?.isContentEditable ||
-        document.activeElement?.closest?.('#mp-chat-panel')) return;
+        chromeRoot?.activeElement?.closest('#mp-chat-panel')) return;
     try {
       const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return;
@@ -483,10 +499,76 @@ function initAutoReload() {
 // they're (re)loaded. Any pre-existing #mp-toolbar/#mp-overlay in the file is
 // a legacy page with baked-in chrome — it's removed and replaced, and the
 // next PUT save cleanses it from the file (serializeForSave strips chrome).
+//
+// The chrome is built inside a SHADOW ROOT, and that is a guarantee, not a
+// detail: a generated page carries arbitrary CSS — a theme redefines every
+// --color-*/--font-* token, custom_css can name any selector — and none of it
+// may reach the toolbar, the edit overlay, or the chat panel. The shadow
+// boundary stops page selectors; `all: initial` on the host stops inheritance
+// through it; chrome.css resolves its own --mp-* tokens so nothing depends on
+// a document token. The page's only remaining lever would be styling the host
+// element itself, which the inline declarations below take away: an inline
+// !important declaration outranks every author stylesheet rule, important or
+// not, so no page CSS can move, hide, or restyle the chrome.
+const HOST_STYLE = [
+  // Cuts inheritance at the boundary (and every property the page could
+  // otherwise set on the host) down to the initial value.
+  'all: initial !important',
+  // The chrome's own elements are position:fixed; the host is a zero-size
+  // anchor that never takes part in the page's layout.
+  'position: fixed !important',
+  'top: 0 !important',
+  'left: 0 !important',
+  'width: 0 !important',
+  'height: 0 !important',
+  'display: block !important',
+  'z-index: 2147483000 !important',
+  // Children opt back in (chrome.css) — the host itself never eats a click.
+  'pointer-events: none !important',
+  // The chrome is a light UI regardless of the OS/page color scheme.
+  'color-scheme: light !important',
+].join(';');
+
+let chromeHost = null;  // the light-DOM host element
+let chromeRoot = null;  // its shadow root — every chrome node lives in here
+
+// Chrome lookups. Chrome is NOT in the document, so document.getElementById
+// would never find it: everything that reaches for a chrome element goes
+// through these (chat.js included).
+function mpq(sel) { return chromeRoot ? chromeRoot.querySelector(sel) : null; }
+function mpAll(sel) { return chromeRoot ? Array.from(chromeRoot.querySelectorAll(sel)) : []; }
+
+// Screen-state flags the chrome styles itself by (chrome.css :host([...])).
+// The matching body classes stay too — chrome-host.css reads those for the
+// document side of the same state (toolbar space, chat gutter).
+function setChromeState(name, on) { if (chromeHost) chromeHost.toggleAttribute(name, !!on); }
+
+// The chrome's stylesheet. Served pages carry it inline in an inert
+// <template> the server injected, so it applies synchronously — the chrome
+// never paints unstyled. Anything else (a legacy page that links the shell
+// itself, file:// use) falls back to a <link> next to this script.
+function chromeStylesheet() {
+  const tpl = document.getElementById('mp-chrome-css');
+  if (tpl && tpl.content && tpl.content.childElementCount) return tpl.content.cloneNode(true);
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = new URL('chrome.css', SHELL_SRC).href;
+  return link;
+}
 
 function injectChrome() {
-  document.getElementById('mp-toolbar')?.remove();
-  document.getElementById('mp-overlay')?.remove();
+  // Whatever chrome the document already carries goes: a legacy page's baked
+  // toolbar, or the empty host left in a re-serialized DOM (the print
+  // pipeline re-renders the serialized page).
+  document.querySelectorAll('#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel')
+          .forEach(el => el.remove());
+
+  chromeHost = document.createElement('div');
+  chromeHost.id = 'mp-chrome-root';
+  chromeHost.setAttribute('data-mp-chrome', '');   // serializeForSave strips it
+  chromeHost.setAttribute('style', HOST_STYLE);
+  chromeRoot = chromeHost.attachShadow({ mode: 'open' });
+  chromeRoot.appendChild(chromeStylesheet());
 
   const toolbar = document.createElement('div');
   toolbar.id = 'mp-toolbar';
@@ -509,8 +591,9 @@ function injectChrome() {
   // Page setup, right of the edit toggle: paper size and orientation as two
   // combo boxes. They're independent axes — any size combines with either
   // orientation — so they stay two controls, not one product list. Built
-  // always, shown only in edit mode (chrome.css gates them on .edit-active),
-  // so applySize() can keep them in sync whether or not they're on screen.
+  // always, shown only in edit mode (chrome.css gates them on the host's
+  // data-mp-edit-active), so applySize() can keep them in sync whether or not
+  // they're on screen.
   const setup = document.createElement('div');
   setup.id = 'mp-page-setup';
   const combo = (id, options) => {
@@ -554,7 +637,6 @@ function injectChrome() {
   toolbar.appendChild(vsep);
   const nav = document.createElement('div');
   nav.id = 'mp-variant-nav';
-  nav.style.cssText = 'display:none; align-items:center; gap:8px;';
   const prev = document.createElement('button');
   prev.id = 'mp-btn-prev';
   prev.className = 'mp-nav-btn';
@@ -562,7 +644,6 @@ function injectChrome() {
   prev.innerHTML = '&#8592;';
   const label = document.createElement('span');
   label.id = 'mp-variant-label';
-  label.style.cssText = 'font-family:var(--font-label);font-size:11px;color:var(--color-mid);white-space:nowrap;letter-spacing:0.04em;';
   label.textContent = '1 / 1';
   const next = document.createElement('button');
   next.id = 'mp-btn-next';
@@ -576,9 +657,13 @@ function injectChrome() {
 
   const ov = document.createElement('div');
   ov.id = 'mp-overlay';
-  document.body.prepend(ov);
-  document.body.prepend(toolbar);
+  chromeRoot.appendChild(toolbar);
+  chromeRoot.appendChild(ov);
   overlay = ov;
+
+  // Mounted on <html>, not in <body>: a page's own selectors (`body > *`,
+  // `.page-surround + *`) then never even match the host element.
+  document.documentElement.appendChild(chromeHost);
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────
@@ -586,12 +671,17 @@ function injectChrome() {
 (function init() {
   injectChrome();
 
-  // Detect iframe embedding — strip standalone chrome
-  if (window.self !== window.top) document.body.classList.add('mp-embedded');
+  // Detect iframe embedding — strip standalone chrome. The state is flagged
+  // twice on purpose: the body class drives the document-side trim
+  // (chrome-host.css), the host attribute the chrome's own (chrome.css).
+  if (window.self !== window.top) {
+    document.body.classList.add('mp-embedded');
+    setChromeState('data-mp-embedded', true);
+  }
 
   // Toolbar buttons
-  document.getElementById('mp-btn-print').addEventListener('click', printThisPage);
-  document.getElementById('mp-btn-edit').addEventListener('click', toggleEditMode);
+  mpq('#mp-btn-print').addEventListener('click', printThisPage);
+  mpq('#mp-btn-edit').addEventListener('click', toggleEditMode);
 
   // Per-page configuration is declarative: assembly sets data attributes on
   // <body> (the document carries data, never chrome API calls). Legacy pages

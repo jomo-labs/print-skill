@@ -18,7 +18,11 @@ button, edit mode with chat, paper-size switching, WYSIWYG print geometry) are
 never authored or retyped, only copied and filled (see
 `references/assembly.md`). The generated file is a pure document: all chrome
 is injected at runtime by the shell scripts, so shell updates apply to
-already-generated pages automatically.
+already-generated pages automatically. Chrome and document are also isolated
+from each other — the chrome renders inside a shadow root with its own tokens,
+so nothing you write in `custom_css` (a theme's `:root` override included) can
+reach the toolbar, edit overlay, or chat panel. Style the page freely; the
+chrome is not yours to style, and you cannot break it by accident.
 A bundled local server (`server/`) serves the generated pages and renders
 deterministic PDFs with headless Chromium — the same renderer on every
 machine, driven by the page's Print button or fully headless for automated
