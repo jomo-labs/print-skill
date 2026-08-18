@@ -31,10 +31,6 @@ Consequences:
 - **Do not design for full-bleed on home printers.** A background that runs to
   the edge will show a thin white frame. If the user wants edge-to-edge, that
   requires professional printing.
-- **A frame on the sheet sits at the paper edge.** `--page-border` is drawn at
-  the sheet's outer edge — exact on screen and in the PDF, but clippable by a
-  desktop printer. A frame that must survive a home print run goes inside the
-  margin as a bordered wrapper `<div>` in `content_html` instead.
 
 ## Resolution and DPI
 

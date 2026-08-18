@@ -120,11 +120,12 @@ tighter-set (0.08em) heading inside running content. Don't collapse them.
 | `--border-thin` | 1.5px — boxed components, utility outlines |
 | `--border-hair` | 1px — table rules, `hr`, footer rule |
 | `--page-border` | `none` |
+| `--page-frame-inset` | `32px 36px 48px` — derived from the page margin, clear of the unprintable edge |
 | `--page-shadow` | `0 6px 48px oklch(0% 0 0 / 0.16)` (screen only; print strips it) |
 | `--image-filter` | `grayscale(100%)` |
 
-- **Page chrome:** no border, soft drop shadow. Newspaper is the only shipped
-  theme whose sheet carries no frame onto paper — the restraint is the point.
+- **Page chrome:** no border, soft drop shadow. Newspaper's sheet carries no
+  frame onto paper — the restraint is the point.
 - **Signature motifs:** none required. The shared opt-in utilities
   (`.tilt` / `.tilt-right` at `--tilt-angle` -0.6deg / 1.5deg, `.badge`,
   `.chapter-label`, `.halftone`) exist in the base layer for any theme to use,

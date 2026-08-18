@@ -85,10 +85,7 @@ panels are meant to feel packed, not airy.
 
 - **Page chrome:** the heavy ink frame and hard offset shadow are load-bearing
   for this theme's identity, not optional. The offset shadow is screen-only, so
-  the frame carries the look in print — and since a sheet-edge border can be
-  clipped by a desktop printer's unprintable margin, repeat the frame as a
-  bordered wrapper inside the page margin (`--border-fat` ink) whenever the
-  page is headed for a home printer rather than the PDF.
+  the inset frame carries the look in print.
   Border weights otherwise stay at the defaults.
 - **Signature motifs:** `.tilt` (default -0.6deg) on narrator boxes;
   `.halftone` for panel texture where a comic-print feel is wanted; `.badge`

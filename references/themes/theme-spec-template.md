@@ -81,13 +81,11 @@ the default rhythm says so in one line.
 
 - Border weights per role, where they differ from the defaults (5 / 3 / 1.5 /
   1px).
-- **Page chrome** — `--page-border` and `--page-shadow`. These two tokens are
-  the single strongest carrier of theme identity; state both, even when one is
-  `none`. Print strips the shadow; only the border survives onto paper — and
-  because it is drawn at the sheet's outer edge, a desktop printer's
-  unprintable margin can clip it (it is exact on screen and in the PDF). A
-  theme whose frame must survive a home print run says so here and specifies it
-  as a bordered wrapper inside the page margin instead.
+- **Page chrome** — `--page-border` and `--page-shadow` (and
+  `--page-frame-inset` if the frame should sit closer in or further out than
+  the default half-margin). These are the single strongest carrier of theme
+  identity; state them, even when one is `none`. Print strips the shadow; the
+  frame is what survives onto paper.
 - **Signature motifs** — theme-specific flourishes, and which of the shared
   opt-in utilities (`.tilt`, `.tilt-right`, `.badge`, `.chapter-label`,
   `.halftone`, `.kicker`) the theme uses, with any `--tilt-angle` change.

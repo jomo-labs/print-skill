@@ -67,9 +67,18 @@
   --tracking-label:   0.08em;   /* section headings (h3)                       */
   --tracking-kicker:  0.32em;   /* .kicker, uppercase metadata rows            */
 
-  /* Page chrome — the theme spec's Surface section sets these two instead of
-     rewriting the .page rule. Print strips the shadow either way. */
+  /* Page chrome — the theme spec's Surface section sets these instead of
+     rewriting the .page rule. The frame is drawn INSET from the paper edge:
+     a border on the sheet's own edge lands in the strip no desktop printer
+     can reach, so it would simply drop out of a home print run. The default
+     insets — half the margin at the top and sides, two thirds at the bottom
+     where printers grip deepest — clear that strip on every edge, sit clear of
+     the content, and follow the margin if a theme retunes it. (The deeper
+     bottom also optically centers the frame.) Print strips the shadow. */
   --page-border: none;
+  --page-frame-inset: calc(var(--page-margin-top) / 2)
+                      calc(var(--page-margin-x) / 2)
+                      calc(var(--page-margin-bottom) * 2 / 3);
   --page-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
 
   /* Imagery treatment. Grayscale is the default because color photos dither
@@ -121,13 +130,23 @@ body {
   height: 1056px;
   background: var(--color-paper);
   padding: var(--page-margin-top) var(--page-margin-x) var(--page-margin-bottom);
-  border: var(--page-border);
   box-shadow: var(--page-shadow);
   flex-shrink: 0;
 }
+/* The themed frame, inset so it prints. Purely decorative: it takes no
+   layout space, so the content box is the same framed or not. */
+.page::before {
+  content: '';
+  position: absolute;
+  inset: var(--page-frame-inset);
+  border: var(--page-border);
+  pointer-events: none;
+}
 /* Two-sheet assemblies: #page is a transparent container around nested
-   sheets, not a sheet itself — it grows around them. */
+   sheets, not a sheet itself — it grows around them, and carries no frame of
+   its own (each nested sheet draws one). */
 #page:has(> .page) { height: auto; }
+#page:has(> .page)::before { content: none; }
 
 /* Multi-variant mode: hide all variants, show only .active */
 .variant-page { display: none; }
