@@ -22,15 +22,67 @@
   --font-body:    'Source Serif 4', Georgia, serif;
   --font-label:   'Inter', system-ui, sans-serif;
 
+  /* Type scale. The five middle steps are the everyday range; --text-2xs/-xs
+     carry label-font metadata (dateline, table text, footer) and --text-3xl/
+     -4xl are display steps the base defaults don't use but themes reach for.
+     Every size in this stylesheet comes from this scale — a theme that
+     retunes the scale retunes the whole document. */
+  --text-2xs:  9px;
+  --text-xs:   10.5px;
   --text-body: 13.5px;
   --text-md:   15.5px;
   --text-lg:   19px;
   --text-xl:   26px;
   --text-2xl:  38px;
+  --text-3xl:  48px;
+  --text-4xl:  80px;
 
-  --border-fat:  5px;   /* comic-weight stroke — page border, section rules  */
-  --border-mid:  3px;   /* accent stripe on chapter labels, blockquotes       */
-  --border-thin: 1.5px; /* table rules, utility outlines                      */
+  /* Spacing scale — 4px base unit. Used by the defaults below; themes retune
+     the steps rather than hand-picking values per element. */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+  --space-16:  64px;
+  --space-20:  80px;
+
+  /* Page margin — the sheet's own padding IS the print margin (WYSIWYG 1:1).
+     Retuning these moves the content box, which page-types.md quotes as
+     ~672px wide portrait / ~912x680px landscape. Comfortably inside the
+     0.5in floor that consumer printers can physically reach. */
+  --page-margin-top:    64px;
+  --page-margin-x:      72px;
+  --page-margin-bottom: 72px;
+
+  /* Per-role leading and tracking. The theme spec's Typography section sets
+     these; the element defaults below are the only consumers, so a theme
+     never needs to restate h1/h2/h3 rules just to retune its type. */
+  --leading-display: 1.1;
+  --leading-body:    1.65;
+  --leading-label:   1.4;
+  --tracking-display: 0;
+  --tracking-label:   0.08em;   /* section headings (h3)                       */
+  --tracking-kicker:  0.32em;   /* .kicker, uppercase metadata rows            */
+
+  /* Page chrome — the theme spec's Surface section sets these two instead of
+     rewriting the .page rule. Print strips the shadow either way. */
+  --page-border: none;
+  --page-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
+
+  /* Motif geometry — consumed by the opt-in utilities near the end of this
+     file. A theme that uses no motifs can ignore them. */
+  --tilt-angle:       -0.6deg;
+  --tilt-angle-right: 1.5deg;
+
+  --border-fat:  5px;   /* page border, section rules, accent stripes         */
+  --border-mid:  3px;   /* blockquote stripes, badge outlines                 */
+  --border-thin: 1.5px; /* utility outlines, boxed components                 */
+  --border-hair: 1px;   /* table rules, hr, footer rule — the hairline weight */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,7 +90,7 @@
 body {
   font-family: var(--font-body);
   font-size: var(--text-body);
-  line-height: 1.65;
+  line-height: var(--leading-body);
   color: var(--color-ink);
   background: white;
 }
@@ -49,7 +101,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 40px 20px 80px;
+  padding: var(--space-10) var(--space-5) var(--space-20);
   overflow-x: hidden;
 }
 
@@ -65,8 +117,9 @@ body {
   width: 816px;
   height: 1056px;
   background: var(--color-paper);
-  padding: 64px 72px 72px;
-  box-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
+  padding: var(--page-margin-top) var(--page-margin-x) var(--page-margin-bottom);
+  border: var(--page-border);
+  box-shadow: var(--page-shadow);
   flex-shrink: 0;
 }
 /* Two-sheet assemblies: #page is a transparent container around nested
@@ -93,37 +146,52 @@ body[data-mp-paper="a4"][data-mp-orientation="landscape"] .page    { width: 1122
 body[data-mp-paper="legal"][data-mp-orientation="landscape"] .page { width: 1344px; height: 816px; }
 body[data-mp-paper="half"][data-mp-orientation="landscape"] .page  { width: 816px;  height: 528px; }
 
-/* ── Element defaults (adapt per content type) ── */
-h1 { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; line-height: 1.1; margin-bottom: 0.2em; }
-h2 { font-family: var(--font-display); font-size: var(--text-xl);  font-weight: 700; margin: 1em 0 0.25em; }
-h3 { font-family: var(--font-label);   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin: 0.8em 0 0.2em; color: var(--color-mid); }
+/* ── Element defaults (adapt per content type) ──
+   Every size, weight, rule and space below resolves through a token, so a
+   theme retunes the document by setting tokens, not by restating these rules.
+   The theme spec's section-to-token map (references/themes/
+   theme-spec-template.md) is the contract these defaults consume. */
+h1 { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; line-height: var(--leading-display); letter-spacing: var(--tracking-display); margin-bottom: 0.2em; }
+h2 { font-family: var(--font-display); font-size: var(--text-xl);  font-weight: 700; line-height: var(--leading-display); letter-spacing: var(--tracking-display); margin: 1em 0 0.25em; }
+/* h3 is a section heading, not a kicker — the wide-tracked kicker convention
+   is .kicker below. The two are deliberately different roles. */
+h3 { font-family: var(--font-label);   font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-label); line-height: var(--leading-label); margin: 0.8em 0 0.2em; color: var(--color-mid); }
 
-.dateline { font-family: var(--font-label); font-size: 9px; color: var(--color-accent); margin-bottom: 1.2em; letter-spacing: 0.03em; }
+/* Kicker — the uppercase wide-tracked label that opens a section or masthead. */
+.kicker { font-family: var(--font-label); font-size: var(--text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-kicker); line-height: var(--leading-label); color: var(--color-mid); }
+
+.dateline { font-family: var(--font-label); font-size: var(--text-2xs); color: var(--color-accent); margin-bottom: 1.2em; letter-spacing: 0.03em; }
 
 p { margin: 0.5em 0; }
 
-table { width: 100%; border-collapse: collapse; margin: 0.75em 0; font-family: var(--font-label); font-size: 10.5px; }
-th { background: var(--color-ink); color: var(--color-paper); padding: 5px 10px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; }
-td { padding: 5px 10px; border-bottom: 1px solid var(--color-rule-light); }
+/* Tables carry the label font and tabular figures — columns of numbers must
+   align on the decimal (Principle V). */
+table { width: 100%; border-collapse: collapse; margin: 0.75em 0; font-family: var(--font-label); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+th { background: var(--color-ink); color: var(--color-paper); padding: var(--space-1) var(--space-2); text-align: left; font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.06em; }
+td { padding: var(--space-1) var(--space-2); border-bottom: var(--border-hair) solid var(--color-rule-light); }
 tr:nth-child(even) td { background: var(--color-pull-bg); }
 
 .columns-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5em; }
 .columns-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1em; }
 
-.score-box { border: 2px solid var(--color-accent); padding: 1em; text-align: center; margin: 0.75em 0; }
-.score-box .score { font-size: 48px; font-weight: 700; font-family: var(--font-display); line-height: 1; }
-.score-box .team  { font-family: var(--font-label); font-size: 11px; font-weight: 600; }
+.score-box { border: var(--border-thin) solid var(--color-accent); padding: 1em; text-align: center; margin: 0.75em 0; }
+.score-box .score { font-size: var(--text-3xl); font-weight: 700; font-family: var(--font-display); line-height: 1; font-variant-numeric: tabular-nums; }
+.score-box .team  { font-family: var(--font-label); font-size: var(--text-xs); font-weight: 600; }
 
-hr { border: none; border-top: 1px solid var(--color-rule-light); margin: 1em 0; }
+hr { border: none; border-top: var(--border-hair) solid var(--color-rule-light); margin: 1em 0; }
 
-blockquote { border-left: 3px solid var(--color-accent); padding: 0.5em 0 0.5em 1em; margin: 0.75em 0; color: var(--color-mid); font-style: italic; }
+blockquote { border-left: var(--border-mid) solid var(--color-accent); padding: 0.5em 0 0.5em 1em; margin: 0.75em 0; color: var(--color-mid); font-style: italic; }
 
+/* Imagery is always grayscale — a platform invariant, not a theme choice:
+   colour photos print as muddy dithered ink, and author CSS may not use
+   filter to undo it (see design-rules.md Part A). */
 img { max-width: 100%; height: auto; filter: grayscale(100%); display: block; }
 
-footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-rule-light); font-family: var(--font-label); font-size: 9px; color: var(--color-dim); display: flex; justify-content: space-between; }
+footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: var(--border-hair) solid var(--color-rule-light); font-family: var(--font-label); font-size: var(--text-2xs); color: var(--color-dim); display: flex; justify-content: space-between; }
 
 /* ── No-fill enforcement — color lives in text/strokes only ── */
-/* Lock page surface to white — generated :root overrides cannot change this */
+/* Lock page surface to white — a literal, not var(--color-paper), so that a
+   generated :root override moving --color-paper cannot tint the sheet. */
 .page, .variant-page { background: white !important; }
 .page div, .page section, .page aside, .page article,
 .page header, .page figure, .page li, .page span, .page blockquote,
@@ -132,14 +200,28 @@ footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-r
   background-image: none !important;
 }
 /* Restore legitimate structural fills */
-.page th                    { background: var(--color-ink)      !important; color: white !important; }
+.page th                    { background: var(--color-ink)      !important; color: var(--color-paper) !important; }
 .page tr:nth-child(even) td { background: var(--color-pull-bg)  !important; }
 
-/* ── Dog Man utilities ── */
+/* The two fills the design rules sanction outside tables, as opt-in utilities.
+   The blanket strip above is value-blind — it cannot tell an inverted masthead
+   band from an accent fill — so without these an ink band would lose its
+   background and keep its paper-colored text, printing as invisible
+   white-on-white. Use them for small bands and headers, never for a whole
+   section or page: an inverted block is expensive in toner. */
+.page .invert { background: var(--color-ink) !important; color: var(--color-paper) !important; }
+.page .invert * { color: inherit; }
+.page .tint   { background: var(--color-pull-bg) !important; }
+
+/* ── Motif utilities ──
+   Theme-neutral and opt-in: nothing applies these by default, and a theme
+   that declares no motifs (Blueprint) simply never uses them. Their geometry
+   comes from the --tilt-angle / --border-* / --color-* tokens, so a theme
+   that does use them inherits its own weights and hues. */
 
 /* Subtle rotation — callout boxes, narrator asides */
-.tilt       { transform: rotate(-0.6deg); }
-.tilt-right { transform: rotate(1.5deg); }
+.tilt       { transform: rotate(var(--tilt-angle)); }
+.tilt-right { transform: rotate(var(--tilt-angle-right)); }
 
 /* Circular stamp / badge — outline only, no fill */
 .badge {
@@ -148,9 +230,9 @@ footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-r
   justify-content: center;
   width: 72px; height: 72px;
   border-radius: 50%;
-  border: 3.5px solid var(--color-ink);
+  border: var(--border-mid) solid var(--color-ink);
   font-family: var(--font-label);
-  font-size: 10px; font-weight: 700;
+  font-size: var(--text-xs); font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--color-ink);
   transform: rotate(-4deg);
@@ -160,10 +242,10 @@ footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--color-r
 /* Chapter / section label — thick accent stripe on left */
 .chapter-label {
   font-family: var(--font-label);
-  font-size: 9px; font-weight: 700;
+  font-size: var(--text-2xs); font-weight: 700;
   letter-spacing: 0.15em; text-transform: uppercase;
   color: var(--color-accent);
-  border-left: 6px solid var(--color-accent);
+  border-left: var(--border-fat) solid var(--color-accent);
   padding-left: 10px;
   margin-bottom: 8px;
 }
