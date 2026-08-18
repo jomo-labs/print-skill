@@ -461,6 +461,11 @@ async function printThisPage() {
 //     deferred while a contentEditable element has focus, and while a save
 //     is in flight (the save's own write must update the baseline via the
 //     PUT response, not race the poll into a self-reload).
+//   - a half-typed chat message is deferred the same way, but only while the
+//     user is ACTUALLY typing (window.mpChatTyping — see chat.js). Focus is
+//     not typing: the chat input keeps focus after a message is sent, and
+//     the model's edit lands seconds later, so deferring on focus alone
+//     froze the preview for exactly the flow live edit exists for.
 //   - non-ok responses and network errors are ignored, never reloaded on:
 //     a restarting server, or the deleted temp .render-*.html this same
 //     script polls from inside the headless PDF render, would otherwise
@@ -471,9 +476,11 @@ function initAutoReload() {
   if (location.protocol === 'file:') return;
   const tick = async () => {
     // Deferred while typing in the chat panel for the same reason as an
-    // in-progress text edit: a reload would eat the half-typed input.
+    // in-progress text edit: a reload would land mid-keystroke. Both guards
+    // only postpone — the baseline is left untouched, so the very next
+    // unguarded tick still sees the change and reloads.
     if (saving || document.activeElement?.isContentEditable ||
-        chromeRoot?.activeElement?.closest('#mp-chat-panel')) return;
+        window.mpChatTyping?.()) return;
     try {
       const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return;
@@ -683,6 +690,12 @@ function injectChrome() {
   mpq('#mp-btn-print').addEventListener('click', printThisPage);
   mpq('#mp-btn-edit').addEventListener('click', toggleEditMode);
 
+  // Before the page-shaped work below, which reads elements a malformed or
+  // hand-written document may not have: whatever else this page breaks, the
+  // tab must keep following the file, so the model's next edit can fix it
+  // without the user having to reload by hand.
+  initAutoReload();
+
   // Per-page configuration is declarative: assembly sets data attributes on
   // <body> (the document carries data, never chrome API calls). Legacy pages
   // instead carry injected applySize()/setLiveEditSupported() script lines
@@ -709,6 +722,5 @@ function injectChrome() {
 
   initVariants();
   applySize(savedPaper, configuredOrient);
-  initAutoReload();
   window.addEventListener('resize', () => scaleToFit(paperDims().w));
 })();

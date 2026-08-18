@@ -193,6 +193,21 @@
   let panel = null, log = null, presenceEl = null, inputEl = null, sendEl = null;
   let attachCtx = null; // { el } — the element double-click selected in edit mode
 
+  // ── Typing signal (read by shell.js's auto-reload poll) ───────────────────
+  // A reload while the user is mid-keystroke would land on top of their
+  // typing, so the poll asks here first. What counts is TYPING, not focus:
+  // after a message is sent the input keeps focus and the user waits for the
+  // model — the moment its edit lands is exactly when the preview must
+  // refresh. The window is deliberately short; the draft and caret survive
+  // the reload anyway (restore()), so a stale preview is the worse trade.
+  const TYPING_QUIET_MS = 1200;
+  let lastKeystroke = 0;
+  let composing = false;
+  function markTyping() { lastKeystroke = Date.now(); }
+  window.mpChatTyping = () =>
+    !!inputEl && chromeRoot.activeElement === inputEl &&
+    (composing || (!!inputEl.value && Date.now() - lastKeystroke < TYPING_QUIET_MS));
+
   function el(tag, className, text) {
     const n = document.createElement(tag);
     if (className) n.className = className;
@@ -229,7 +244,19 @@
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
     });
-    inputEl.addEventListener('input', () => ssSet('mpChatDraft', inputEl.value));
+    // Draft + caret + focus are mirrored into sessionStorage on every event
+    // that can move them, so the auto-reload poll can replace the document
+    // under a focused, half-written message and restore() puts it back
+    // exactly as it was (see Session persistence).
+    for (const type of ['input', 'keyup', 'click', 'focus', 'blur']) {
+      inputEl.addEventListener(type, rememberDraft);
+    }
+    inputEl.addEventListener('input', markTyping);
+    inputEl.addEventListener('keydown', markTyping);
+    // IME composition spans many input events with no keystrokes of its own;
+    // the flag holds the reload off for the whole composition.
+    inputEl.addEventListener('compositionstart', () => { composing = true; markTyping(); });
+    inputEl.addEventListener('compositionend', () => { composing = false; markTyping(); });
     form.appendChild(inputEl);
 
     sendEl = el('button', 'mp-chat-send', 'Send');
@@ -240,7 +267,7 @@
       const text = inputEl.value.trim();
       if (!text) return;
       inputEl.value = '';
-      ssSet('mpChatDraft', '');
+      rememberDraft();
       // Element context is captured at SEND time from the live element, so
       // the snapshot includes the edits the user just made to it.
       const intent = attachCtx?.el?.isConnected
@@ -483,12 +510,21 @@
 
   // ── Session persistence ───────────────────────────────────────────────────
   // The auto-reload poll replaces the whole document whenever the model edits
-  // the file; per-tab sessionStorage carries the panel open-state and input
-  // draft across that reload. Live history is refetched from the server
-  // (cursor 0).
+  // the file; per-tab sessionStorage carries the panel open-state and the
+  // input's draft, caret and focus across that reload. Live history is
+  // refetched from the server (cursor 0).
 
   function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch {} }
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
+
+  // Everything about the input that a reload would otherwise drop: the text,
+  // where the caret sits in it, and whether it had focus at all.
+  function rememberDraft() {
+    if (!inputEl) return;
+    ssSet('mpChatDraft', inputEl.value);
+    ssSet('mpChatCaret', String(inputEl.selectionStart ?? inputEl.value.length));
+    ssSet('mpChatFocus', chromeRoot.activeElement === inputEl ? '1' : '0');
+  }
 
   function restore() {
     if (ssGet('mpChatOpen') !== '1') return;
@@ -499,8 +535,16 @@
     } else {
       openPanel();
     }
+    if (!inputEl) return;
     const draft = ssGet('mpChatDraft');
-    if (draft && inputEl) inputEl.value = draft;
+    if (draft) inputEl.value = draft;
+    // Focus last, and only if it was there before: the reload is meant to be
+    // invisible to someone in the middle of writing a message.
+    if (ssGet('mpChatFocus') === '1') {
+      inputEl.focus();
+      const caret = Math.min(Number(ssGet('mpChatCaret')) || 0, inputEl.value.length);
+      try { inputEl.setSelectionRange(caret, caret); } catch {}
+    }
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────
