@@ -1,0 +1,438 @@
+/* chrome.css — the skill's editing chrome: toolbar, edit mode, chat panel.
+   Injected by the local server at serve time (with shell.js/chat.js), never
+   referenced by the document itself — so chrome updates apply automatically
+   to every already-generated page. */
+
+body { padding-top: 56px; /* toolbar height */ }
+
+/* ── Toolbar ── */
+#mp-toolbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 56px;
+  background: var(--color-paper);
+  border-bottom: 1px solid var(--color-rule-light);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px;
+  z-index: 200;
+  font-family: var(--font-label);
+}
+
+#mp-toolbar button {
+  padding: 7px 18px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  border: none;
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+#mp-toolbar button:hover { opacity: 0.8; }
+
+/* The two primary toolbar buttons share one exact height — the outlined
+   EDIT would otherwise run 2px taller than the borderless Print button. */
+#mp-btn-edit, #mp-btn-print {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+}
+#mp-toolbar button:disabled { opacity: 0.6; cursor: default; pointer-events: none; }
+
+/* Combined edit+chat toggle: pencil when idle, X + "Editing" while active
+   (active = solid ink so exiting is obvious). */
+#mp-btn-edit {
+  background: transparent !important;
+  color: var(--color-mid) !important;
+  border: 1px solid var(--color-rule-light) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#mp-btn-edit:hover {
+  background: var(--color-bg) !important;
+  color: var(--color-ink) !important;
+}
+#mp-btn-edit .mp-icon-x { display: none; }
+#mp-btn-edit.active .mp-icon-pencil { display: none; }
+#mp-btn-edit.active .mp-icon-x { display: inline; }
+
+#mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--color-rule-light); flex-shrink: 0; }
+
+/* Page-setup strip at the top of the edit panel: document-level controls,
+   set off from the conversation below by a muted band and rule. */
+#mp-panel-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-rule-light);
+  flex-shrink: 0;
+}
+.mp-setup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mp-setup-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-mid);
+  white-space: nowrap;
+}
+
+/* Segmented value pickers (paper size + orientation): one shared component,
+   selected value white-on-ink, identical 30px height. */
+.mp-seg-group {
+  display: flex;
+  border: 1px solid var(--color-rule-light);
+  border-radius: 3px;
+  overflow: hidden;
+  height: 30px;
+}
+.mp-seg-btn {
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-paper);
+  color: var(--color-mid);
+  border: none;
+  font-family: var(--font-label);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mp-seg-btn + .mp-seg-btn { border-left: 1px solid var(--color-rule-light); }
+.mp-seg-btn:hover { color: var(--color-ink); }
+.mp-seg-btn.active {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.mp-nav-btn {
+  width: 28px; height: 28px;
+  border: 1px solid var(--color-rule-light) !important;
+  background: transparent !important;
+  color: var(--color-mid) !important;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  font-family: var(--font-label);
+  line-height: 1;
+}
+.mp-nav-btn:hover {
+  background: var(--color-bg) !important;
+  color: var(--color-ink) !important;
+}
+
+/* ── Embedded (iframe) mode — strip chrome that the host page provides ──
+   Screen-only: the printed artifact keeps its themed chrome (borders) even
+   when printed from inside an embedding host like create.html. */
+@media screen {
+  body.mp-embedded { padding-top: 0 !important; }
+  body.mp-embedded #mp-toolbar { display: none !important; }
+  body.mp-embedded #mp-chat-panel { display: none !important; } /* the host provides its own conversation surface */
+  body.mp-embedded .page-surround { padding: 0 !important; min-height: 0 !important; background: transparent !important; }
+  /* border-color, not border: none — the on-screen box must keep the exact
+     geometry print will have (print reuses this box 1:1), or the embedded
+     preview would wrap lines differently than the printed sheet. */
+  body.mp-embedded .page,
+  body.mp-embedded .variant-page { box-shadow: none !important; border-color: transparent !important; }
+}
+
+/* ── Edit mode ── */
+body.edit-active { cursor: text; }
+
+#mp-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9000;
+  overflow: hidden;
+}
+
+.mp-hover-box {
+  position: fixed;
+  border: 2px dashed rgba(59,130,246,0.7);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.mp-hover-label {
+  position: absolute;
+  top: -24px; left: -2px;
+  background: rgba(59,130,246,0.9);
+  color: #fff;
+  font-size: 9px;
+  font-family: system-ui, sans-serif;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── Chat panel — docked LEFT; the viewport shrinks beside it (no overlay) ── */
+#mp-chat-panel {
+  position: fixed;
+  top: 56px; left: 0; bottom: 0;
+  width: 336px;
+  background: var(--color-paper);
+  border-right: 1px solid var(--color-rule-light);
+  display: none;
+  flex-direction: column;
+  z-index: 150; /* under the toolbar (200); the pointer-events-none overlay (9000) doesn't block clicks */
+  font-family: var(--font-label);
+  font-size: 12px;
+}
+body.mp-chat-open #mp-chat-panel { display: flex; }
+body.mp-chat-open .page-surround {
+  margin-left: 336px;
+  /* scaleToFit already shrinks the preview for the reduced viewport; anything
+     that still doesn't fit scrolls instead of hiding under the panel. */
+  overflow-x: auto;
+}
+
+
+
+/* Panel body: the live conversation plus the not-connected overlay's
+   positioning context. */
+#mp-panel-body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#mp-chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mp-msg {
+  max-width: 85%;
+  padding: 7px 11px;
+  border-radius: 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.mp-msg-user  { align-self: flex-end; background: var(--color-ink); color: var(--color-paper); }
+.mp-msg-model { align-self: flex-start; background: var(--color-pull-bg); color: var(--color-ink); }
+.mp-msg-failed { opacity: 0.55; }
+
+.mp-chat-divider {
+  align-self: center;
+  font-size: 10px;
+  color: var(--color-dim);
+  letter-spacing: 0.04em;
+  padding: 2px 0;
+}
+
+.mp-paste-card {
+  border: 1px solid var(--color-rule-light);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mp-paste-card pre {
+  background: var(--color-pull-bg);
+  padding: 9px 11px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.mp-paste-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+}
+.mp-copy-btn {
+  padding: 3px 10px !important;
+  background: var(--color-ink) !important;
+  color: var(--color-paper) !important;
+  border: none !important;
+  font-size: 10px !important;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.mp-copy-btn:hover { opacity: 0.8; }
+.mp-paste-hint { font-size: 10px; color: var(--color-dim); }
+
+#mp-chat-presence {
+  padding: 5px 14px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--color-dim);
+  min-height: 21px;
+}
+#mp-chat-presence::before {
+  content: '●';
+  margin-right: 5px;
+  font-size: 8px;
+  vertical-align: 1px;
+}
+#mp-chat-presence:empty::before { content: none; }
+/* Status green — connected is a state, not a theme accent. ID-qualified so
+   the class color actually beats #mp-chat-presence's base color. */
+#mp-chat-presence.mp-presence-live { color: oklch(52% 0.14 150); }
+#mp-chat-presence.mp-presence-queued { color: var(--color-dim); }
+
+/* Model-working indicator: a chat entry (not the status line) — animated
+   dots plus a label, always the last thing in the conversation. */
+.mp-working {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Subtle "model is working" indicator: three dots pulsing in sequence. */
+.mp-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-right: 7px;
+  vertical-align: 1px;
+}
+.mp-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: mp-dot-pulse 1.2s ease-in-out infinite;
+}
+.mp-dots i:nth-child(2) { animation-delay: 0.2s; }
+.mp-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes mp-dot-pulse {
+  0%, 60%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+}
+
+/* Stacked: chip row, textarea, then a full-width Send underneath. */
+#mp-chat-form {
+  border-top: 1px solid var(--color-rule-light);
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#mp-chat-attach { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#mp-chat-attach:empty { display: none; }
+.mp-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-pull-bg);
+  border: 1px solid var(--color-rule-light);
+  border-radius: 10px;
+  padding: 3px 9px 3px 6px;
+  font-size: 10px;
+  color: var(--color-ink);
+  max-width: 100%;
+}
+.mp-attach-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Removal X sits on the LEFT of the chip */
+.mp-attach-clear {
+  background: transparent !important;
+  border: none !important;
+  color: var(--color-mid) !important;
+  padding: 0 !important;
+  font-size: 10px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.mp-attach-clear:hover { color: var(--color-ink) !important; }
+#mp-chat-input {
+  font-family: var(--font-label);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 7px 9px;
+  border: 1px solid var(--color-rule-light);
+  border-radius: 4px;
+  resize: none;
+  color: var(--color-ink);
+  background: var(--color-paper);
+}
+#mp-chat-input:focus { outline: none; border-color: var(--color-mid); }
+.mp-chat-send {
+  width: 100%;
+  padding: 8px 14px !important;
+  background: var(--color-ink) !important;
+  color: var(--color-paper) !important;
+  border: none !important;
+  font-size: 11px !important;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.mp-chat-send:hover { opacity: 0.8; }
+
+#mp-chat-input:disabled, .mp-chat-send:disabled { opacity: 0.45; cursor: default; }
+
+/* Element selected via double-click (chip in the chat area). Screen-only —
+   never printed, and serializeForSave strips the class from saved files. */
+@media screen {
+  .mp-selected {
+    outline: 2px solid rgba(59, 130, 246, 0.7);
+    outline-offset: 2px;
+  }
+}
+
+/* ── Starter: the first conversation entry until a model connects — a
+   regular model bubble stacking its text over the copy row. ── */
+.mp-starter {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-width: 95%;
+}
+/* The command and its Copy button on one inset row, monospace. */
+.mp-copy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule-light);
+  border-radius: 6px;
+  padding: 6px 7px 6px 11px;
+  box-shadow: inset 0 1px 3px oklch(0% 0 0 / 0.08);
+}
+.mp-copy-row code {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+/* ── Print: chrome never prints ── */
+@media print {
+  #mp-toolbar, #mp-overlay, .page-break-guide, #mp-chat-panel { display: none !important; }
+}

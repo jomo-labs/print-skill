@@ -17,9 +17,11 @@ edge. This skill packages print as a design discipline:
 
 - **Built for paper** — ink-friendly, grayscale-safe, inside the margins real
   printers can reach.
-- **Interactive output** — every page ships a **Print / Save PDF** button,
-  double-click text editing, and paper-size switching. Print is WYSIWYG:
-  the on-screen sheet and the printed sheet are dimension-identical, 1:1.
+- **Interactive output** — served pages get a **Print / Save PDF** button,
+  double-click text editing with chat back to your model, and paper-size
+  switching, all injected by the local server at view time (generated files
+  stay pure printable documents). Print is WYSIWYG: the on-screen sheet and
+  the printed sheet are dimension-identical, 1:1.
 - **Deterministic PDFs** — a bundled local server (Node + headless Chromium)
   serves your pages and renders pixel-identical PDFs on every machine, no
   dependence on the viewer's browser. Without it, pages still print fine via
@@ -39,9 +41,14 @@ No UI required end to end: the agent authors the page with its file tools, and
 the PDF renders without a browser or a click — ready for pipelines that format
 something printable and ship the file onward (email, cloud print, archive).
 
+Generated pages land flat in a gitignored `out/` directory as single
+self-contained HTML files (styles inlined, no sidecar assets) — users reach
+them through the local server URL, which wraps them with the editing chrome;
+the raw file opened directly is a plain standalone printable.
+
 ```bash
 # one-shot: writes weekly-chore-chart.pdf next to the page and exits
-node server/render-cli.mjs weekly-chore-chart.html
+node server/render-cli.mjs out/weekly-chore-chart.html
 
 # or against the running server
 curl -o chart.pdf http://127.0.0.1:4949/pdf/weekly-chore-chart.html

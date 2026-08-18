@@ -38,7 +38,7 @@ toolbar chrome around it) rather than forcing empty content.
   fallback stacks.
 - Weights actually used, and any weights explicitly avoided (e.g. "never
   use 300 — reads too thin at print resolution").
-- Type scale in px (reuse `assets/page_shell.html`'s `--text-*` scale
+- Type scale in px (reuse `assets/shell/shell.css`'s `--text-*` scale
   where possible; only introduce new sizes the theme genuinely needs).
 - Line-heights and letter-spacing/tracking per role (display, body, label).
 - OpenType features used, if any (e.g. tabular figures in tables — see
@@ -55,7 +55,7 @@ toolbar chrome around it) rather than forcing empty content.
   no-fill principle (text, borders, rules — never `background`).
 - **Semantic role mapping** — which `--color-*` token each visual role
   maps to (winner/loser, star performer, zero-value, table header, etc.),
-  reusing `assets/page_shell.html`'s existing token names.
+  reusing `assets/shell/shell.css`'s existing token names.
 - **Light/dark handling** — does this theme have a dark variant? If not,
   say so explicitly.
 

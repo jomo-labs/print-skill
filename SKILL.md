@@ -12,10 +12,13 @@ metadata:
 # Print
 
 Turn the user's request into a print-ready HTML page. You author the page
-**content**; the page **shell** — design tokens, print button, double-click
-text editing, paper-size switching, WYSIWYG print geometry — ships in `assets/`
-(a thin `page_shell.html` plus the `shell/` css+js it links) and is never
-authored or retyped, only copied and filled (see `references/assembly.md`).
+**content**; the document template (`assets/page_template.html`) and the
+**shell chrome** it links (`assets/shell/` css+js — design tokens, print
+button, edit mode with chat, paper-size switching, WYSIWYG print geometry) are
+never authored or retyped, only copied and filled (see
+`references/assembly.md`). The generated file is a pure document: all chrome
+is injected at runtime by the shell scripts, so shell updates apply to
+already-generated pages automatically.
 A bundled local server (`server/`) serves the generated pages and renders
 deterministic PDFs with headless Chromium — the same renderer on every
 machine, driven by the page's Print button or fully headless for automated
@@ -28,6 +31,11 @@ means you are also the design validator: the self-check in
 ## Workflow
 
 ### Step 0 — Input & server warm-up
+
+**Live-mode invocation short-circuits everything**: if the request is `live`
+(`/print live`) or an ask in words to go live / connect to the page's chat,
+skip the generation workflow entirely and follow "Live mode (`/print live`)"
+below.
 
 First, warm up the PDF server in the background so the one-time Chromium
 download overlaps with authoring instead of stalling Step 7: if
@@ -85,7 +93,9 @@ matters (paper size, DPI, margins). Produce these channels:
 | `content_html` | The page content. It is inserted inside `<div class="page">` — no wrapper, no footer, no `<html>`/`<head>`/`<body>`. Wrap each top-level block in `<div data-mp-section="...">` (see design rules). Use `var(--color-*)` / `var(--font-*)` tokens everywhere. |
 | `custom_css` | Optional. `:root` token overrides + content-specific rules. |
 | `font_import` | Optional. Google Fonts URL — required whenever you name any font beyond Playfair Display / Source Serif 4 / Inter. |
-| `paper` | `landscape`, `a4`, `legal`, `half`, or empty (= letter portrait). The ONLY orientation mechanism. |
+| `paper` | Size only: `a4`, `legal`, `half`, or empty (= letter). |
+| `orientation` | `landscape` or empty (= portrait). Independent of `paper` — any size×orientation combination works. The ONLY orientation mechanism. |
+| `live_edit` | `yes` or empty. Decide per `references/harness-support.md`: `yes` only if the user's browser can reach the local server (reachability gate — cloud sandboxes fail this) AND your harness can run the bounded listen loop (capability ladder). Unknown harness: apply the ladder, don't guess from the name. Empty = the page's Chat panel runs in manual copy/paste mode. |
 | `title` | Page title; also becomes the filename. |
 | `answer_key_html` | Worksheets with an answer key only; otherwise empty. Never author the key as a second page inside `content_html`. |
 
@@ -99,12 +109,15 @@ say so in your report.
 
 ### Step 5 — Assemble
 
-Follow `references/assembly.md` exactly: copy `assets/page_shell.html` to
-`<slugified-title>.html`, then make the anchored insertions — nested-sheet CSS
-(two-sheet only), font `<link>`, `custom_css` into
-`<style id="content-overrides">`, `applySize('<paper>')` before `</body>`, and
-finally replace `<!-- CONTENT -->` with your content. Copy the shell with `cp`
-— never retype it.
+Follow `references/assembly.md` exactly: produce `<slugified-title>.html`
+from `assets/page_template.html` with the step-1 sed (it inlines the document
+stylesheet — the generated file is fully self-contained, no sidecar), then
+make the anchored insertions — nested-sheet CSS (two-sheet only), font
+`<link>`, `custom_css` into `<style id="content-overrides">`, the `<body>`
+data attributes (`data-mp-paper`, `data-mp-orientation`, `data-mp-live-edit`)
+when paper/orientation/live_edit are set, and finally replace
+`<!-- CONTENT -->` with your content. Use the given commands — never retype
+template or stylesheet.
 
 ### Step 6 — Verify
 
@@ -114,31 +127,52 @@ Fix in place if anything fails.
 
 ### Step 7 — Serve
 
-Make the page reachable at `http://127.0.0.1:4949/<file>.html`:
+Make the page reachable at `http://127.0.0.1:<port>/<file>.html`. The served
+root is `<cwd>/out` — the assembly output directory — so one server covers
+every page this project generates.
 
-1. Probe `GET http://127.0.0.1:4949/healthz` — if it answers with
-   `"print-skill-server"`, the server is already up; done.
-2. Otherwise start it in the background from the skill directory:
-   `node <skill-dir>/server/server.mjs --dir <output-dir> --port 4949`.
+1. Probe ports 4949–4958 with `GET http://127.0.0.1:<port>/healthz`. An
+   answer naming `"print-skill-server"` whose `dir` equals `<cwd>/out` is
+   this project's server — reuse it (note its port); a healthy server with a
+   **different** `dir` belongs to another project — leave it alone and keep
+   probing.
+2. If none matched, start one **in the background** (never foreground — some
+   harnesses kill foreground commands at 30s, taking the server down):
+   `node <skill-dir>/server/server.mjs --dir <cwd>/out --port 4949 --auto-port`.
+   `--auto-port` walks to the next free port when 4949 is taken; the startup
+   line prints the URL it actually bound — read it, don't assume 4949.
    If the Step 0 background `npm install` is still running, wait for it to
    finish first; if it was skipped or failed, run `npm install` in
    `<skill-dir>/server` now (its postinstall fetches the Chromium build).
 3. If Node is unavailable or the install fails, skip serving — the generated
-   file still works opened directly in a browser (native print dialog instead
-   of the rendered PDF). Say so in the report rather than failing the task.
+   file still works opened directly in a browser as a **plain printable**
+   (styled and print-exact via the browser dialog; no toolbar, editing, or
+   chat — those are server-injected chrome). Say so in the report rather than
+   failing the task; this fallback is the one case where the report hands out
+   a file path.
 
 ### Step 8 — Report
 
-- The page URL (`http://127.0.0.1:4949/<file>.html`) and the file path, plus
-  the page title
+- The page URL (`http://127.0.0.1:<port>/<file>.html`) and the page title.
+  **URL only — never the out/ file path.** Users open the link (which carries
+  the editing chrome), not the file. Mention the path only if the user asks
+  for it, is debugging, or wants the standalone printable file itself.
 - One sentence on what was generated
 - Remind: "Open the link — double-click any text to edit it (edits save into
   the file automatically), then click **Print / Save PDF** for an exact PDF.
   For font or color changes, ask me to regenerate the page with new style
   instructions."
-- If the server couldn't run: give the file path, note that Print / Save PDF
-  uses the browser's print dialog, and mention Node 18+ enables the exact-PDF
-  server.
+- If `live_edit` was `yes`, add: "Press **Edit** on the page to edit text and
+  open the chat panel — send me `/print live` and I'll connect to it, so you
+  can request changes right from the page." If not, add: "Press **Edit** on
+  the page to edit text and open the chat panel, which turns your requests
+  into instructions you can copy and paste back to me — and if you send me
+  `/print live`, I'll check whether live chat can work in this setup and
+  connect if it can."
+- If the server couldn't run: give the file path, note the file is a plain
+  printable (print via the browser dialog; no editing/chat without the
+  server), and mention Node 18+ enables the exact-PDF server and the full
+  editing chrome.
 
 ## Headless / pipeline use
 
@@ -150,12 +184,12 @@ user asked for "a PDF file" rather than a page to open — produce the PDF
 directly after Step 6:
 
 - **One-shot, no running server** (preferred in pipelines):
-  `node <skill-dir>/server/render-cli.mjs <file>.html [<out>.pdf]` — serves
-  the page's directory on an ephemeral loopback port, renders it with the same
-  headless Chromium as the interactive path, writes the PDF (default: next to
-  the HTML), prints the output path on stdout, and exits.
+  `node <skill-dir>/server/render-cli.mjs out/<file>.html [<out>.pdf]`
+  — serves the page's directory on an ephemeral loopback port, renders it
+  with the same headless Chromium as the interactive path, writes the PDF
+  (default: next to the HTML), prints the output path on stdout, and exits.
 - **Against the running server** (Step 7 already done):
-  `curl -fsS -o <file>.pdf http://127.0.0.1:4949/pdf/<file>.html`
+  `curl -fsS -o <file>.pdf http://127.0.0.1:<port>/pdf/<file>.html`
 
 Both need Node 18+ and the Step 0 `npm install`. There is no dialog fallback
 without a human: if Node is unavailable, report the HTML path and say the PDF
@@ -181,8 +215,16 @@ place — don't regenerate from scratch:
   the shell instead of patching.
 
 Keep the same filename so the user's link stays valid, and re-run the Step 6
-verification greps after any edit. Never touch the shell's own markup or
-script — only content and content-overrides.
+verification greps after any edit. Never touch the shell's own script or css —
+only content and content-overrides.
+
+Pages generated by older skill versions may still contain baked-in chrome
+markup, injected `applySize`/`setLiveEditSupported` script lines, or relative
+`shell/*` links — leave all of it alone: the server serves shell files from
+the skill's own assets, the current shell removes and replaces old chrome at
+load, and the next browser-edit save cleanses the file automatically. A
+leftover `<outdir>/shell/` directory from an older version can be deleted
+whenever no `file:`-opened legacy page still needs it.
 
 A page open in the browser via the local server refreshes itself within a
 couple of seconds of the file changing on disk (the shell polls the server's
@@ -194,6 +236,98 @@ saved back into the file when committed. So the file may have changed since
 you wrote it — always Read the current file before editing, and never
 regenerate it from memory of what you generated (that would silently discard
 the user's own edits).
+
+## Live mode (`/print live`)
+
+The generated page's chat panel (opened by the page's **Edit** button) can
+talk to you through the local server —
+but **only when the user asks**. Never enter the listen loop on your own
+after generating a page; the panel itself tells the user to send
+`/print live` when they want you connected. Messages the user sends before
+you connect queue on the server; your first `wait` drains them.
+
+All commands below are `node <skill-dir>/server/chat-cli.mjs …` against the
+running server (Step 7), with `--url` pointing at its actual port. The
+`<page>` argument is the page's server path — `<file>.html` under the out/
+layout. Target page: the page generated in this conversation; if none and
+exactly one page is served (GET `/` lists them), use it; otherwise ask
+which page.
+
+### Entering
+
+1. Ensure the server is up (Step 7 probe). A page without the
+   `data-mp-live-edit` body attribute is NOT a refusal — the flag is an
+   assembly-time guess, and the page's chat panel invites `/print live`
+   either way. Re-run the decision from `references/harness-support.md`
+   now (reachability gate, then the ladder); if it passes, add
+   `data-mp-live-edit="1"` to the page's `<body>` tag (one Edit, per
+   assembly step 5) and continue. Only if it genuinely fails do you tell
+   the user live mode can't work here — and say why (unreachable browser
+   vs. no loop support), not just "unsupported".
+2. Pick your listen mechanism from the ladder under "Listening" below —
+   highest rung your harness supports (details per harness in
+   `references/harness-support.md`). Only rung (c) needs the selftest probe
+   (`selftest --seconds 20`, falling back to `--seconds 8`) to pick its
+   `--timeout`; if even 8 fails, remove the `data-mp-live-edit` attribute
+   from the page's `<body>` tag (one Edit) and tell the user live mode
+   doesn't work in this harness.
+3. Announce presence fast — `status <file>.html idle` — then start listening.
+   Tell the user in the harness conversation that you're connected and how to
+   stop (`say "done"` in the panel, or just ask here).
+
+### Listening
+
+Use the quietest mechanism your harness offers — **foreground polling is the
+last resort, not the default**. A visible loop of `wait` commands reads as
+silent background churn to the user watching the conversation:
+
+- **(a) Stream/monitor** — your harness can feed a background command's
+  output lines back to you as events: run `wait <page> --follow` in the
+  background and react to each NDJSON line. No polling at all.
+- **(b) Background + wake** — your harness runs commands in the background
+  and notifies you when they exit (e.g. Claude Code's background Bash):
+  run `wait <page> --timeout 240` as a background task and **end your
+  turn**. The completion notification wakes you — handle any messages, then
+  arm the next background wait. Idle cost: one wake per ~4 minutes, nothing
+  in the foreground.
+- **(c) Foreground bounded loop** — nothing else available: loop
+  `wait <page> --timeout <T>` (the selftest-chosen T) in the foreground;
+  each run prints a JSON batch or `NO_MESSAGE`; re-run on `NO_MESSAGE`.
+
+Exit 2 from any `wait` means the server died — restart it (Step 7, same
+`--dir`) and resume.
+
+### Handling a message
+
+1. `status <file>.html working` — the panel shows an animated working
+   indicator. While you work, push what's useful for the user to see:
+   re-post `status <file>.html working "<short progress note>"` to update
+   the indicator's label as you move through stages, and use
+   `say <file>.html "<message>"` for anything worth keeping in the
+   conversation (a finding, a question, a caveat) — it appears as a chat
+   bubble immediately, not just at the end.
+2. **Read the current file from disk** — never edit from memory. The user's
+   browser edits and their `data-mp-edited` markers live in the file, and the
+   message may carry element context in `data` (`selector`, `snapshot`,
+   `edited`) pointing into it. For a sweep of everything the user edited:
+   `edits <file>.html`.
+3. Apply the change per "Editing an existing page" (same self-check rules for
+   CSS, same Step 6 greps). Strip the `data-mp-edited` attributes you
+   addressed as part of the edit — the marker means "not yet seen by the
+   model". The open tab refreshes itself.
+4. `say <file>.html "<one-line confirmation>"`, then `status <file>.html done`,
+   then resume listening.
+
+### Exiting — mandatory caps
+
+- After **~15 minutes with no messages** (rung (c): 15 consecutive
+  `NO_MESSAGE` rounds at T=20; rung (b): ~4 empty wakes at `--timeout 240`),
+  or when a chat message just says done/stop/that's all: post a sign-off
+  (`say`), then `status <file>.html idle`, leave the loop, and report back
+  in the harness that chat is paused and `/print live` reconnects. Mention
+  that messages sent meanwhile will queue.
+- Anything the user asks in the harness conversation itself always outranks
+  the loop — answer it; re-enter live mode only if they want it.
 
 ## Scope notes
 

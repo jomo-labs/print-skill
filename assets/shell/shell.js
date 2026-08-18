@@ -4,9 +4,23 @@
 // storage is unavailable. (Nothing reads storage back on this surface: paper
 // size deliberately starts at letter — see init.)
 function lsSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
+function lsGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+
+// ── Live edit capability flag ───────────────────────────────────────────────
+// Set at assembly time via an injected <script>setLiveEditSupported(true)</script>
+// (same mechanism as applySize) when the generating agent's harness can run
+// the chat listen loop — see references/harness-support.md. Absence = false.
+// chat.js reads the flag lazily on panel open/send, so injection order
+// relative to chat.js never matters.
+window.LIVE_EDIT_SUPPORTED = false;
+function setLiveEditSupported(v) { window.LIVE_EDIT_SUPPORTED = !!v; }
 
 // ── Paper size ──────────────────────────────────────────────────────────────
 
+// Base paper sizes, portrait dimensions. Orientation is a SEPARATE axis —
+// any size combines with portrait/landscape (dimensions swap; the @page css
+// gains the landscape keyword, or swaps explicit lengths where a named
+// page-size keyword doesn't exist).
 const PAPERS = {
   letter: { w: 816,  h: 1056, css: 'letter' },
   // A4 is 793.7 x 1122.5 CSS px — floored, not rounded. The sheet element is
@@ -17,37 +31,82 @@ const PAPERS = {
   a4:     { w: 793,  h: 1122, css: 'A4' },
   legal:  { w: 816,  h: 1344, css: 'legal' },
   // 'half-letter' is not a CSS page-size keyword (Chromium drops it and falls
-  // back to the printer default) — explicit dimensions are required here.
-  half:   { w: 528,  h: 816,  css: '5.5in 8.5in' },
-  // Letter rotated — wide formats (certificates, banners). A page declares it
-  // at assembly time via an injected applySize('landscape') call.
-  landscape: { w: 1056, h: 816, css: 'letter landscape' },
+  // back to the printer default) — explicit dimensions are required here, and
+  // per spec the landscape keyword doesn't combine with lengths, so the
+  // landscape variant swaps them instead.
+  half:   { w: 528,  h: 816,  css: '5.5in 8.5in', cssLandscape: '8.5in 5.5in' },
 };
 
 function getActivePage() {
   return document.querySelector('.variant-page.active') || document.getElementById('page');
 }
 
-function applySize(key) {
-  const p = PAPERS[key] || PAPERS.letter;
-  // Keep the select in sync for programmatic callers that invoke applySize
-  // directly.
-  const sel = document.getElementById('mp-paper-select');
-  if (sel && sel.value !== key) sel.value = key;
+// Current paper/orientation are state, not control values: the pickers live
+// in the (lazily built) edit panel, so they may not exist when size is
+// applied or read — applySize keeps them in sync whenever they do. (The
+// #mp-paper-select sync survives only for legacy pages' baked select.)
+let currentPaper = 'letter';
+let currentOrientation = 'portrait';
+
+// Effective sheet dimensions + @page size for the current paper×orientation.
+function paperDims() {
+  const p = PAPERS[currentPaper] || PAPERS.letter;
+  if (currentOrientation === 'landscape') {
+    return { w: p.h, h: p.w, css: p.cssLandscape || `${p.css} landscape` };
+  }
+  return { w: p.w, h: p.h, css: p.css };
+}
+
+function applySize(key, orientation) {
+  // Legacy alias: 'landscape' was once a paper key meaning letter-landscape
+  // (older pages carry applySize('landscape') lines or data-mp-paper values).
+  if (key === 'landscape') { key = 'letter'; orientation = 'landscape'; }
+  currentPaper = PAPERS[key] ? key : 'letter';
+  if (orientation === 'portrait' || orientation === 'landscape') currentOrientation = orientation;
+  const p = paperDims();
+  // Sync the panel's segmented controls (when built): active = current value.
+  const sel = document.getElementById('mp-paper-select'); // legacy pages only
+  if (sel && sel.value !== currentPaper) sel.value = currentPaper;
+  document.querySelectorAll('.mp-paper-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.paper === currentPaper));
+  document.querySelectorAll('.mp-orient-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.orient === currentOrientation));
+  // Persist the choice on the body dataset: the Print pipeline reloads the
+  // serialized DOM in headless Chromium, whose init() reads these attributes
+  // — without them a runtime paper/orientation change would silently reset
+  // to the assembly-time configuration in the rendered PDF. A text-edit save
+  // then also writes the choice into the file as document configuration.
+  if (currentPaper === 'letter') delete document.body.dataset.mpPaper;
+  else document.body.dataset.mpPaper = currentPaper;
+  if (currentOrientation === 'landscape') document.body.dataset.mpOrientation = 'landscape';
+  else delete document.body.dataset.mpOrientation;
   // WYSIWYG contract: the .page element IS the sheet, on screen and in print
-  // alike — same width, same min-height, no print-time zoom, no extra @page
-  // margin. Its padding is the page margin. min-height (not height) so a
-  // genuine overflow stays visible past the boundary instead of being
-  // silently scaled or clipped — overflow is a content-length bug to fix at
-  // generation time, and it spills onto a second printed sheet exactly as
-  // the on-screen guides show.
+  // alike — same width, same HEIGHT, no print-time zoom, no extra @page
+  // margin. Its padding is the page margin. The dimension is IMMUTABLE —
+  // paper is a fixed physical size, so content must be made to fit it, never
+  // the reverse: overflow spills visibly past the sheet's bottom edge (an
+  // error state to fix at generation time, marked by the break guides below)
+  // instead of silently stretching the page.
+  const nested = document.querySelector('#page > .page');
   document.querySelectorAll('.variant-page, #page').forEach(el => {
     el.style.width = p.w + 'px';
-    el.style.minHeight = p.h + 'px';
+    if (nested && el.id === 'page') {
+      // Two-sheet assemblies: #page is a transparent container around the
+      // nested sheets, not a sheet itself — it must grow around them.
+      el.style.height = 'auto';
+    } else {
+      el.style.height = p.h + 'px';
+    }
+    // '0', not '' — older generated pages carry min-height sheet rules in
+    // their frozen inline stylesheet, and CSS min-height would beat the
+    // fixed inline height; an inline 0 neutralizes it everywhere.
+    el.style.minHeight = '0';
   });
-  // Nested multi-page assemblies (#page is then a transparent container):
-  // each nested sheet is one full page too.
-  document.querySelectorAll('#page > .page').forEach(el => { el.style.minHeight = p.h + 'px'; });
+  // Nested multi-page assemblies: each nested sheet is one full fixed page.
+  document.querySelectorAll('#page > .page').forEach(el => {
+    el.style.height = p.h + 'px';
+    el.style.minHeight = '0';
+  });
   // Page-break guides only on the active page, and only when its content
   // actually overflows one sheet. Skipped for nested multi-page assemblies —
   // their sheets are discrete .page elements, there is no fragmentation to
@@ -59,13 +118,14 @@ function applySize(key) {
   // the guides mark the latest possible break.
   document.querySelectorAll('.page-break-guide').forEach(g => g.remove());
   const activePg = getActivePage();
-  const nested = document.querySelector('#page > .page');
-  if (!nested && activePg.offsetHeight > p.h) {
+  // Fixed sheet height means overflow no longer grows the element —
+  // scrollHeight is where the content actually ends.
+  if (!nested && activePg.scrollHeight > p.h + 1) {
     const cs = getComputedStyle(activePg);
     const decoTop = parseFloat(cs.paddingTop) + parseFloat(cs.borderTopWidth);
     const decoBottom = parseFloat(cs.paddingBottom) + parseFloat(cs.borderBottomWidth);
     const step = Math.max(p.h - decoTop - decoBottom, 1);
-    for (let y = p.h - decoBottom; y < activePg.offsetHeight; y += step) {
+    for (let y = p.h - decoBottom; y < activePg.scrollHeight; y += step) {
       const guide = document.createElement('div');
       guide.className = 'page-break-guide';
       guide.style.cssText = `position:absolute;left:0;right:0;top:${y}px;height:2px;` +
@@ -80,12 +140,20 @@ function applySize(key) {
   // safe-margin control can layer on top of this later by reserving space
   // INSIDE the sheet, never by changing the page box.)
   document.getElementById('dynamic-page-css').textContent = `@page { size: ${p.css}; margin: 0; }`;
-  lsSet('mpPaper', key);
+  lsSet('mpPaper', currentPaper);
   scaleToFit(p.w);
 }
 
+function setOrientation(o) {
+  applySize(currentPaper, o === 'landscape' ? 'landscape' : 'portrait');
+}
+
 function scaleToFit(w) {
-  const available = window.innerWidth - 80;
+  // The open chat panel narrows the viewport; only the screen-fit transform
+  // reacts — sheet width/min-height/padding (the WYSIWYG print geometry)
+  // never change. chat.js re-applies size on panel open/close.
+  const chatW = document.body.classList.contains('mp-chat-open') ? 336 : 0;
+  const available = window.innerWidth - 80 - chatW;
   const s = Math.min(available / w, 1);
   const el = getActivePage();
   el.style.transform = s < 1 ? `scale(${s})` : '';
@@ -102,7 +170,7 @@ function showVariant(n) {
   variantPages.forEach((el, i) => el.classList.toggle('active', i === n));
   document.getElementById('mp-variant-label').textContent = (n + 1) + ' / ' + variantTotal;
   // Re-apply size so width/transform/guides target the newly active variant
-  applySize(document.getElementById('mp-paper-select').value || 'letter');
+  applySize(currentPaper);
 }
 
 function initVariants() {
@@ -124,7 +192,10 @@ const EDITABLE_TAGS = new Set(['h1','h2','h3','h4','h5','h6','p','li','td','th',
 const ELEMENT_LABELS = {h1:'Title',h2:'Heading',h3:'Subheading',h4:'Subheading',h5:'Subheading',h6:'Subheading',p:'Paragraph',li:'List item',td:'Cell',th:'Header',blockquote:'Quote',figcaption:'Caption',span:'Text',a:'Link',strong:'Bold',em:'Italic',div:'Block'};
 
 let editMode = false, hoverBox = null, editListeners = null;
-const overlay = document.getElementById('mp-overlay');
+// Assigned by injectChrome() — the overlay is runtime-built chrome, so it
+// does not exist yet when this script parses (a const lookup here would bind
+// null and silently kill the hover boxes).
+let overlay = null;
 
 function clearHover() { if (hoverBox) { hoverBox.remove(); hoverBox = null; } }
 
@@ -145,7 +216,13 @@ function showHover(el) {
 function enableEditMode() {
   editMode = true;
   document.getElementById('mp-btn-edit').classList.add('active');
+  const label = document.getElementById('mp-btn-edit-label');
+  if (label) label.textContent = 'Stop Editing';
   document.body.classList.add('edit-active');
+  // Editing and the chat panel are one combined mode — chat.js (when
+  // present) opens the panel and auto-enables live through this hook. The
+  // shell stays fully functional without it.
+  window.mpChatOnEditMode?.(true);
 
   const onMove = (e) => {
     const el = e.target;
@@ -160,12 +237,24 @@ function enableEditMode() {
     const before = el.innerHTML;
     el.contentEditable = 'true';
     el.focus();
+    // Double-click is also the element-selection gesture for the chat panel:
+    // mark it (screen-only outline; serializeForSave strips the class) and
+    // hand it to chat.js, which shows it as a removable chip.
+    document.querySelectorAll('.mp-selected').forEach(s => { if (s !== el) s.classList.remove('mp-selected'); });
+    el.classList.add('mp-selected');
+    window.mpChatOnElementSelected?.(el);
     el.addEventListener('blur', () => {
       el.contentEditable = 'false';
       // Committing an edit persists it — see the Save section. No-op commits
       // (focused but unchanged) skip the write so ETags only move on real
-      // changes.
-      if (el.innerHTML !== before) savePage();
+      // changes. The data-mp-edited marker rides the same PUT as the edit
+      // itself, so file and DOM can never disagree about what the user
+      // touched — it's how the model finds user edits in the saved file
+      // (and it strips the markers it has addressed).
+      if (el.innerHTML !== before) {
+        el.setAttribute('data-mp-edited', '');
+        savePage();
+      }
     }, { once: true });
   };
   const onScroll = () => { clearHover(); };
@@ -198,10 +287,14 @@ function blurActiveEdit() {
 function disableEditMode() {
   editMode = false;
   document.getElementById('mp-btn-edit').classList.remove('active');
+  const label = document.getElementById('mp-btn-edit-label');
+  if (label) label.textContent = 'Edit';
   document.body.classList.remove('edit-active');
   blurActiveEdit();
   clearHover();
+  document.querySelectorAll('.mp-selected').forEach(s => s.classList.remove('mp-selected'));
   if (editListeners) { editListeners(); editListeners = null; }
+  window.mpChatOnEditMode?.(false);
 }
 
 function toggleEditMode() { editMode ? disableEditMode() : enableEditMode(); }
@@ -227,12 +320,24 @@ let saving = false;
 function serializeForSave() {
   const root = document.documentElement.cloneNode(true);
   root.querySelectorAll('.page-break-guide, .mp-hover-box').forEach(el => el.remove());
-  const overlay = root.querySelector('#mp-overlay');
-  if (overlay) overlay.replaceChildren();
+  // ALL chrome is runtime-only (injectChrome/chat.js rebuild it every load) —
+  // stripping it here keeps the saved file a pure document, and turns the
+  // first save of a legacy page (baked-in chrome) into a cleanse.
+  // data-mp-edited markers on content are NOT stripped — persisting them is
+  // how the model finds user edits in the file.
+  root.querySelector('#mp-toolbar')?.remove();
+  root.querySelector('#mp-overlay')?.remove();
+  root.querySelector('#mp-chat-panel')?.remove();
+  // The server's serve-time wrap added these; the file on disk never has them.
+  root.querySelectorAll('[data-mp-chrome]').forEach(el => el.remove());
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  root.querySelectorAll('.mp-selected').forEach(el => {
+    el.classList.remove('mp-selected');
+    if (!el.classList.length) el.removeAttribute('class');
+  });
   const body = root.querySelector('body');
   if (body) {
-    body.classList.remove('edit-active', 'mp-embedded');
+    body.classList.remove('edit-active', 'mp-embedded', 'mp-chat-open');
     if (!body.classList.length) body.removeAttribute('class');
   }
   root.querySelectorAll('.variant-page, #page, .page-surround').forEach(el => el.removeAttribute('style'));
@@ -298,7 +403,9 @@ async function printThisPage() {
     const res = await fetch('/render-pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html, title: document.title }),
+      // path lets the server stage the render temp next to this page, so
+      // relative asset references resolve for nested build/<project>/ pages.
+      body: JSON.stringify({ html, title: document.title, path: location.pathname }),
     });
     if (!res.ok) throw new Error(`server returned ${res.status}`);
     const blob = await res.blob();
@@ -348,7 +455,10 @@ async function printThisPage() {
 function initAutoReload() {
   if (location.protocol === 'file:') return;
   const tick = async () => {
-    if (saving || document.activeElement?.isContentEditable) return;
+    // Deferred while typing in the chat panel for the same reason as an
+    // in-progress text edit: a reload would eat the half-typed input.
+    if (saving || document.activeElement?.isContentEditable ||
+        document.activeElement?.closest?.('#mp-chat-panel')) return;
     try {
       const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return;
@@ -368,15 +478,92 @@ function initAutoReload() {
   setInterval(tick, 1500);
 }
 
+// ── Chrome injection ────────────────────────────────────────────────────────
+// The generated file is a pure document; ALL skill chrome is built here at
+// runtime, so shell updates apply to already-generated pages the moment
+// they're (re)loaded. Any pre-existing #mp-toolbar/#mp-overlay in the file is
+// a legacy page with baked-in chrome — it's removed and replaced, and the
+// next PUT save cleanses it from the file (serializeForSave strips chrome).
+
+function injectChrome() {
+  document.getElementById('mp-toolbar')?.remove();
+  document.getElementById('mp-overlay')?.remove();
+
+  const toolbar = document.createElement('div');
+  toolbar.id = 'mp-toolbar';
+  const sep = () => {
+    const s = document.createElement('div');
+    s.className = 'mp-sep';
+    return s;
+  };
+
+  // Combined edit+chat toggle: pencil when idle; X + "Editing" while active.
+  // chat.js (when present) opens/closes the side panel through the mode hook.
+  const edit = document.createElement('button');
+  edit.id = 'mp-btn-edit';
+  edit.innerHTML =
+    '<svg class="mp-icon-pencil" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>' +
+    '<svg class="mp-icon-x" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
+    '<span id="mp-btn-edit-label">Edit</span>';
+  toolbar.appendChild(edit);
+  toolbar.appendChild(sep());
+
+  const print = document.createElement('button');
+  print.id = 'mp-btn-print';
+  print.textContent = 'Print / Save PDF';
+  toolbar.appendChild(print);
+
+  // Variant nav — hidden until initVariants() detects multiple .variant-page
+  const vsep = sep();
+  vsep.id = 'mp-variant-sep';
+  vsep.style.display = 'none';
+  toolbar.appendChild(vsep);
+  const nav = document.createElement('div');
+  nav.id = 'mp-variant-nav';
+  nav.style.cssText = 'display:none; align-items:center; gap:8px;';
+  const prev = document.createElement('button');
+  prev.id = 'mp-btn-prev';
+  prev.className = 'mp-nav-btn';
+  prev.title = 'Previous variant';
+  prev.innerHTML = '&#8592;';
+  const label = document.createElement('span');
+  label.id = 'mp-variant-label';
+  label.style.cssText = 'font-family:var(--font-label);font-size:11px;color:var(--color-mid);white-space:nowrap;letter-spacing:0.04em;';
+  label.textContent = '1 / 1';
+  const next = document.createElement('button');
+  next.id = 'mp-btn-next';
+  next.className = 'mp-nav-btn';
+  next.title = 'Next variant';
+  next.innerHTML = '&#8594;';
+  nav.appendChild(prev);
+  nav.appendChild(label);
+  nav.appendChild(next);
+  toolbar.appendChild(nav);
+
+  const ov = document.createElement('div');
+  ov.id = 'mp-overlay';
+  document.body.prepend(ov);
+  document.body.prepend(toolbar);
+  overlay = ov;
+}
+
 // ── Init ────────────────────────────────────────────────────────────────────
 
 (function init() {
+  injectChrome();
+
   // Detect iframe embedding — strip standalone chrome
   if (window.self !== window.top) document.body.classList.add('mp-embedded');
 
   // Toolbar buttons
   document.getElementById('mp-btn-print').addEventListener('click', printThisPage);
   document.getElementById('mp-btn-edit').addEventListener('click', toggleEditMode);
+
+  // Per-page configuration is declarative: assembly sets data attributes on
+  // <body> (the document carries data, never chrome API calls). Legacy pages
+  // instead carry injected applySize()/setLiveEditSupported() script lines
+  // after this script — those globals still work, so they self-configure too.
+  if (document.body.dataset.mpLiveEdit) setLiveEditSupported(true);
 
   // Pages ship their design baked in: the shell's :root tokens plus whatever
   // #content-overrides the generation wrote (ad-hoc theme tokens included).
@@ -387,14 +574,17 @@ function initAutoReload() {
   // one localStorage, so a paper picked on some other document weeks ago would
   // silently re-target this page's @page size and sheet geometry — while the
   // user's print dialog stays on their printer's paper, producing clipped or
-  // half-blank sheets. Every standalone page opens at letter; the toolbar
-  // picker still works per visit, and an embedding host can re-apply its own
-  // saved choice via applySize after load.
-  const savedPaper = 'letter';
-  document.getElementById('mp-paper-select').value = savedPaper;
+  // half-blank sheets. Every standalone page opens at its own configured
+  // paper; the toolbar picker still works per visit, and an embedding host
+  // can re-apply its own saved choice via applySize after load.
+  // data-mp-paper may carry the legacy 'landscape' alias (applySize resolves
+  // it); data-mp-orientation is the separate-axis form.
+  const configured = document.body.dataset.mpPaper;
+  const savedPaper = (PAPERS[configured] || configured === 'landscape') ? configured : 'letter';
+  const configuredOrient = document.body.dataset.mpOrientation === 'landscape' ? 'landscape' : undefined;
 
   initVariants();
-  applySize(savedPaper);
+  applySize(savedPaper, configuredOrient);
   initAutoReload();
-  window.addEventListener('resize', () => scaleToFit(PAPERS[document.getElementById('mp-paper-select').value]?.w || 816));
+  window.addEventListener('resize', () => scaleToFit(paperDims().w));
 })();

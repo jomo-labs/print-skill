@@ -51,7 +51,7 @@ against. If a user names no style, generate in this theme.
   dim `oklch(67% 0.006 78)`, ghost `oklch(87% 0.005 78)`, rule
   `oklch(11% 0.005 78)`, rule-light `oklch(83% 0.005 78)`, pull-bg
   `oklch(94% 0.009 78)` — all derived from hue 78 / warm parchment
-  chroma — see the token block in `assets/page_shell.html`.
+  chroma — see the token block in `assets/shell/shell.css`.
 - **Accent:** `oklch(52% 0.150 78)` (warm amber), subtle tint
   `oklch(93% 0.060 78)`.
 - **Rationing rule:** accent appears in kickers, pull-rules, star
