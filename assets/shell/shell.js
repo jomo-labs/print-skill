@@ -508,7 +508,9 @@ function injectChrome() {
 
   // Page setup, right of the edit toggle: paper size and orientation as two
   // combo boxes. They're independent axes — any size combines with either
-  // orientation — so they stay two controls, not one product list.
+  // orientation — so they stay two controls, not one product list. Built
+  // always, shown only in edit mode (chrome.css gates them on .edit-active),
+  // so applySize() can keep them in sync whether or not they're on screen.
   const setup = document.createElement('div');
   setup.id = 'mp-page-setup';
   const combo = (id, options) => {
