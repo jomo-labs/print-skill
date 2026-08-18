@@ -41,10 +41,10 @@ function getActivePage() {
   return document.querySelector('.variant-page.active') || document.getElementById('page');
 }
 
-// Current paper/orientation are state, not control values: the pickers live
-// in the (lazily built) edit panel, so they may not exist when size is
-// applied or read — applySize keeps them in sync whenever they do. (The
-// #mp-paper-select sync survives only for legacy pages' baked select.)
+// Current paper/orientation are state, not control values: the toolbar's
+// pickers are injected chrome and legacy pages may carry their own baked
+// select, so a control may not exist when size is applied or read —
+// applySize keeps whatever is present in sync.
 let currentPaper = 'letter';
 let currentOrientation = 'portrait';
 
@@ -64,13 +64,12 @@ function applySize(key, orientation) {
   currentPaper = PAPERS[key] ? key : 'letter';
   if (orientation === 'portrait' || orientation === 'landscape') currentOrientation = orientation;
   const p = paperDims();
-  // Sync the panel's segmented controls (when built): active = current value.
-  const sel = document.getElementById('mp-paper-select'); // legacy pages only
+  // Sync the toolbar's combo boxes (and any legacy page's baked select) so
+  // they read the current state, however it was set.
+  const sel = document.getElementById('mp-paper-select');
   if (sel && sel.value !== currentPaper) sel.value = currentPaper;
-  document.querySelectorAll('.mp-paper-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.paper === currentPaper));
-  document.querySelectorAll('.mp-orient-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.orient === currentOrientation));
+  const osel = document.getElementById('mp-orient-select');
+  if (osel && osel.value !== currentOrientation) osel.value = currentOrientation;
   // Persist the choice on the body dataset: the Print pipeline reloads the
   // serialized DOM in headless Chromium, whose init() reads these attributes
   // — without them a runtime paper/orientation change would silently reset
@@ -506,6 +505,41 @@ function injectChrome() {
     '<svg class="mp-icon-x" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
+
+  // Page setup, right of the edit toggle: paper size and orientation as two
+  // combo boxes. They're independent axes — any size combines with either
+  // orientation — so they stay two controls, not one product list. Built
+  // always, shown only in edit mode (chrome.css gates them on .edit-active),
+  // so applySize() can keep them in sync whether or not they're on screen.
+  const setup = document.createElement('div');
+  setup.id = 'mp-page-setup';
+  const combo = (id, options) => {
+    const s = document.createElement('select');
+    s.id = id;
+    s.className = 'mp-combo';
+    for (const [value, label] of options) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      s.appendChild(o);
+    }
+    setup.appendChild(s);
+    return s;
+  };
+  const paperSel = combo('mp-paper-select', [
+    ['letter', 'Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half'],
+  ]);
+  paperSel.title = 'Paper size';
+  paperSel.setAttribute('aria-label', 'Paper size');
+  paperSel.addEventListener('change', () => applySize(paperSel.value));
+  const orientSel = combo('mp-orient-select', [
+    ['portrait', 'Portrait'], ['landscape', 'Landscape'],
+  ]);
+  orientSel.title = 'Orientation';
+  orientSel.setAttribute('aria-label', 'Orientation');
+  orientSel.addEventListener('change', () => setOrientation(orientSel.value));
+  toolbar.appendChild(setup);
+
   toolbar.appendChild(sep());
 
   const print = document.createElement('button');

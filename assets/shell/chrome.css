@@ -65,59 +65,46 @@ body { padding-top: 56px; /* toolbar height */ }
 
 #mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--color-rule-light); flex-shrink: 0; }
 
-/* Page-setup strip at the top of the edit panel: document-level controls,
-   set off from the conversation below by a muted band and rule. */
-#mp-panel-setup {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px;
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-rule-light);
-  flex-shrink: 0;
-}
-.mp-setup-row {
-  display: flex;
+/* Page setup in the toolbar: paper size + orientation as two combo boxes,
+   sitting right of the edit toggle. Edit-mode only — they're setup controls,
+   so they appear with the rest of the editing surface and leave the resting
+   toolbar to Edit and Print. Quiet by design — outlined, ink on paper, with
+   the native chrome replaced by a small caret, so solid ink-on-paper stays
+   the Print button's alone. */
+#mp-page-setup {
+  display: none;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
 }
-.mp-setup-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-mid);
-  white-space: nowrap;
-}
-
-/* Segmented value pickers (paper size + orientation): one shared component,
-   selected value white-on-ink, identical 30px height. */
-.mp-seg-group {
-  display: flex;
+body.edit-active #mp-page-setup { display: flex; }
+.mp-combo {
+  height: 34px;
+  padding: 0 26px 0 10px;
+  background: transparent;
+  color: var(--color-ink);
   border: 1px solid var(--color-rule-light);
   border-radius: 3px;
-  overflow: hidden;
-  height: 30px;
-}
-.mp-seg-btn {
-  padding: 0 10px;
-  display: inline-flex;
-  align-items: center;
-  background: var(--color-paper);
-  color: var(--color-mid);
-  border: none;
   font-family: var(--font-label);
-  font-size: 10px;
-  letter-spacing: 0.05em;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
+  /* Custom caret: the native one can't be recolored, and its metrics differ
+     per platform — which would make the toolbar's height jump. */
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
 }
-.mp-seg-btn + .mp-seg-btn { border-left: 1px solid var(--color-rule-light); }
-.mp-seg-btn:hover { color: var(--color-ink); }
-.mp-seg-btn.active {
-  background: var(--color-ink);
-  color: var(--color-paper);
+.mp-combo:hover { background-color: var(--color-bg); }
+.mp-combo:focus-visible { outline: none; border-color: var(--color-mid); }
+/* The dropdown list itself renders in the OS popup, which ignores most of
+   the above — keep its rows legible rather than uppercase-cramped. */
+.mp-combo option {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-ink);
 }
 
 .mp-nav-btn {
@@ -238,7 +225,10 @@ body.mp-chat-open .page-surround {
   white-space: pre-wrap;
   word-break: break-word;
 }
-.mp-msg-user  { align-self: flex-end; background: var(--color-ink); color: var(--color-paper); }
+/* User bubble: outlined, ink on paper (the 1px border eats into the padding
+   so both bubbles keep the same text box). The model's stays a soft fill —
+   neither competes with the Print button's solid ink. */
+.mp-msg-user  { align-self: flex-end; background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-dim); padding: 6px 10px; }
 .mp-msg-model { align-self: flex-start; background: var(--color-pull-bg); color: var(--color-ink); }
 .mp-msg-failed { opacity: 0.55; }
 
@@ -273,16 +263,16 @@ body.mp-chat-open .page-surround {
 }
 .mp-copy-btn {
   padding: 3px 10px !important;
-  background: var(--color-ink) !important;
-  color: var(--color-paper) !important;
-  border: none !important;
+  background: transparent !important;
+  color: var(--color-ink) !important;
+  border: 1px solid var(--color-rule-light) !important;
   font-size: 10px !important;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   border-radius: 3px;
   cursor: pointer;
 }
-.mp-copy-btn:hover { opacity: 0.8; }
+.mp-copy-btn:hover { background: var(--color-bg) !important; }
 .mp-paste-hint { font-size: 10px; color: var(--color-dim); }
 
 #mp-chat-presence {
@@ -383,16 +373,16 @@ body.mp-chat-open .page-surround {
 .mp-chat-send {
   width: 100%;
   padding: 8px 14px !important;
-  background: var(--color-ink) !important;
-  color: var(--color-paper) !important;
-  border: none !important;
+  background: transparent !important;
+  color: var(--color-ink) !important;
+  border: 1px solid var(--color-rule-light) !important;
   font-size: 11px !important;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   border-radius: 3px;
   cursor: pointer;
 }
-.mp-chat-send:hover { opacity: 0.8; }
+.mp-chat-send:hover { background: var(--color-bg) !important; }
 
 #mp-chat-input:disabled, .mp-chat-send:disabled { opacity: 0.45; cursor: default; }
 
