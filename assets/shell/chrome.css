@@ -335,15 +335,15 @@ body.mp-chat-open .page-surround {
   30% { opacity: 1; }
 }
 
+/* Stacked: chip row, textarea, then a full-width Send underneath. */
 #mp-chat-form {
   border-top: 1px solid var(--color-rule-light);
   padding: 10px 14px 12px;
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: end;
 }
-#mp-chat-attach { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#mp-chat-attach { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 #mp-chat-attach:empty { display: none; }
 .mp-attach-chip {
   display: inline-flex;
@@ -383,7 +383,8 @@ body.mp-chat-open .page-surround {
 }
 #mp-chat-input:focus { outline: none; border-color: var(--color-mid); }
 .mp-chat-send {
-  padding: 7px 14px !important;
+  width: 100%;
+  padding: 8px 14px !important;
   background: var(--color-ink) !important;
   color: var(--color-paper) !important;
   border: none !important;
