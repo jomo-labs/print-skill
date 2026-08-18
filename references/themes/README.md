@@ -16,7 +16,6 @@ A theme changes what sits on top of that baseline and never restates it.
 |---|---|---|
 | Newspaper | `newspaper.md` | *(default — no triggers; it is the base layer, used whenever no style is named, which is not a themed request)* |
 | Comic | `comic.md` | "Dog Man", "comic book", "comic strip", "Captain Underpants", "kids comic" |
-| Blueprint | `blueprint.md` | "blueprint", "technical drawing", "architectural", "schematic" |
 
 **Matching is forgiving about punctuation and spacing**: compare trigger
 phrases and the request with everything lowercased and non-alphanumerics

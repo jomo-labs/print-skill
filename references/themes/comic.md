@@ -20,9 +20,10 @@ empty/overflow behavior, contrast floors, tabular figures) are in
 - **Voice & microcopy:** short sentences. Capital letters for EMPHASIS. "WOW."
   as a standalone sentence is acceptable and encouraged. Slightly confused,
   always earnest — never sarcastic or knowing.
-- **What makes it distinctive:** the only shipped theme with a hard offset
-  shadow and heavy ink border on the sheet, and the only one with a dedicated
-  narrator voice. It's built to serve the kids-content category of the catalog
+- **What makes it distinctive:** the only shipped theme that puts a hard offset
+  shadow and a heavy ink border on the sheet, and the only one with a dedicated
+  narrator voice — where Newspaper's identity is restraint, Comic's is a frame
+  you can see from across the room. It's built to serve the kids-content category of the catalog
   (chore charts, activity pages, birthday wishlists) — the loudest, most
   personality-forward theme on purpose.
 
