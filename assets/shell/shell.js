@@ -484,12 +484,6 @@ function injectChrome() {
     return s;
   };
 
-  const print = document.createElement('button');
-  print.id = 'mp-btn-print';
-  print.textContent = 'Print / Save PDF';
-  toolbar.appendChild(print);
-  toolbar.appendChild(sep());
-
   // Combined edit+chat toggle: pencil when idle; X + "Editing" while active.
   // chat.js (when present) opens/closes the side panel through the mode hook.
   const edit = document.createElement('button');
@@ -499,8 +493,46 @@ function injectChrome() {
     '<svg class="mp-icon-x" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
-  // (The paper-size picker lives in the edit panel's setup strip — see
-  // chat.js buildPanel — not in this toolbar.)
+
+  // Page-setup controls (paper size + orientation), collapsed to zero width
+  // until edit mode — body.edit-active expands them with a pure-CSS
+  // transition, pushing the separator and Print button rightward.
+  const setup = document.createElement('div');
+  setup.id = 'mp-toolbar-setup';
+  const select = document.createElement('select');
+  select.id = 'mp-paper-select';
+  select.title = 'Paper size';
+  for (const [value, label] of [
+    ['letter', 'US Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half Letter'],
+  ]) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    select.appendChild(opt);
+  }
+  select.value = currentPaper;
+  select.addEventListener('change', () => applySize(select.value));
+  setup.appendChild(select);
+  const group = document.createElement('div');
+  group.className = 'mp-orient-group';
+  for (const o of ['portrait', 'landscape']) {
+    const b = document.createElement('button');
+    b.className = 'mp-orient-btn';
+    b.textContent = o === 'portrait' ? 'Portrait' : 'Landscape';
+    b.type = 'button';
+    b.dataset.orient = o;
+    if (o === currentOrientation) b.classList.add('active');
+    b.addEventListener('click', () => setOrientation(o));
+    group.appendChild(b);
+  }
+  setup.appendChild(group);
+  toolbar.appendChild(setup);
+  toolbar.appendChild(sep());
+
+  const print = document.createElement('button');
+  print.id = 'mp-btn-print';
+  print.textContent = 'Print / Save PDF';
+  toolbar.appendChild(print);
 
   // Variant nav — hidden until initVariants() detects multiple .variant-page
   const vsep = sep();

@@ -14,14 +14,17 @@
 //            shell.js), no model listening yet: messages still POST (they
 //            queue server-side and the model's first `wait` drains them);
 //            the panel shows how to connect ("/print live").
-//   dormant  served, toggle on, no flag: the flag is an assembly-time GUESS,
-//            so the panel still shows the "/print live" guidance and still
-//            polls — if a model connects anyway, the state upgrades to live.
-//            Until then intents render copy/paste cards (nothing queues
-//            invisibly where no listener may ever come).
-//   off      the user flipped the Live toggle off: copy/paste cards.
+//   dormant  served, toggle on, no flag: assembly judged live unavailable
+//            with this model — the overlay says so, but polling continues:
+//            presence is ground truth, so a model that connects anyway
+//            upgrades the panel to live.
+//   off      the user flipped the Live toggle off.
 //   file     file:// — no server exists, the one structurally impossible
-//            case: copy/paste cards.
+//            case.
+//
+// The panel is exclusively about live mode: in every non-live state a
+// translucent overlay covers the body (input disabled) with either the
+// "/print live" starter or a short unavailability message.
 //
 // The panel is runtime-only chrome: built here on demand, stripped by
 // serializeForSave(), hidden in print and embedded modes. Chat never touches
@@ -76,10 +79,10 @@
   };
 
   /**
-   * Route an intent. Opens the panel, then:
-   *  live/ready → POST to the server (optimistic bubble; a failed POST falls
-   *               back to a paste card so a message is never lost);
-   *  manual     → render the paste card.
+   * Route an intent. Opens the panel, then: live/ready → POST to the server
+   * (optimistic bubble; a failed POST falls back to a paste card so a message
+   * is never lost); overlay-locked states → paste card into the log (only
+   * reachable programmatically — the overlay disables the input).
    */
   async function dispatchIntent(intent) {
     openPanel();
@@ -90,8 +93,6 @@
     } else {
       await liveTransport.send(intent, spec);
     }
-    // The empty-state guidance was consumed by the first message; re-render
-    // so ready/dormant keep their compact "/print live" hint above the log.
     refreshMode();
   }
 
@@ -171,7 +172,6 @@
   const manualTransport = {
     send(intent, spec) {
       addPasteCard(spec.toPaste(intent.payload));
-      persistCards();
     },
   };
 
@@ -241,50 +241,17 @@
     head.appendChild(close);
     panel.appendChild(head);
 
-    // Page-setup strip: document-level controls, visually separated from the
-    // conversation scroller below it. Size and orientation are independent
-    // axes — any combination applies.
-    const setup = el('div', null); setup.id = 'mp-panel-setup';
-
-    const sizeRow = el('div', 'mp-setup-row');
-    const setupLabel = el('label', 'mp-setup-label', 'Paper size');
-    setupLabel.htmlFor = 'mp-paper-select';
-    sizeRow.appendChild(setupLabel);
-    const select = document.createElement('select');
-    select.id = 'mp-paper-select';
-    for (const [value, label] of [
-      ['letter', 'US Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half Letter'],
-    ]) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      select.appendChild(opt);
-    }
-    select.value = currentPaper; // shell.js state; applySize keeps it synced
-    select.addEventListener('change', () => applySize(select.value));
-    sizeRow.appendChild(select);
-    setup.appendChild(sizeRow);
-
-    const orientRow = el('div', 'mp-setup-row');
-    orientRow.appendChild(el('span', 'mp-setup-label', 'Orientation'));
-    const group = el('div', 'mp-orient-group');
-    for (const o of ['portrait', 'landscape']) {
-      const b = el('button', 'mp-orient-btn', o === 'portrait' ? 'Portrait' : 'Landscape');
-      b.type = 'button';
-      b.dataset.orient = o;
-      if (o === currentOrientation) b.classList.add('active');
-      b.addEventListener('click', () => setOrientation(o));
-      group.appendChild(b);
-    }
-    orientRow.appendChild(group);
-    setup.appendChild(orientRow);
-    panel.appendChild(setup);
+    // The panel body is exclusively the live-mode conversation; page-setup
+    // controls live in the toolbar (shell.js). The wrapper is the positioning
+    // context for the not-connected overlay.
+    const body = el('div', null); body.id = 'mp-panel-body';
+    panel.appendChild(body);
 
     log = el('div', null); log.id = 'mp-chat-log';
-    panel.appendChild(log);
+    body.appendChild(log);
 
     presenceEl = el('div', null); presenceEl.id = 'mp-chat-presence';
-    panel.appendChild(presenceEl);
+    body.appendChild(presenceEl);
 
     const form = el('form', null); form.id = 'mp-chat-form';
     // Chip row: filled by double-click element selection in edit mode.
@@ -318,7 +285,7 @@
       clearAttach();
       dispatchIntent(intent);
     });
-    panel.appendChild(form);
+    body.appendChild(form);
 
     document.body.appendChild(panel);
   }
@@ -355,100 +322,60 @@
     applySize(currentPaper);
   }
 
-  // The "/print live" guidance, in two variants sharing one content: the
-  // centered empty state (log still empty) and the compact hint card pinned
-  // above an existing conversation.
-  function buildLiveGuidance(kind, state) {
-    const box = el('div', kind === 'empty' ? 'mp-chat-empty' : 'mp-chat-hint');
-    if (kind === 'empty') box.appendChild(el('p', null, 'Start live mode'));
-    const line = el('p', null);
-    line.appendChild(el('span', null, 'Copy '));
-    line.appendChild(el('code', null, '/print live'));
-    line.appendChild(el('span', null, ' and send it to your model to connect.'));
-    box.appendChild(line);
-    const row = el('p', null);
-    const copy = el('button', 'mp-copy-btn', 'Copy');
-    copy.type = 'button';
-    copy.addEventListener('click', () => copyText('/print live', copy));
-    row.appendChild(copy);
-    box.appendChild(row);
-    if (state === 'dormant') {
-      box.appendChild(el('p', 'mp-live-note',
-        'If your model supports live mode it will connect here; until then, anything you send becomes an instruction you can copy to it.'));
+  // Not-connected overlay: a translucent scrim over the whole panel body.
+  // The panel is exclusively about live mode — until a model is connected it
+  // shows either the "/print live" starter (live is possible) or a short
+  // unavailability message. Dismissed the moment presence arrives.
+  function buildLiveOverlay(state) {
+    const ov = el('div', 'mp-live-overlay');
+    if (state === 'ready') {
+      ov.appendChild(el('div', 'mp-overlay-title', 'Start live mode'));
+      ov.appendChild(el('p', 'mp-overlay-note', 'Send this to your model:'));
+      // The command and its Copy button share one inset, monospace row.
+      const row = el('div', 'mp-copy-row');
+      row.appendChild(el('code', null, '/print live'));
+      const copy = el('button', 'mp-copy-btn', 'Copy');
+      copy.type = 'button';
+      copy.addEventListener('click', () => copyText('/print live', copy));
+      row.appendChild(copy);
+      ov.appendChild(row);
+      const wait = el('div', 'mp-overlay-wait');
+      wait.appendChild(el('span', 'mp-spinner'));
+      wait.appendChild(el('span', null, 'Waiting for your model to connect…'));
+      ov.appendChild(wait);
+    } else {
+      const msg = state === 'off' ? 'Live is off — flip Live above to reconnect.'
+        : state === 'file' ? 'Live mode needs the local server.'
+        : 'Live mode is unavailable with this model.';
+      ov.appendChild(el('p', 'mp-overlay-msg', msg));
     }
-    return box;
+    return ov;
   }
 
-  // Full-panel takeover for the ready state: the model isn't connected yet,
-  // so the ONLY next step is starting live mode — make it unmissable (bold,
-  // inverted, spinner) and disable the input until presence arrives. The
-  // header Live toggle stays reachable as the escape hatch to manual mode.
-  function buildConnectTakeover() {
-    const box = el('div', 'mp-connect-takeover');
-    box.appendChild(el('div', 'mp-takeover-title', 'Start live mode'));
-    const line = el('p', null);
-    line.appendChild(el('span', null, 'Copy '));
-    line.appendChild(el('code', null, '/print live'));
-    line.appendChild(el('span', null, ' and send it to your model.'));
-    box.appendChild(line);
-    const copy = el('button', 'mp-copy-btn mp-copy-invert', 'Copy /print live');
-    copy.type = 'button';
-    copy.addEventListener('click', () => copyText('/print live', copy));
-    box.appendChild(copy);
-    const wait = el('div', 'mp-takeover-wait');
-    wait.appendChild(el('span', 'mp-spinner'));
-    wait.appendChild(el('span', null, 'Waiting for your model to connect…'));
-    box.appendChild(wait);
-    return box;
-  }
-
-  // Re-render the state-dependent chrome (empty state, takeover, presence,
-  // polling, input enablement). Called on open, toggle flips, presence
-  // changes, and after each dispatched intent.
+  // Re-render the state-dependent chrome (overlay, presence, polling, input
+  // enablement). Called on open, toggle flips, presence changes, and after
+  // each dispatched intent.
   function refreshMode() {
     if (!panel) return;
     const state = panelState();
     panel.dataset.mode = state;
     if (toggleEl) toggleEl.checked = toggleOn();
 
-    panel.querySelector('.mp-chat-empty')?.remove();
-    panel.querySelector('.mp-chat-hint')?.remove();
-    panel.querySelector('.mp-connect-takeover')?.remove();
-    log.style.display = '';
-    // Only the ready takeover locks the input — everywhere else typing works
-    // (live sends; dormant/off/file produce paste cards).
-    const locked = state === 'ready';
+    panel.querySelector('.mp-live-overlay')?.remove();
+    const locked = state !== 'live';
     if (inputEl) inputEl.disabled = locked;
     if (sendEl) sendEl.disabled = locked;
 
-    if (state === 'ready') {
-      liveTransport.start(); // presence poll — connection dismisses the takeover
-      log.style.display = 'none';
-      panel.insertBefore(buildConnectTakeover(), presenceEl);
-      presenceEl.textContent = '';
-      presenceEl.className = '';
-    } else if (state === 'off' || state === 'file') {
-      liveTransport.stop();
-      if (!log.childElementCount) {
-        const empty = el('div', 'mp-chat-empty');
-        if (state === 'off') {
-          empty.appendChild(el('p', null, 'Live is off.'));
-          empty.appendChild(el('p', null, 'Flip Live above to reconnect — or keep going here, and your requests become instructions you can copy to your model.'));
-        } else {
-          empty.appendChild(el('p', null, 'Live mode needs the local server.'));
-          empty.appendChild(el('p', null, 'This page was opened straight from disk, so chat directly with your model — your requests become instructions you can copy to it.'));
-        }
-        log.appendChild(empty);
-      }
-      renderPresence();
-    } else {
+    if (state === 'live') {
       liveTransport.start();
-      if (state === 'dormant') {
-        if (!log.childElementCount) log.appendChild(buildLiveGuidance('empty', state));
-        else log.prepend(buildLiveGuidance('hint', state));
-      }
-      renderPresence();
+    } else {
+      // ready/dormant keep polling — presence is what dismisses the overlay
+      // (dormant included: a model connecting anyway upgrades the panel).
+      if (state === 'ready' || state === 'dormant') liveTransport.start();
+      else liveTransport.stop();
+      document.getElementById('mp-panel-body')?.appendChild(buildLiveOverlay(state));
     }
+    renderPresence();
   }
 
   function setListening(v) {
@@ -500,7 +427,6 @@
   }
 
   function addBubble(role, text) {
-    panel.querySelector('.mp-chat-empty')?.remove();
     return scrolled(() => log.appendChild(el('div', `mp-msg ${role === 'user' ? 'mp-msg-user' : 'mp-msg-model'}`, text)));
   }
 
@@ -509,7 +435,6 @@
   }
 
   function addPasteCard(text, hint) {
-    panel.querySelector('.mp-chat-empty')?.remove();
     return scrolled(() => {
       const card = el('div', 'mp-paste-card');
       const pre = el('pre', null, text);
@@ -596,18 +521,12 @@
 
   // ── Session persistence ───────────────────────────────────────────────────
   // The auto-reload poll replaces the whole document whenever the model edits
-  // the file; per-tab sessionStorage carries the panel across that reload.
-  // Live history is refetched from the server (cursor 0); only manual-mode
-  // paste cards need storing, since they exist nowhere else.
+  // the file; per-tab sessionStorage carries the panel open-state and input
+  // draft across that reload. Live history is refetched from the server
+  // (cursor 0).
 
   function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch {} }
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
-
-  function persistCards() {
-    if (!isPasteState(panelState())) return;
-    const cards = Array.from(log.querySelectorAll('.mp-paste-card pre')).map(p => p.textContent).slice(-20);
-    ssSet('mpChatCards', JSON.stringify(cards));
-  }
 
   function restore() {
     if (ssGet('mpChatOpen') !== '1') return;
@@ -620,11 +539,6 @@
     }
     const draft = ssGet('mpChatDraft');
     if (draft && inputEl) inputEl.value = draft;
-    if (isPasteState(panelState())) {
-      try {
-        for (const text of JSON.parse(ssGet('mpChatCards') || '[]')) addPasteCard(text);
-      } catch { /* corrupt store — start clean */ }
-    }
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────
