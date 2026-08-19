@@ -33,77 +33,98 @@ const LONG = Array.from({ length: 120 }, (_, i) =>
   `<p data-i="${i}">Paragraph ${String(i).padStart(3, "0")} — lorem ipsum dolor sit amet.</p>`).join("\n");
 const SHORT = `<h1 id="probe">Short</h1><p id="body">Comfortably inside one sheet.</p>`;
 
-// Read the log without being anyone: no consumer=model, so this neither
-// registers a listener nor moves the model's cursor. It is how the tests that
-// assert SILENCE look, without the looking itself making the page think a
-// model has turned up.
-async function peek(serverUrl, after = 0) {
-  const res = await fetch(`${serverUrl}/chat/messages?from=user&after=${after}&wait=0`);
-  assert.equal(res.ok, true, "peeking at the live log");
-  return (await res.json()).messages;
+// What is on the record right now. A read, not a drain: the entry stands
+// until the page takes it back, so asking twice gives the same answer and
+// asking at all changes nothing.
+async function fitReport(serverUrl) {
+  const res = await fetch(`${serverUrl}/chat/fit`);
+  assert.equal(res.ok, true, "reading the fit record");
+  return (await res.json()).fits;
 }
 
-// The id everything said so far ends at, so a later peek can ask only about
-// what happened since — the log keeps every entry, drained or not.
-const logMark = async (serverUrl) =>
-  (await peek(serverUrl)).reduce((max, m) => Math.max(max, m.id), 0);
-
-// Drain the way `chat-cli.mjs wait` does: as the model, server-wide, from the
-// server-held cursor, without blocking. Doing this is also what makes the page
-// see a model listening — which is what enables the FIX button.
-async function drain(serverUrl) {
-  const res = await fetch(`${serverUrl}/chat/messages?consumer=model&from=user&wait=0`);
-  assert.equal(res.ok, true, "draining the live log");
-  return (await res.json()).messages;
-}
-
-const fits = (msgs) => msgs.filter((m) => m.kind === "fit");
-
-// Poll the log until a fit report turns up. There is a 1.5s channel tick
-// between the page and the server, so a fixed sleep here is a flake waiting to
-// happen.
+// Poll the record until a problem turns up. The page has a debounce between
+// the press and the server, so a fixed sleep here is a flake waiting to happen.
 async function waitForFit(serverUrl, ms = 15000) {
   const deadline = Date.now() + ms;
-  const seen = [];
+  let seen = [];
   while (Date.now() < deadline) {
-    seen.push(...fits(await drain(serverUrl)));
+    seen = await fitReport(serverUrl);
     if (seen.length) return seen;
     await new Promise((r) => setTimeout(r, 250));
   }
   return seen;
 }
 
-const badgeState = (page) => page.evaluate(`(() => {
-  const el = ${CHROME}.getElementById("mp-fit-badge");
-  const btn = ${CHROME}.getElementById("mp-fit-fix");
-  const cs = getComputedStyle(el);
-  const bcs = getComputedStyle(btn);
-  return {
-    shown: cs.display !== "none",
-    color: cs.color,
-    text: el.querySelector(".mp-fit-label").textContent,
-    title: el.title,
-    fixing: el.hasAttribute("data-mp-fixing"),
-    dots: el.querySelectorAll(".mp-fit-dot").length,
-    fix: {
-      shown: bcs.display !== "none",
-      disabled: btn.disabled,
-      label: btn.textContent,
-      bg: bcs.backgroundColor,
-      ink: bcs.color,
-    },
-  };
-})()`);
+// ...and until it empties again: a page that comes back into fit takes its own
+// report back, which state needs and a stream did not.
+async function waitForFits(serverUrl, ms = 15000) {
+  const deadline = Date.now() + ms;
+  let seen = await fitReport(serverUrl);
+  while (Date.now() < deadline && seen.length) {
+    await new Promise((r) => setTimeout(r, 250));
+    seen = await fitReport(serverUrl);
+  }
+  return seen;
+}
+
+// "…fixing" is a claim about work in progress, and nothing can see a listener
+// any more — so it waits for the model to say it is working, in its own words.
+const saysWorking = (serverUrl, name, state = "working") =>
+  fetch(`${serverUrl}/chat/${name}.html/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: "model", kind: "status", text: "", data: { state } }),
+  });
+
+// One reading of the toolbar, or null. Null is a real answer here and not a
+// failure: the state this file is about is reached BY A RELOAD (the model's
+// fix), so any poll can land on a document that is half-gone or not yet
+// injected. Throwing there would fail the test for the very transition it is
+// waiting on.
+const badgeState = async (page) => {
+  try {
+    return await page.evaluate(`(() => {
+      const root = document.getElementById("mp-chrome-root")?.shadowRoot;
+      const el = root?.getElementById("mp-fit-badge");
+      const btn = root?.getElementById("mp-fit-fix");
+      if (!el || !btn) return null;
+      const cs = getComputedStyle(el);
+      const bcs = getComputedStyle(btn);
+      return {
+        shown: cs.display !== "none",
+        color: cs.color,
+        text: el.querySelector(".mp-fit-label").textContent,
+        title: el.title,
+        fixing: el.hasAttribute("data-mp-fixing"),
+        dots: el.querySelectorAll(".mp-fit-dot").length,
+        fix: {
+          shown: bcs.display !== "none",
+          disabled: btn.disabled,
+          label: btn.textContent,
+          bg: bcs.backgroundColor,
+          ink: bcs.color,
+        },
+      };
+    })()`);
+  } catch {
+    return null;   // navigating: ask again in a moment
+  }
+};
 
 // Wait for the toolbar to reach a state, rather than for a duration — the
 // button's enabled state waits on the channel tick that notices the model.
+// Readings taken mid-reload are skipped rather than tested, so the answer is
+// always the last thing the toolbar actually said.
 async function waitForBadge(page, pred, ms = 15000) {
   const deadline = Date.now() + ms;
-  let last = await badgeState(page);
+  let last = null;
   while (Date.now() < deadline) {
-    if (pred(last)) return last;
+    const now = await badgeState(page);
+    if (now) {
+      last = now;
+      if (pred(now)) return now;
+    }
     await new Promise((r) => setTimeout(r, 200));
-    last = await badgeState(page);
   }
   return last;
 }
@@ -148,27 +169,31 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       await fn(page);
     } finally {
       await page.close();
+      // Two of these cases rewrite a fixture to stage the model's answer.
+      // They are put back here rather than at the end of the test body, so a
+      // failure mid-case cannot hand the next one someone else's document —
+      // which turns one failure into three and hides which was the real one.
+      await write("overflow", LONG);
+      await write("fits", SHORT);
     }
   };
 
-  // FIRST, before anything in this file has read the log as the model: with
-  // nobody listening the problem still shows, and the button that would hand
-  // it over stands there disabled rather than vanishing.
-  await t.test("with nobody listening, the problem shows and the button waits", async () => {
+  // The decision is the user's, and the page waits for it: a problem it found
+  // entirely by itself still sits there until a hand presses the button.
+  await t.test("nothing goes out until the button is pressed", async () => {
     await withPage("overflow", async (page) => {
       const badge = await waitForBadge(page, (b) => b.shown);
       assert.equal(badge.shown, true, "the notice is up");
       assert.equal(badge.fix.shown, true, "and so is the button");
-      assert.equal(badge.fix.disabled, true, "but there is nobody to hand it to");
-      assert.match(badge.title, /No model is listening/, badge.title);
+      assert.equal(badge.fix.disabled, false, "ready to press — a served page has somewhere to hand it");
+      assert.match(badge.title, /Press Fix/, badge.title);
       await page.waitForTimeout(SETTLE_MS);
-      assert.equal(fits(await peek(server.url)).length, 0, "and nothing went out");
+      assert.deepEqual(await fitReport(server.url), [], "and nothing went out on its own");
     });
   });
 
   await t.test("the toolbar says it in red, with a FIX button beside it", async () => {
     await withPage("overflow", async (page) => {
-      await drain(server.url);               // a model turns up
       const badge = await waitForBadge(page, offered);
       assert.equal(badge.dots, 1, "an indicator to flash");
       assert.equal(badge.fixing, false, "nothing is fixing it yet");
@@ -191,24 +216,34 @@ test("a page that stops fitting offers itself to the model", async (t) => {
   // it, and only then.
   await t.test("pressing FIX hands the problem to the model", async () => {
     await withPage("overflow", async (page) => {
-      await drain(server.url);
       await waitForBadge(page, offered);
       await pressFix(page);
 
       const reported = await waitForFit(server.url);
       assert.equal(reported.length, 1, "exactly one fit report");
-      assert.equal(reported[0].from, "user");
       assert.equal(reported[0].page, "/overflow.html", "and it names the page it came from");
       assert.match(reported[0].text, /content runs onto \d+ sheets/);
-      assert.equal(reported[0].data.authored, 1);
-      assert.ok(reported[0].data.rendered > 1, `rendered: ${reported[0].data.rendered}`);
-      assert.equal(reported[0].data.paper, "letter", "the paper it did not fit");
+      assert.equal(reported[0].authored, 1);
+      assert.ok(reported[0].rendered > 1, `rendered: ${reported[0].rendered}`);
+      assert.equal(reported[0].paper, "letter", "the paper it did not fit");
+      // A read, not a queue: the model can ask again and still find it.
+      assert.deepEqual(await fitReport(server.url), reported, "and it stays on the record");
 
-      // And the toolbar switches from asking to reporting.
+      // The toolbar stops asking. It does NOT yet claim anyone is fixing it:
+      // nothing is listening, so the press bought a place on the record and
+      // the model picks it up when it next works on the page. Saying "…fixing"
+      // for that gap would be inventing work nobody is doing.
+      const handed = await waitForBadge(page, (b) => !b.fix.shown);
+      assert.equal(handed.fixing, false, "nobody is fixing it yet");
+      assert.match(handed.text, /content runs onto \d+ sheets …handed over/, handed.text);
+      assert.match(handed.title, /Handed to your model/, handed.title);
+
+      // ...and when the model does start, the line says so in its own words.
+      await saysWorking(server.url, "overflow");
       const badge = await waitForBadge(page, (b) => b.fixing);
       assert.equal(badge.fixing, true, "marked as being fixed");
       assert.match(badge.text, /content runs onto \d+ sheets …fixing/, badge.text);
-      assert.equal(badge.fix.shown, false, "the button steps aside while the model has it");
+      assert.equal(badge.fix.shown, false, "the button stays aside while the model has it");
       assert.match(badge.title, /is fixing it/, badge.title);
     });
   });
@@ -217,7 +252,6 @@ test("a page that stops fitting offers itself to the model", async (t) => {
   // its own, it re-measures a page that fits and there is nothing left to say.
   await t.test("the model's fix reloads the page and takes the message with it", async () => {
     await withPage("overflow", async (page) => {
-      await drain(server.url);
       await waitForBadge(page, offered);
       await pressFix(page);
       await waitForBadge(page, (b) => b.fixing);
@@ -232,7 +266,6 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       const badge = await waitForBadge(page, (b) => !b.shown);
       assert.equal(badge.shown, false, "a page that fits says nothing");
       assert.deepEqual(await page.evaluate(() => window.mpFit), { authored: 1, rendered: 1, overflowing: 0 });
-      await write("overflow", LONG);
     });
   });
 
@@ -241,7 +274,6 @@ test("a page that stops fitting offers itself to the model", async (t) => {
   // again — which is the user's call, not the page's.
   await t.test("a problem that survives puts the button back, and it sends again", async () => {
     await withPage("overflow", async (page) => {
-      await drain(server.url);
       await waitForBadge(page, offered);
       await pressFix(page);
       assert.equal((await waitForFit(server.url)).length, 1);
@@ -267,9 +299,11 @@ test("a page that stops fitting offers itself to the model", async (t) => {
 
   await t.test("a page that fits reports nothing and shows nothing", async () => {
     await withPage("fits", async (page) => {
-      await drain(server.url);
       await page.waitForTimeout(SETTLE_MS);
-      assert.equal(fits(await drain(server.url)).length, 0);
+      assert.deepEqual(
+        (await fitReport(server.url)).filter((f) => f.page === "/fits.html"),
+        []
+      );
       assert.equal((await badgeState(page)).shown, false);
     });
   });
@@ -279,11 +313,7 @@ test("a page that stops fitting offers itself to the model", async (t) => {
   // fix the layout than before — so it takes the same path, button and all.
   await t.test("a user's own edit that outgrows the sheet gets the same button", async () => {
     await withPage("fits", async (page) => {
-      await drain(server.url);
       await page.waitForTimeout(SETTLE_MS);
-      await drain(server.url);   // start from a quiet log
-
-      const mark = await logMark(server.url);
       await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
       await page.dblclick("#body");
       // Enough to outgrow the sheet several times over — the point is the
@@ -295,19 +325,22 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       const badge = await waitForBadge(page, offered);
       assert.equal(badge.shown, true, "they see it straight away");
       assert.match(badge.text, /content runs onto \d+ sheets/, badge.text);
-      assert.equal(fits(await peek(server.url, mark)).length, 0, "and nothing went out on its own");
+      assert.deepEqual(
+        (await fitReport(server.url)).filter((f) => f.page === "/fits.html"),
+        [],
+        "and nothing went out on its own"
+      );
 
       await pressFix(page);
       const reported = await waitForFit(server.url);
       assert.equal(reported.length, 1, "the press reports it once");
-      assert.ok(reported[0].data.rendered > 1, `rendered: ${reported[0].data.rendered}`);
+      assert.ok(reported[0].rendered > 1, `rendered: ${reported[0].rendered}`);
 
       // The typing reached the file too — the model is being sent to read a
       // page that already contains what they typed.
       const saved = await fs.readFile(path.join(dir, "fits.html"), "utf-8");
       assert.match(saved, /Sentence 299/, "the edit was saved before the report went out");
       assert.match(saved, /data-mp-edited/, "and is marked as theirs");
-      await write("fits", SHORT);
     });
   });
 });

@@ -33,10 +33,11 @@
   --mp-dim:     oklch(67% 0.006 78);
   --mp-rule:    oklch(83% 0.005 78);
   --mp-surface: oklch(94% 0.009 78);
-  --mp-live:    oklch(52% 0.14 150);          /* connected — a state, not a theme accent */
+  --mp-live:    oklch(52% 0.14 150);          /* recorded — a state, not a theme accent */
   --mp-notice:  oklch(52% 0.13 65);           /* a decision is owed — not an error        */
   --mp-error:   oklch(52% 0.20 27);           /* the page does not fit — the one real error */
-  --mp-select:  rgba(59, 130, 246, 0.7);      /* hover/selection blue                    */
+  --mp-select:  rgba(59, 130, 246, 0.7);      /* hover/selection blue, as an outline     */
+  --mp-select-chip: rgba(59, 130, 246, 0.9);  /* ...and filled, behind the hover label   */
 
   /* Generic families only. A page can @font-face any real family name out
      from under the chrome (font faces are document-global — the shadow
@@ -307,7 +308,7 @@ button, input, textarea, select {
 .mp-hover-label {
   position: absolute;
   top: -24px; left: -2px;
-  background: rgba(59, 130, 246, 0.9);
+  background: var(--mp-select-chip);
   color: #fff;
   font-size: 9px;
   font-weight: 600;
@@ -318,25 +319,37 @@ button, input, textarea, select {
   text-transform: uppercase;
 }
 
-/* ── Live indicator — the toolbar's right edge ──
-   The whole of what the chrome says about the model: whether one is listening
-   on this page. It sits after the spacer, so it holds the right edge as the
-   controls to its left come and go with edit mode. There is no conversation
-   here to size for — that lives in the model's own session. */
+/* ── Live line — the toolbar's right edge ──
+   Empty until there is something true to say: that an element is selected and
+   the model will read it, or that the model is mid-edit. It sits after the
+   spacer, so it holds the right edge as the controls to its left come and go
+   with edit mode. A sentence, so it is not shouted in caps like a label, and
+   it gives up width before the controls do. */
 /* Pushes everything after it to the toolbar's right edge (see injectChrome). */
 .mp-toolbar-spacer { flex: 1 1 auto; }
 
 #mp-live-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  gap: 7px;
+  min-width: 0;
+  /* Bigger than a label wants to be, because this one is meant to be read
+     rather than glanced at — it is the only thing telling the user their click
+     landed. */
+  font-size: 12.5px;
+  line-height: 1.35;
   color: var(--mp-dim);
-  white-space: nowrap;
+  overflow: hidden;
 }
+/* Two lines: what is selected, then what to do about it. The break is a real
+   newline in the text (see renderLiveStatus), so the sentence survives being
+   read as text; pre-line is what draws it. */
+.mp-live-label { min-width: 0; overflow: hidden; }
+.mp-live-rest { white-space: pre-line; }
+/* The element's name is the part worth finding at a glance — weight is the
+   whole of the emphasis, since the line already carries the selection's
+   colour. */
+.mp-live-name { font-weight: 700; }
 .mp-live-dot {
   width: 6px;
   height: 6px;
@@ -344,13 +357,16 @@ button, input, textarea, select {
   background: currentColor;
   flex-shrink: 0;
 }
-/* Connected is a state, not a theme accent — the same green the presence line
-   used, now the only place it appears. */
-#mp-live-status.mp-live-on { color: var(--mp-live); }
+/* The whole line takes the selection's colour, so it reads as belonging to the
+   outlined element rather than as a separate notice. */
+#mp-live-status.mp-live-selected { color: var(--mp-select); }
+/* With nothing to say, the dot would be a bullet in front of nothing. */
+#mp-live-status:not(.mp-live-selected):not(.mp-live-working) .mp-live-dot { display: none; }
 /* Mid-edit: the model is rewriting the file under this tab, and the reload is
    deliberately held until it says done. Amber says "wait" without the page
    appearing broken. */
 #mp-live-status.mp-live-working { color: var(--mp-mid); }
+#mp-live-status.mp-live-working .mp-live-label { text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; font-weight: 600; }
 #mp-live-status.mp-live-working .mp-live-dot { animation: mp-live-pulse 1.2s ease-in-out infinite; }
 @keyframes mp-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) {

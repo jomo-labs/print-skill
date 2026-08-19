@@ -1,62 +1,55 @@
-// In-memory event log for the live channel between the pages this server
-// serves and the model editing them. There is no chat: the user talks to their
-// model in the model's own session. What passes through here is a page
-// reporting which element the user selected, the model reporting that it is
-// mid-edit, and the presence a page's toolbar shows.
+// The live channel between the pages this server serves and the model editing
+// them. There is no chat: the user talks to their model in the model's own
+// session. Two things cross this boundary, and they are shaped differently on
+// purpose.
 //
-// ONE LOG PER SERVER, not one per page. A model connects to the server and
-// sees every page it serves — it does not have to know which page the user
-// will open, or be told again when they open another. Each entry carries the
-// `page` it came from, and a reader can narrow to one page if it wants to; the
-// default is everything. This is what lets "start the server" and "be
-// reachable on it" be the same act, with no page named in between.
+//   SELECTION — state, not an event. The page reports which element the user
+//   has selected; the server holds the latest one per page; the model READS it
+//   when it needs it, which is the moment the user actually asks for a change.
+//   Nobody subscribes and nobody is woken. That is deliberate: a push channel
+//   here bought an instant acknowledgment and cost a background listener per
+//   session, a notification per click, and an agent that could — and did —
+//   grow six watchers re-arming each other. The page tells the user what is
+//   selected; the model finds out when it matters.
 //
-// Two consumers:
-//   - each open page polls with wait=0 on its usual 1.5s cadence, narrowed to
-//     itself (it only cares about its own status messages);
-//   - the model's chat-cli polls with a bounded long-poll (20s default, up to
-//     300s for background one-shot listeners) as consumer=model, which drives
-//     both a server-held delivery cursor (so the stateless one-shot CLI never
-//     re-reads events) and the presence signal every page's toolbar shows.
+//   STATUS — a short-lived signal from the model to one open tab: `working`
+//   while a file is half-written, `done` when it is final. The tab polls for
+//   it on its own 1.5s cadence. This one stays a message log because the tab
+//   needs to see each transition, and it is bounded, one-directional, and
+//   invisible to the user except as a toolbar state.
 //
 // Everything is in-memory by design: none of it is document state (the page
 // file remains the single source of truth for content). `epoch` is the restart
 // contract — a client that sees the epoch change resets its cursor to 0
 // instead of silently deadlocking on a stale `after` id that the new process
-// will never reach, and re-announces what it has selected, since a fresh
-// server has never been told.
+// will never reach, and re-posts what it has selected, since a fresh server
+// has never been told.
 import crypto from "node:crypto";
 
-const MAX_MESSAGES = 500;
-
-// The scope key for a reader watching everything. Page paths always contain a
-// ".html", so this can never collide with one.
-const ALL = "*";
+const MAX_MESSAGES = 200;
 
 /**
  * One log per server instance — never a module-level singleton. Two servers in
  * one process (the test suite runs several; render-cli starts an ephemeral
  * one) would otherwise share state, and a restarted server would inherit the
- * dead one's entries, cursor and `epoch` — which is precisely what the epoch
- * is supposed to tell a client apart from.
+ * dead one's entries and `epoch` — which is precisely what the epoch is
+ * supposed to tell a client apart from.
  */
 export function createLiveLog() {
   return {
     epoch: crypto.randomBytes(8).toString("hex"),
     nextId: 1,
+    // Status messages only, and only ever read by the page they belong to.
     messages: [],
-    // Delivery cursors for consumer=model, keyed by what the reader is
-    // watching ("*" or one page path). Keyed rather than single because the
-    // ids are server-wide: a model watching one page would otherwise drag the
-    // cursor past entries from other pages that it never saw.
-    modelCursors: new Map(),
-    // Presence: an open model long-poll, or one that ended recently. Server-
-    // wide, because a model watching the server IS watching every page on it.
-    // The grace window is sized so a loop of bounded waits with gaps between
-    // harness turns still reads as "listening".
-    openModelWaits: 0,
-    lastModelWaitEnd: 0,
-    lastModelWaitMs: 0,
+    // The current selection per page: page -> { selector, label, text, edited,
+    // snapshot, ts }, or absent once cleared. Latest wins; there is no history,
+    // because nothing downstream wants one.
+    selections: new Map(),
+    // The same shape for the other thing a page knows about itself and the
+    // model does not: that its content no longer fits the sheets it lays out.
+    // Absent means it fits, which is why a page that comes back into fit
+    // clears its entry rather than filing a second report.
+    fits: new Map(),
     waiters: new Set(),
   };
 }
@@ -71,84 +64,90 @@ export function closeAll(log) {
   for (const w of [...log.waiters]) w.settle([]);
 }
 
-export function listening(log) {
-  if (log.openModelWaits > 0) return true;
-  // Sized so a loop of bounded waits with harness-turn gaps reads as
-  // listening, but capped: a long background wait (e.g. 240s) that ends and
-  // never re-arms must not pin "model is listening" for many minutes —
-  // re-arming after a wake takes seconds, not another full wait window.
-  const grace = Math.max(45_000, Math.min(2.5 * log.lastModelWaitMs, 120_000));
-  return Date.now() - log.lastModelWaitEnd < grace;
+// ── Selection state ─────────────────────────────────────────────────────────
+
+/** Record what a page has selected. `selector: null` clears it. */
+export function setSelection(log, page, data) {
+  if (!data || data.selector == null) {
+    log.selections.delete(page);
+    return null;
+  }
+  const entry = { ...data, page, ts: Date.now() };
+  log.selections.set(page, entry);
+  return entry;
 }
 
-function matches(msg, from, page) {
-  if (from !== "any" && msg.from !== from) return false;
-  return page === undefined || msg.page === page;
+/**
+ * What is selected right now, newest first. With no page, every page that has
+ * something selected — a model asks the server, not a document, so it does not
+ * have to know which page the user is looking at.
+ */
+export function getSelections(log, page) {
+  return newestFirst(log.selections, page);
 }
 
-function pending(log, after, from, page) {
-  return log.messages.filter((m) => m.id > after && matches(m, from, page));
+/** Record that a page does not fit. `null` means it fits again. */
+export function setFit(log, page, data) {
+  if (!data) {
+    log.fits.delete(page);
+    return null;
+  }
+  const entry = { ...data, page, ts: Date.now() };
+  log.fits.set(page, entry);
+  return entry;
 }
 
-export function postMessage(log, { page, from, kind, text, data }) {
-  const msg = { id: log.nextId++, ts: Date.now(), page, from, kind, text };
+/** Which pages do not currently fit their sheets, newest first. */
+export function getFits(log, page) {
+  return newestFirst(log.fits, page);
+}
+
+function newestFirst(map, page) {
+  const all = page === undefined
+    ? [...map.values()]
+    : (map.has(page) ? [map.get(page)] : []);
+  return all.sort((a, b) => b.ts - a.ts);
+}
+
+// ── Status messages ─────────────────────────────────────────────────────────
+
+function pending(log, after, page) {
+  return log.messages.filter((m) => m.id > after && (page === undefined || m.page === page));
+}
+
+export function postMessage(log, { page, kind, text, data }) {
+  const msg = { id: log.nextId++, ts: Date.now(), page, from: "model", kind, text };
   if (data !== undefined) msg.data = data;
   log.messages.push(msg);
   if (log.messages.length > MAX_MESSAGES) log.messages.shift();
-  // Wake long-polls whose filter this entry satisfies.
   for (const w of [...log.waiters]) {
-    if (matches(msg, w.from, w.page)) w.settle(pending(log, w.after, w.from, w.page));
+    if (page === undefined || w.page === undefined || w.page === page) {
+      w.settle(pending(log, w.after, w.page));
+    }
   }
   return msg;
 }
 
 /**
- * Resolve with entries matching {after, from, page} — immediately if any
- * exist, otherwise after one arrives or waitMs elapses (then possibly []).
- * `page` undefined means every page this server serves.
- *
- * consumer === "model" drives presence bookkeeping and defaults/advances the
- * server-held cursor for this scope (unless peek). onAbort registration lets
- * the caller drop the waiter when the client socket closes mid-poll.
+ * Resolve with status messages after `after` — immediately if any exist,
+ * otherwise when one arrives or waitMs elapses (then possibly []). onAbort
+ * registration lets the caller drop the waiter when the client socket closes
+ * mid-poll.
  */
-export function awaitMessages(log, { after, from, page, waitMs, consumer, peek, onAbort }) {
-  const isModel = consumer === "model";
-  const scope = page === undefined ? ALL : page;
-  const effectiveAfter = after ?? (isModel ? log.modelCursors.get(scope) ?? 0 : 0);
-
-  const deliver = (msgs) => {
-    if (isModel && !peek && msgs.length) {
-      const last = msgs[msgs.length - 1].id;
-      log.modelCursors.set(scope, Math.max(log.modelCursors.get(scope) ?? 0, last));
-    }
-    return msgs;
-  };
-
-  const ready = pending(log, effectiveAfter, from, page);
-  if (ready.length || !waitMs) {
-    if (isModel) {
-      log.lastModelWaitEnd = Date.now();
-      log.lastModelWaitMs = waitMs || 0;
-    }
-    return Promise.resolve(deliver(ready));
-  }
+export function awaitMessages(log, { after = 0, page, waitMs, onAbort }) {
+  const ready = pending(log, after, page);
+  if (ready.length || !waitMs) return Promise.resolve(ready);
 
   return new Promise((resolve) => {
-    const waiter = { after: effectiveAfter, from, page };
+    const waiter = { after, page };
     let timer = null;
     const finish = (msgs) => {
       log.waiters.delete(waiter);
       clearTimeout(timer);
-      if (isModel) {
-        log.openModelWaits--;
-        log.lastModelWaitEnd = Date.now();
-        log.lastModelWaitMs = waitMs;
-      }
-      resolve(deliver(msgs));
+      resolve(msgs);
     };
     waiter.settle = finish;
     log.waiters.add(waiter);
-    if (isModel) log.openModelWaits++;
     timer = setTimeout(() => finish([]), waitMs);
     if (onAbort) onAbort(() => finish([]));
   });
