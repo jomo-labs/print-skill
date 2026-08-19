@@ -6,20 +6,17 @@
 // server, how it formats as a copy/paste instruction); the transports and the
 // panel never change. dispatchIntent() picks the route per the current state:
 //
-//   live     served and a model is listening (presence from the
-//            server — the ground truth, regardless of the assembly-time
-//            flag): messages POST to /chat/<page>/messages and the model's
-//            replies/status stream back via the poll.
-//   ready    served, LIVE_EDIT_SUPPORTED (assembly-injected — see shell.js),
-//            no model listening yet: messages still POST (they queue
-//            server-side and the model's first `wait` drains them).
-//   dormant  served, no flag (assembly judged live unavailable): same queue
-//            behavior, and polling continues — presence is ground truth, so
-//            a model that connects anyway upgrades the panel to live.
-//   file     file:// — no server exists; input is disabled.
+//   live     served: the local server is up, so live editing works. Messages
+//            POST to /chat/<page>/messages and the model's replies/status
+//            stream back via the poll.
+//   file     file:// — no server exists; input is disabled and intents
+//            render as copy/paste cards.
 //
-// Until a model connects, the first entry in the conversation is a starter
-// card with the copyable "/print live" command.
+// That is the entire state space. Live edit is supported exactly when the
+// page is served — never a flag baked into the document, and never something
+// the chrome can turn on or off. Whether a model happens to be listening at
+// this instant is PRESENCE: it shows in the presence line, and it is not a
+// mode, because the model connects on its own when it serves the page.
 //
 // The panel is runtime-only chrome: built here on demand, stripped by
 // serializeForSave(), hidden in print and embedded modes. Chat never touches
@@ -33,14 +30,9 @@
 
   const served = () => location.protocol !== 'file:';
 
-  // 'live' | 'ready' | 'dormant' | 'file' — see the header comment.
-  // Presence outranks the flag: a listening model means live, always.
-  function panelState() {
-    if (!served()) return 'file';
-    if (modelListening) return 'live';
-    return window.LIVE_EDIT_SUPPORTED === true ? 'ready' : 'dormant';
-  }
-  // States whose intents render copy/paste cards instead of POSTing.
+  // 'live' | 'file' — see the header comment. Being served IS the capability.
+  const panelState = () => (served() ? 'live' : 'file');
+  // The state whose intents render copy/paste cards instead of POSTing.
   const isPasteState = (s) => s === 'file';
 
   const pageFileName = () =>
@@ -72,7 +64,7 @@
   };
 
   /**
-   * Route an intent. Opens the panel, then: live/ready → POST to the server
+   * Route an intent. Opens the panel, then: live → POST to the server
    * (optimistic bubble; a failed POST falls back to a paste card so a message
    * is never lost); file:// → paste card into the log.
    */
@@ -123,8 +115,8 @@
       }
     },
     start() {
-      // Polls in dormant too — presence is how a flag-less page discovers a
-      // model connected anyway and upgrades itself to live.
+      // Every served page polls: the poll is what carries the model's
+      // replies, its status, and the presence signal.
       if (pollTimer || !served()) return;
       const tick = async () => {
         try {
@@ -186,21 +178,6 @@
       btn.textContent = 'Copied';
       setTimeout(() => { btn.textContent = orig; }, 1200);
     }
-  }
-
-  // A command the user is meant to copy, rendered as ONE press target: the
-  // whole row is the button, with the command on the left and a bold COPY
-  // label on the right (no box of its own — the row is the box). Every
-  // copyable command the chrome offers should use this.
-  function buildCopyRow(text) {
-    const row = el('button', 'mp-copy-row');
-    row.type = 'button';
-    row.title = 'Copy ' + text;
-    row.appendChild(el('code', null, text));
-    const label = el('span', 'mp-copy-label', 'Copy');
-    row.appendChild(label);
-    row.addEventListener('click', () => copyText(text, label));
-    return row;
   }
 
   // ── Panel DOM ─────────────────────────────────────────────────────────────
@@ -337,21 +314,14 @@
     applySize(currentPaper);
   }
 
-  // Until a model connects, the conversation opens with a starter card: how
-  // to go live, with the command in its own copyable row. Removed the moment
-  // presence arrives; re-added if the connection lapses.
+  // The conversation opens with a greeting bubble. It says what this panel is
+  // for — never how to switch live editing on, because there is no switch:
+  // a served page is already live. It is written once and stays put.
   function buildStarter(state) {
-    // A regular model chat bubble — the conversation starts with the model
-    // telling you how to connect.
     const card = el('div', 'mp-msg mp-msg-model mp-starter');
-    if (state === 'file') {
-      card.appendChild(el('p', null,
-        'Live editing needs the local server — open this page through it to chat with your model.'));
-    } else {
-      card.appendChild(el('p', null,
-        'Connect with your model and edit live! Just copy/paste the command below.'));
-      card.appendChild(buildCopyRow('/print live'));
-    }
+    card.appendChild(el('p', null, state === 'file'
+      ? 'Live editing needs the local server — open this page through it to chat with your model.'
+      : 'Double-click any text on the page to edit it, or tell me what to change.'));
     return card;
   }
 
@@ -363,8 +333,7 @@
     const state = panelState();
     panel.dataset.mode = state;
 
-    log.querySelector('.mp-starter')?.remove();
-    if (state !== 'live') log.prepend(buildStarter(state));
+    if (!log.querySelector('.mp-starter')) log.prepend(buildStarter(state));
 
     const isFile = state === 'file';
     if (inputEl) inputEl.disabled = isFile;
@@ -424,8 +393,8 @@
       presenceEl.textContent = 'Model is connected';
       presenceEl.className = 'mp-presence-live';
     } else {
-      presenceEl.textContent = 'Messages queue until your model connects';
-      presenceEl.className = 'mp-presence-queued';
+      presenceEl.textContent = 'No model connected';
+      presenceEl.className = 'mp-presence-off';
     }
   }
 
@@ -575,10 +544,9 @@
 
   // ── Init ─────────────────────────────────────────────────────────────────
   // The EDIT button lives in shell.js; this file only reacts through the
-  // mpChatOnEditMode hook. Restore runs only after the whole document has
-  // parsed: the assembly-injected setLiveEditSupported(true) line sits before
-  // </body>, AFTER this script, so restoring synchronously here would read
-  // the flag as false and rebuild a live panel in manual mode.
+  // mpChatOnEditMode hook. Restore waits for the document to finish parsing
+  // because it rebuilds the panel into it — there is nothing left to read
+  // off the document itself, live edit being a property of the server.
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', restore);
   } else {

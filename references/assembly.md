@@ -27,7 +27,6 @@ insertions at the anchors.**
 | `font_import` | no | A Google Fonts URL; becomes a `<link>`. Must have passed self-check item 8. |
 | `paper` | no | Size only: one of `a4`, `legal`, `half`. Empty/anything else = letter. |
 | `orientation` | no | `landscape` or empty (= portrait). Independent of `paper` — any combination is valid. |
-| `live_edit` | no | `yes` only when your harness passed the checks in `references/harness-support.md` (reachability gate + capability ladder). Anything else = the page's Chat panel runs in manual copy/paste mode. |
 | `answer_key_html` | no | Answer-key content for worksheets only — makes this a two-sheet document (step 2). Never author the key as a second page inside `content_html`. |
 
 ## Procedure
@@ -166,7 +165,7 @@ Replace `<style id="content-overrides"></style>` with:
 
 If `custom_css` is empty, leave the tag untouched.
 
-### 5. Body configuration attributes (paper and/or live_edit set)
+### 5. Body configuration attributes (paper and/or orientation set)
 
 The document carries per-page configuration as **data attributes on `<body>`**
 — never as script calls (the runtime chrome reads them at load). Replace the
@@ -178,10 +177,6 @@ literal `<body>` tag with `<body …>` carrying only the attributes that apply:
   allowlist is strict.)
 - `data-mp-orientation="landscape"` — this exact literal — when
   `orientation` is `landscape`. Omit for portrait.
-- `data-mp-live-edit="1"` — this exact literal — when `live_edit` is `yes`.
-  Absence is the flag's false state: the Chat panel then runs in manual
-  copy/paste mode.
-
 When paper and/or orientation are set, ALSO replace the static line inside
 `<style id="dynamic-page-css">` with the matching `@page` size, so a page
 opened directly (script-less) prints its configured sheet exactly
@@ -194,9 +189,14 @@ opened directly (script-less) prints its configured sheet exactly
 | `legal` | `legal` | `legal landscape` |
 | `half` | `5.5in 8.5in` | `8.5in 5.5in` |
 
-e.g. `@page { size: A4 landscape; margin: 0; }`. All three attributes set →
-`<body data-mp-paper="a4" data-mp-orientation="landscape" data-mp-live-edit="1">`.
-None set → leave the body tag untouched.
+e.g. `@page { size: A4 landscape; margin: 0; }`. Both attributes set →
+`<body data-mp-paper="a4" data-mp-orientation="landscape">`.
+Neither set → leave the body tag untouched.
+
+There is deliberately no live-edit attribute. Whether the page can chat with
+a model is not a property of the document — it is whether the page is being
+served (see `references/harness-support.md`), which the chrome reads at load
+from its own origin.
 
 ### 6. Content
 
@@ -224,7 +224,6 @@ do not add another.
   otherwise the attribute appears nowhere.
 - If paper and/or orientation set: `dynamic-page-css` carries the matching
   `@page` size from the table in step 5.
-- If `live_edit` was `yes`: the `<body` tag carries `data-mp-live-edit="1"`;
-  otherwise the attribute appears nowhere.
+- `data-mp-live-edit` appears nowhere — the attribute no longer exists.
 
 If any check fails, fix the copy — don't start over from a blank file.

@@ -394,7 +394,7 @@ button, input, textarea, select {
 /* Status green — connected is a state, not a theme accent. ID-qualified so
    the class color actually beats #mp-chat-presence's base color. */
 #mp-chat-presence.mp-presence-live { color: var(--mp-live); }
-#mp-chat-presence.mp-presence-queued { color: var(--mp-dim); }
+#mp-chat-presence.mp-presence-off { color: var(--mp-dim); }
 
 /* Model-working indicator: a chat entry (not the status line) — animated
    dots plus a label, always the last thing in the conversation. */
@@ -491,50 +491,13 @@ button, input, textarea, select {
 
 /* ── Starter: the first conversation entry until a model connects — a
    regular model bubble stacking its text over the copy row. ── */
-/* Full width of the log, inset only by the log's own padding — a boxed row
-   like the command below reads as part of the panel, not as a bubble tucked
-   against the left edge. */
+/* Full width of the log, inset only by the log's own padding — the opening
+   greeting reads as part of the panel, not as a bubble tucked against the
+   left edge. */
 .mp-starter {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
   align-self: stretch;
   max-width: 100%;
 }
-/* A command and its Copy label on one row — and the row IS the button, so
-   the whole box is the press target rather than a small control inside it.
-   The pattern is generic: any copyable command the chrome offers uses it
-   (buildCopyRow() in chat.js). */
-.mp-copy-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  background: var(--mp-paper);
-  border: 1px solid var(--mp-rule);
-  border-radius: 6px;
-  padding: 7px 11px;
-  cursor: pointer;
-}
-.mp-copy-row:hover { background: var(--mp-bg); }
-.mp-copy-row code {
-  font-family: var(--mp-font-mono);
-  font-size: 12px;
-  color: var(--mp-ink);
-  white-space: nowrap;
-}
-/* The label carries no box of its own — the row around it is the box. */
-.mp-copy-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--mp-mid);
-  flex-shrink: 0;
-}
-.mp-copy-row:hover .mp-copy-label { color: var(--mp-ink); }
 
 /* ── Print: chrome never prints ──
    Hiding the chrome's own elements (not the host) keeps this independent of

@@ -1,10 +1,11 @@
-# Live edit support (`LIVE_EDIT_SUPPORTED`)
+# Live edit support
 
-Whether a generated page gets live chat — the Chat panel talking to you
-through the local server while you run a listen loop — is a property of the
-**agent harness you are running in**, not of the underlying model. Decide it
-at assembly time (SKILL.md Step 5) using this document, and inject the flag
-per `references/assembly.md` step 5b only when the answer is yes.
+Whether the page's Chat panel can talk to you — while you run a listen loop
+against the local server — is a property of the **agent harness you are
+running in**, not of the underlying model and not of the page. Nothing is
+recorded in the generated file: every page the server serves is live-capable,
+and the only question is whether *you* can listen. Decide that with this
+document, at Step 8 when you connect (and again at any later `/print live`).
 
 Two questions, in order. The first is a hard gate.
 
@@ -24,8 +25,8 @@ instead of promising a page the user can't open.
 ## 2. Listen-loop capability ladder
 
 If the browser can reach the server, take the **first rung that your harness
-supports** — any rung means **flag = yes**; record which rung for the listen
-loop in SKILL.md's "Live mode" section:
+supports** — either rung means **flag = yes**; record which rung for the
+listen loop in SKILL.md's "Live mode" section:
 
 - **(a) PUSH** — you have a tool that streams a long-running command's output
   back into the conversation as events as it appears. Run
@@ -35,35 +36,57 @@ loop in SKILL.md's "Live mode" section:
   (`run_in_background`, `is_background`, `&`…). If your harness *notifies*
   you when a background command exits (Claude Code does), run one-shot
   `wait <page> --timeout 240` in the background and end your turn — the
-  completion notification is your wake; handle messages and re-arm. Never
-  loop foreground waits on such a host: it reads as constant silent
-  command churn. If the harness only lets you *read* accumulated background
-  output on your own turns, run `wait --follow` in the background and
-  harvest new lines whenever you get a turn.
-- **(c) BOUNDED POLL** — you can only run foreground commands. Probe your
-  real ceiling once, at live-mode entry:
-  `node <skill-dir>/server/chat-cli.mjs selftest --seconds 20`.
-  `SELFTEST_OK seconds=20` in the result → loop `wait --timeout 20`.
-  Output truncated or the command was killed → retry `--seconds 8`; OK →
-  loop `wait --timeout 8`. Both fail (or `SERVER_UNREACHABLE`) → treat as
-  unsupported after all: remove the injected flag line and report manual
-  mode. Every `wait` is bounded and idempotent — safe to re-run forever.
+  completion notification is your wake; handle messages and re-arm. If the
+  harness only lets you *read* accumulated background output on your own
+  turns, run `wait --follow` in the background and harvest new lines
+  whenever you get a turn.
+
+**A foreground-only harness does not support live mode.** If you can neither
+stream a command's output (a) nor put one in the background (b), the answer
+is **flag = no** — stop here, exactly as if the reachability gate had failed.
+Looping bounded foreground `wait` commands does technically work, and this
+skill used to describe it as a third rung; it is no longer supported. The
+turn can never end while you are listening, so the user watches a stream of
+silent command churn for as long as the session lasts and cannot ask you
+anything else without breaking the loop. The page still gets its Chat panel
+in copy/paste mode, which costs the user one paste and costs the conversation
+nothing.
 
 Unknown/unlisted harness: don't guess from the name — apply the ladder.
 
+## 3. Passing means live mode is ON, by default
+
+Clearing both checks does not merely *permit* live mode — it turns it on.
+Rungs (a) and (b) both listen without occupying the foreground, so the cost
+of being connected is a wake every few minutes and nothing the user has to
+watch. Once Step 7 has the server running and Step 8 has reported the page,
+arm the listen loop and end your turn (SKILL.md's "Live mode" section). The
+user never has to discover a command to switch on a feature that is already
+running.
+
+One limit on that default: **interactive runs only.** In headless / pipeline
+use (SKILL.md's "Headless / pipeline use" — the output goes to an automated
+consumer and the run ends at a PDF), there is nobody at a browser to chat
+with, so never arm the listen loop there whatever the ladder says.
+
+Having connected, stay connected and stay quiet: no idle cap, no wake
+budget, and no narration of empty wakes (SKILL.md's "Leaving"). `/print live`
+survives as the explicit re-entry after the user has told you to stop, and as
+the way they ask you to reconsider a harness you judged unsupported.
+
 ## Known harnesses (checked 2026)
 
-| Harness | Flag | Rung / notes |
+| Harness | Live mode | Rung / notes |
 |---|---|---|
-| Claude Code (CLI / desktop) | **yes** | (b): run `wait <page> --timeout 240` with `run_in_background` and end the turn — the task-completion notification wakes the session; re-arm per wake. (a) where a Monitor/stream tool exists. Do NOT loop foreground `wait` commands here. |
-| Claude Code (web), Codex cloud, Cursor cloud agents, Copilot coding agent, other cloud/CI sandboxes | **no** | Reachability gate: user's browser cannot reach sandbox loopback. |
-| OpenAI Codex CLI | **yes** | (c), with care: default exec timeout is **10 s** — always pass an explicit per-call timeout ≥ 2× the wait window, or use `--timeout 8`. |
-| Gemini CLI | **yes** | (b) or (c): `is_background` + output reads; foreground cap ~5 min. |
-| Cursor (IDE agent) | **partial** | (c) with `--timeout 20` or less. CLI shell mode hard-caps at 30 s. |
-| GitHub Copilot CLI / VS Code agent mode | **partial** | (c) only; no timeout knob (~5 min internal cap) — keep waits short so the session doesn't look frozen. |
+| Claude Code (CLI / desktop) | **yes** | (b): run `wait <page> --timeout 240` with `run_in_background` and end the turn — the task-completion notification wakes the session; re-arm per wake. (a) where a Monitor/stream tool exists. |
 | OpenCode | **yes** | (b): `run_in_background` + `bash_output`. |
 | Amp | **yes** | (b): background/tmux patterns + polling check-ins. |
-| Windsurf, Crush, Goose | **partial** | (c) presumed; verify with the selftest probe. |
+| Gemini CLI | **yes** | (b): `is_background`, plus output reads on your own turns. |
+| Claude Code (web), Codex cloud, Cursor cloud agents, Copilot coding agent, other cloud/CI sandboxes | **no** | Reachability gate: user's browser cannot reach sandbox loopback. |
+| OpenAI Codex CLI | **no** | Foreground only (default exec timeout 10 s). Copy/paste mode. |
+| Cursor (IDE agent) | **no** | Foreground only; CLI shell mode hard-caps at 30 s. |
+| GitHub Copilot CLI / VS Code agent mode | **no** | Foreground only, no timeout knob. |
+| Windsurf, Crush, Goose | **no**, unless (b) | Presumed foreground-only. If the harness does have a background facility with output reads, it qualifies at (b) — confirm before claiming it. |
 | Aider | **no** | No agentic command loop. |
 
 ## Server start caveat (all harnesses)
@@ -76,11 +99,12 @@ hard requirement, not a preference.
 
 ## Why waits are bounded
 
-`wait` defaults to 20 s — safe for every foreground harness — and allows up
-to 300 s for background one-shot listeners (rung (b)), where the harness
-wake, not a timeout ceiling, ends the hold. Bounded + idempotent (a
-server-held cursor delivers each message exactly once across invocations)
-means a plain loop of foreground commands works on every rung-(c) harness,
-and no harness ever sees a command that looks hung. `NO_MESSAGE` with exit
-0 — not a non-zero exit — signals an empty poll, so harnesses that surface
-non-zero exits as errors don't misreport a quiet minute as a failure.
+`wait` defaults to 20 s and allows up to 300 s for the background one-shot
+listeners rung (b) runs, where the harness wake — not a timeout ceiling —
+ends the hold. Bounded + idempotent is what makes re-arming safe: a
+server-held cursor delivers each message exactly once across invocations, so
+a message that lands in the gap between one wait exiting and the next being
+armed is still there for the next one. Nothing is lost between wakes, and no
+harness ever sees a command that looks hung. `NO_MESSAGE` with exit 0 — not
+a non-zero exit — signals an empty poll, so harnesses that surface non-zero
+exits as errors don't misreport a quiet minute as a failure.

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // Model-side CLI for the shell's Chat panel. Zero dependencies, Node 18+.
 //
-// Every command is one-shot and bounded so any harness that can run a
-// foreground shell command can drive a chat session by looping it — the
-// portability contract this whole surface is designed around (some harnesses
-// cap foreground commands at 10–30 seconds; an unbounded wait would look
-// like a broken skill there).
+// Every command is one-shot and bounded so a listener can be re-armed after
+// every wake without losing anything: a server-held cursor delivers each
+// message exactly once across invocations, so the gap between one `wait`
+// exiting and the next starting is not a hole. Live mode runs on harnesses
+// that can stream or background a command; a foreground-only harness is not
+// supported (see references/harness-support.md).
 //
 // <page> is the server path of the page — "<page>.html" under the default
 // flat out/ layout ("<dir>/<page>.html" for custom one-level layouts).
@@ -34,13 +35,6 @@
 //                               user-edited elements); --full prints the
 //                               whole served file. The authoritative read is
 //                               always the file on disk.
-//   selftest [--seconds N]      Probe how long a foreground command survives
-//                               in this harness (default 20): prints
-//                               SELFTEST_START, SERVER_OK|SERVER_UNREACHABLE,
-//                               sleeps N, prints "SELFTEST_OK seconds=N".
-//                               If SELFTEST_OK never appears in the tool
-//                               result, the harness killed the command —
-//                               that observable absence IS the probe result.
 //
 // --url <base> (or PRINT_SKILL_URL) overrides http://127.0.0.1:4949.
 
@@ -63,12 +57,11 @@ function takeValue(name, fallback) {
 const BASE = (takeValue("--url", process.env.PRINT_SKILL_URL || "http://127.0.0.1:4949")).replace(/\/+$/, "");
 const follow = takeFlag("--follow");
 const peek = takeFlag("--peek");
-// Foreground loops keep the 20s default (strict-harness safe); background
-// one-shot listeners (harness wakes the model when the command exits) may
-// pass up to 300 for long quiet holds between wakes.
+// The 20s default is a safe floor for any listener; background one-shot
+// listeners (the harness wakes the model when the command exits) pass up to
+// 300 for long quiet holds between wakes.
 const timeout = Math.min(Math.max(Number(takeValue("--timeout", 20)) || 20, 5), 300);
 const after = takeValue("--after", undefined);
-const seconds = Math.max(Number(takeValue("--seconds", 20)) || 20, 1);
 const full = takeFlag("--full");
 
 const [command, page, ...rest] = argv;
@@ -185,20 +178,6 @@ switch (command) {
     break;
   }
 
-  case "selftest": {
-    console.log("SELFTEST_START");
-    try {
-      const res = await fetch(`${BASE}/healthz`);
-      const body = await res.json().catch(() => ({}));
-      console.log(body.name === "print-skill-server" ? "SERVER_OK" : "SERVER_UNREACHABLE");
-    } catch {
-      console.log("SERVER_UNREACHABLE");
-    }
-    await new Promise((r) => setTimeout(r, seconds * 1000));
-    console.log(`SELFTEST_OK seconds=${seconds}`);
-    break;
-  }
-
   default:
-    die("usage: chat-cli.mjs <wait|say|status|edits|selftest> <page>.html …  (see file header)");
+    die("usage: chat-cli.mjs <wait|say|status|edits> <page>.html …  (see file header)");
 }

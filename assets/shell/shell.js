@@ -11,15 +11,6 @@ const SHELL_SRC = document.currentScript?.src || location.href;
 function lsSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
 function lsGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
 
-// ── Live edit capability flag ───────────────────────────────────────────────
-// Set at assembly time via an injected <script>setLiveEditSupported(true)</script>
-// (same mechanism as applySize) when the generating agent's harness can run
-// the chat listen loop — see references/harness-support.md. Absence = false.
-// chat.js reads the flag lazily on panel open/send, so injection order
-// relative to chat.js never matters.
-window.LIVE_EDIT_SUPPORTED = false;
-function setLiveEditSupported(v) { window.LIVE_EDIT_SUPPORTED = !!v; }
-
 // ── Paper size ──────────────────────────────────────────────────────────────
 
 // Base paper sizes, portrait dimensions. Orientation is a SEPARATE axis —
@@ -729,9 +720,10 @@ function injectChrome() {
 
   // Per-page configuration is declarative: assembly sets data attributes on
   // <body> (the document carries data, never chrome API calls). Legacy pages
-  // instead carry injected applySize()/setLiveEditSupported() script lines
-  // after this script — those globals still work, so they self-configure too.
-  if (document.body.dataset.mpLiveEdit) setLiveEditSupported(true);
+  // instead carry an injected applySize() script line after this script —
+  // that global still works, so they self-configure too. Live edit is NOT
+  // among these: it is not a property of the document at all, only of
+  // whether this page is being served (see chat.js).
 
   // Pages ship their design baked in: the shell's :root tokens plus whatever
   // #content-overrides the generation wrote (ad-hoc theme tokens included).
