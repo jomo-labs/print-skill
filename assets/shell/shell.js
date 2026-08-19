@@ -80,8 +80,10 @@ function paperDims() {
 // sheet of its own: only content too tall for ANY sheet is cut, so a
 // paragraph or a section is never torn merely for straddling the boundary.
 // What cannot be cut at all — an image, a table, one oversized block — stays
-// where it is and overflows its sheet, where the break guide marks it as the
-// generation-side bug it is.
+// where it is and overflows its sheet, spilling past the paper edge onto the
+// canvas. Nothing is drawn to point that out: a block visibly hanging off the
+// sheet it belongs to is already the clearest possible statement that the
+// content, not the layout, is the thing to fix.
 
 // A runaway guard, not an expected limit: every pass leaves at least one node
 // behind (splitOff returns null when it cannot), so this only ever catches a
@@ -181,7 +183,7 @@ function paginateSheet(origin, p) {
     const overflow = splitOff(sheet, limit, capacity);
     // null: the very first node overflows and cannot be cut, so nothing would
     // stay behind and a continuation would only rebuild this same sheet. It
-    // stays put and overflows; drawBreakGuides() marks it.
+    // stays put and overflows past the paper edge, in plain sight.
     if (!overflow || !overflow.length) return;
     const next = makeContinuation(sheet, p);
     overflow.forEach(node => next.appendChild(node));
@@ -271,8 +273,8 @@ function splitText(node, limit) {
 
 // Children that take part in the sheet's flow, with their boxes. Comments,
 // whitespace-only text and display:none elements have no box to fit;
-// out-of-flow boxes (absolute, fixed — the break guides among them) don't
-// push content down, so they never decide a break either.
+// out-of-flow boxes (absolute, fixed) don't push content down, so they never
+// decide a break either.
 function laidOutChildren(el) {
   const out = [];
   for (const node of el.childNodes) {
@@ -316,40 +318,6 @@ function makeContinuation(prev, p) {
   return sheet;
 }
 
-// A guide marks a sheet whose content STILL overflows after pagination — one
-// block too tall for any sheet, which paginate() can neither place nor cut.
-// It draws at the bottom of the content box: the line the content had to stay
-// above. (This used to draw a whole ladder of guides down the overflow, one
-// per sheet the overflow would have needed. Now that the overflow becomes
-// real sheets there is nothing left for the lower rungs to mean.)
-function drawBreakGuides(p) {
-  document.querySelectorAll('.page-break-guide').forEach(g => g.remove());
-  for (const origin of originSheets()) {
-    for (const sheet of sheetChain(origin)) {
-      // Fixed sheet height means overflow no longer grows the element —
-      // scrollHeight is where the content actually ends.
-      if (sheet.scrollHeight <= p.h + 1) continue;
-      const cs = getComputedStyle(sheet);
-      const y = p.h - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth);
-      const guide = document.createElement('div');
-      guide.className = 'page-break-guide';
-      // !important throughout: these are chrome nodes living in the page's
-      // own flow, so inline importance is what keeps page CSS off them.
-      // `display` is deliberately NOT among them. An important declaration in
-      // a style attribute outranks every stylesheet rule of the same origin,
-      // print media included — a display:block set here would make the
-      // @media print rule in chrome-host.css unreachable and the guide would
-      // print. Both media set it there instead.
-      guide.style.cssText =
-        `position:absolute!important;left:0!important;right:0!important;top:${y}px!important;` +
-        `height:2px!important;margin:0!important;border:0!important;opacity:1!important;` +
-        `z-index:1!important;pointer-events:none!important;` +
-        `background:repeating-linear-gradient(90deg,oklch(67% 0.006 78) 0 6px,transparent 6px 12px)!important;`;
-      sheet.appendChild(guide);
-    }
-  }
-}
-
 function applySize(key, orientation) {
   // Legacy alias: 'landscape' was once a paper key meaning letter-landscape
   // (older pages carry applySize('landscape') lines or data-mp-paper values).
@@ -377,9 +345,10 @@ function applySize(key, orientation) {
   // alike — same width, same HEIGHT, no print-time zoom, no extra @page
   // margin. Its padding is the page margin. The dimension is IMMUTABLE —
   // paper is a fixed physical size, so content must be made to fit it, never
-  // the reverse: overflow spills visibly past the sheet's bottom edge (an
-  // error state to fix at generation time, marked by the break guides below)
-  // instead of silently stretching the page.
+  // the reverse. Content that outgrows a sheet continues onto another one
+  // (see paginate); the little that cannot be split spills visibly past the
+  // sheet's bottom edge, an error state to fix at generation time, rather
+  // than silently stretching the page.
   // Back to the authored single flow before anything is measured: the sheets
   // pagination added last pass are a view, and this pass rebuilds them from
   // scratch against the paper that is current now.
@@ -412,9 +381,7 @@ function applySize(key, orientation) {
     el.style.transform = '';
     el.style.marginBottom = '';
   });
-  // Overflow becomes real sheets, then whatever STILL overflows gets marked.
   paginate(p);
-  drawBreakGuides(p);
   // margin: 0 — the sheet fills the page box edge to edge. Physical printers
   // with a hardware non-printable border will offer their own fit/shrink in
   // the print dialog; the artifact itself is never pre-shrunk. (A user-facing
@@ -459,7 +426,7 @@ function showVariant(n) {
   variantCurrent = n;
   variantPages.forEach((el, i) => el.classList.toggle('active', i === n));
   mpq('#mp-variant-label').textContent = (n + 1) + ' / ' + variantTotal;
-  // Re-apply size so width/transform/guides target the newly active variant
+  // Re-apply size so width/transform/sheets target the newly active variant
   applySize(currentPaper);
 }
 
@@ -611,11 +578,12 @@ let saving = false;
 
 // The saved document is the live DOM minus runtime-only state, so the file
 // stays as clean as the assembly wrote it. Everything stripped here is
-// re-derived on load: applySize() sets page widths/guides, scaleToFit() sets
-// transform and padding, init() adds mp-embedded, edit mode adds the rest.
+// re-derived on load: applySize() sets page widths and splits the overflow
+// onto continuation sheets, scaleToFit() sets transform and margins, init()
+// adds mp-embedded, edit mode adds the rest.
 function serializeForSave() {
   const root = document.documentElement.cloneNode(true);
-  root.querySelectorAll('.page-break-guide, .mp-hover-box').forEach(el => el.remove());
+  root.querySelectorAll('.mp-hover-box').forEach(el => el.remove());
   // Continuation sheets are a runtime view of one authored flow (see
   // paginate) — the file keeps the flow. Same function the live document
   // rewinds through, so what is saved is exactly what a reload re-splits.
@@ -878,7 +846,11 @@ function injectChrome() {
   // Whatever chrome the document already carries goes: a legacy page's baked
   // toolbar, or the empty host left in a re-serialized DOM (the print
   // pipeline re-renders the serialized page).
-  document.querySelectorAll('#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel')
+  // .page-break-guide: dotted rules an older shell drew inside the sheet to
+  // mark where content would overflow. Continuation sheets replaced them —
+  // overflow that lands on its own sheet has nothing to warn about, and the
+  // remainder that still cannot be placed says so by hanging off the paper.
+  document.querySelectorAll('#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, .page-break-guide')
           .forEach(el => el.remove());
 
   chromeHost = document.createElement('div');

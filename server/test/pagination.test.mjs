@@ -1,9 +1,7 @@
 // Paper is a fixed physical size, so the one thing a page must never do with
 // content that outgrows a sheet is lose it. It used to: the sheet was a fixed
 // 1056px box, the overflow spilled outside it, and paged output simply
-// discarded everything past the paper edge — one PDF page, the rest gone,
-// with a dashed guide drawn across the sheet that (being an inline
-// !important display) also printed.
+// discarded everything past the paper edge — one PDF page, the rest gone.
 //
 // paginate() in shell.js makes the overflow into real sheets instead. The
 // properties that matter are the ones asserted here, in order: nothing is
@@ -131,18 +129,30 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
     });
   });
 
-  await t.test("the break guides never print", async () => {
-    // A block too tall for any sheet cannot be placed OR cut, so it still
-    // overflows — the one case that draws a guide at all.
+  await t.test("a block too tall for any sheet overflows in plain sight", async () => {
+    // It can be neither placed nor cut, so it gets a sheet of its own and
+    // hangs off the bottom of it. Nothing is drawn to say so — a block
+    // visibly crossing the paper edge is the whole message.
     await fs.writeFile(path.join(dir, "tall.html"),
       assemble(`<h1>Tall</h1><div style="height:1400px">block</div>`));
     await withPage("tall", async (page) => {
-      assert.ok(await page.evaluate(() => document.querySelectorAll(".page-break-guide").length) > 0,
-        "expected a guide on the overflowing sheet");
-      await page.emulateMedia({ media: "print" });
-      const shown = await page.evaluate(() => [...document.querySelectorAll(".page-break-guide")]
-        .filter((g) => getComputedStyle(g).display !== "none").length);
-      assert.equal(shown, 0, "a guide is visible in print media");
+      const s = await sheetsOf(page);
+      assert.equal(s.count, 2, "the tall block should still get its own sheet");
+      assert.equal(s.overflowing, 1, "and should still overflow it");
+      assert.equal(await page.evaluate(() => document.querySelectorAll(".page-break-guide").length), 0,
+        "no break guide should be drawn");
+    });
+  });
+
+  await t.test("a guide left in the DOM by an older shell is swept on load", async () => {
+    const guide = `<div class="page-break-guide" style="position:absolute;left:0;right:0;` +
+      `top:984px;height:2px;display:block;background:#999"></div>`;
+    await fs.writeFile(path.join(dir, "legacy.html"), assemble(BODIES.flat + guide));
+    await withPage("legacy", async (page) => {
+      assert.equal(await page.evaluate(() => document.querySelectorAll(".page-break-guide").length), 0,
+        "a legacy guide survived the load");
+      const saved = await page.evaluate(() => serializeForSave());
+      assert.ok(!saved.includes("page-break-guide"), "a legacy guide survived into the saved file");
     });
   });
 

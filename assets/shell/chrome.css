@@ -538,8 +538,9 @@ button, input, textarea, select {
 
 /* ── Print: chrome never prints ──
    Hiding the chrome's own elements (not the host) keeps this independent of
-   how the host is styled from the document side. The page's break guides are
-   document nodes; chrome-host.css hides those. */
+   how the host is styled from the document side. The continuation sheets
+   pagination adds are document nodes, not chrome; chrome-host.css is where
+   print is told about those. */
 @media print {
   :host { display: none !important; }
   #mp-toolbar, #mp-overlay, #mp-chat-panel { display: none !important; }
