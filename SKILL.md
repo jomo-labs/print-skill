@@ -250,7 +250,9 @@ directly after Step 6:
 
 `fit-cli.mjs` (Step 6) is the gate to run before either: it exits non-zero when
 the content did not fit the sheets the page lays out, so a pipeline can stop on
-an accidental page break instead of shipping it.
+an accidental page break instead of shipping it. (An open page checks the same
+thing continuously, and in live mode hands it to you as a `kind: "fit"` event —
+see "A fit problem arrives".)
 
 Both need Node 18+ and the Step 0 `npm install`. There is no dialog fallback
 without a human: if Node is unavailable, report the HTML path and say the PDF
@@ -309,9 +311,9 @@ the user's own edits).
 ## Live mode
 
 While the local server is running, you can be **connected to it**: you learn
-which element the user has just selected in whatever page they have open, and
-their page learns when you are mid-edit so it doesn't flash a half-written
-file at them.
+which element the user has just selected in whatever page they have open and
+when a page has stopped fitting its sheets, and their page learns when you are
+mid-edit so it doesn't flash a half-written file at them.
 
 **You connect to the server, not to a page.** One listener covers every page
 it serves — the one you just generated, one from earlier in the conversation,
@@ -408,6 +410,36 @@ Then go back to listening, silently.
   selection actually changed.
 - **An explicitly named target always wins.** "the title", "every heading" —
   the selection is a default, not a lock.
+
+### A fit problem arrives
+
+`wait` delivers `kind: "fit"` entries when a page stops fitting the sheets it
+lays out — because the user's own browser edit outgrew a sheet, because they
+switched the page to smaller paper, or because it never fitted in the first
+place. `data` carries `{authored, rendered, overflowing, paper, orientation}`.
+
+Unlike a selection, **this one is a request to edit.** The layout is yours, not
+theirs: they cannot fix it, so the page hands it to you and shows them a red
+status line saying so — `content runs onto 3 sheets … fixing`, with the
+indicator pulsing. Something has to happen at the other end of that.
+
+So fix it, the moment it arrives, without waiting to be asked:
+
+1. Follow "Editing the page" below — `status <page> working`, read the file,
+   fix, `status <page> done`. The `done` is what refreshes their tab, and the
+   refreshed page re-measures itself: fixed means the red line disappears on
+   its own. Nothing else clears it.
+2. Fix it the way the page type wants it fixed (`references/page-types.md`,
+   `principles.md` VII): tighten the content back onto the sheet it was
+   authored for, or lay the further sheets out **on purpose** — the problem is
+   never the extra sheet itself, it is a break nobody designed. `overflowing`
+   above 0 is the sharper one: that content is past the paper edge and prints
+   clipped.
+3. Say one line here about what you changed, as with any other edit.
+
+You are told once per distinct problem, per server — a page that still doesn't
+fit after your edit does not come back at you in a loop, and the user is left
+looking at the red line, so say what stopped you.
 
 ### Editing the page
 

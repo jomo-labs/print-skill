@@ -3,8 +3,9 @@
 //
 // There is no chat panel and no chat: the user asks for changes in YOUR
 // session, not in the page. This CLI carries only what the page knows and you
-// don't (which element they have selected) and what you know and it doesn't
-// (that you are mid-edit). Everything you want to SAY, say in your session.
+// don't (which element they have selected, and that it has stopped fitting
+// its sheets) and what you know and it doesn't (that you are mid-edit).
+// Everything you want to SAY, say in your session.
 //
 // Every command is one-shot and bounded so a listener can be re-armed after
 // every wake without losing anything: a server-held cursor delivers each
@@ -18,10 +19,18 @@
 // custom one-level layouts). `wait` is the one command that does not need it.
 //
 //   wait [<page>] [--timeout N] [--after ID] [--peek]
-//       Bounded poll for what the user does in the browser: kind:"selection"
-//       notices telling you which element they just double-clicked
-//       (data.selector null = they cleared it). What they want done with it
-//       they tell you directly, in your session.
+//       Bounded poll for what the user does in the browser, and for what the
+//       page finds wrong with itself:
+//         kind:"selection"  which element they just double-clicked
+//                           (data.selector null = they cleared it). What they
+//                           want done with it they tell you directly, in your
+//                           session.
+//         kind:"fit"        the page no longer fits the sheets it lays out —
+//                           data carries {authored, rendered, overflowing,
+//                           paper, orientation}. This one IS a request: the
+//                           layout is yours, the page is showing the user a
+//                           red "… fixing", go and fix it (SKILL.md, "A fit
+//                           problem arrives").
 //
 //       WITH NO <page> THIS WATCHES EVERY PAGE THE SERVER SERVES, and that is
 //       how you should normally run it — you are connecting to the server, not

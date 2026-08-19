@@ -35,6 +35,7 @@
   --mp-surface: oklch(94% 0.009 78);
   --mp-live:    oklch(52% 0.14 150);          /* connected — a state, not a theme accent */
   --mp-notice:  oklch(52% 0.13 65);           /* a decision is owed — not an error        */
+  --mp-error:   oklch(52% 0.20 27);           /* the page does not fit — the one real error */
   --mp-select:  rgba(59, 130, 246, 0.7);      /* hover/selection blue                    */
 
   /* Generic families only. A page can @font-face any real family name out
@@ -131,22 +132,45 @@ button, input, textarea, select {
 #mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--mp-rule); flex-shrink: 0; }
 
 /* Variant nav — shell.js flips it to flex once it finds multiple variants. */
-/* Overflow notice. Deliberately not an alarm — nothing is broken or lost, a
-   design decision is simply still owed (see reportFit in shell.js) — so it
-   reads as a quiet outlined note in the accent, not a red banner. */
+/* Fit status. The page not fitting its sheets is the one thing in this
+   toolbar that is actually WRONG — the breaks fell where the content ran out
+   of room rather than where they were designed — and the one thing the user
+   cannot fix themselves, since the layout is the model's. So it is red and it
+   is a status message (indicator + line), not a quiet outlined note: it
+   states the problem, then states that it is being fixed, then disappears
+   when the model's edit lands and the page fits. */
 #mp-fit-badge {
   display: none;
   align-items: center;
+  gap: 6px;
   /* No margin-left:auto: .mp-toolbar-spacer does the pushing. */
   padding: 3px 8px;
-  border: 1px solid var(--mp-notice);
+  border: 1px solid color-mix(in oklab, var(--mp-error) 35%, transparent);
   border-radius: 3px;
+  background: color-mix(in oklab, var(--mp-error) 8%, transparent);
   font-size: 11px;
+  font-weight: 600;
   line-height: 1.3;
-  color: var(--mp-notice);
+  color: var(--mp-error);
   white-space: nowrap;
   letter-spacing: 0.02em;
   cursor: default;
+}
+/* The same indicator as the connection status beside it, in the error colour
+   — one visual language for "here is where this page stands". */
+.mp-fit-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+/* Handed to the model and not answered yet ("… fixing"): the dot pulses, on
+   the same beat as the working indicator, because it means the same thing —
+   wait, something is happening. */
+#mp-fit-badge[data-mp-fixing] .mp-fit-dot { animation: mp-live-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  #mp-fit-badge[data-mp-fixing] .mp-fit-dot { animation: none; }
 }
 
 #mp-variant-nav { display: none; align-items: center; gap: 8px; }

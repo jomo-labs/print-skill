@@ -161,8 +161,10 @@ function paginate(p) {
   for (const origin of originSheets()) paginateSheet(origin, p);
 }
 
-// What the pass had to do, published three ways: to the toolbar, to the body
-// as data-mp-overflow, and to window.mpFit for fit-cli.mjs.
+// What the pass had to do, published four ways: to the toolbar as a status
+// message, to the body as data-mp-overflow, to window.mpFit for fit-cli.mjs,
+// and — when a problem is NEW — to the model on the live channel, so it can
+// go and fix it (noticeFit).
 //
 // This is the point of the whole reporting path. Sheets the shell had to add
 // are sheets the AUTHOR did not lay out, and where a document breaks is a
@@ -188,27 +190,120 @@ function reportFit(p) {
   window.mpFit = fit;
   if (rendered > fit.authored || overflowing) document.body.dataset.mpOverflow = String(rendered);
   else delete document.body.dataset.mpOverflow;
+  fitSig = fitSignature(fit);
+  // Nothing wrong any more — whatever was reported is over, and the next
+  // problem (if one ever comes back) is a new one to report from scratch.
+  if (!fitSig) { fitFixing = false; ssSet('mpFitNoticed', ''); }
   showFitBadge(fit);
+  noticeFit(fit);
   return fit;
 }
 
-// The user's half of the same news. Hidden while the page fits, so the
-// resting toolbar stays Print and Edit.
-function showFitBadge({ authored, rendered, overflowing }) {
+// ── Fit report ──────────────────────────────────────────────────────────────
+// A page that does not fit its sheets is the one error this shell can detect
+// on its own, and it is not something the user can do anything about: the
+// content and the layout are the MODEL's, so the fix is the model's too. So
+// the notice is not filed and left for someone to read — it is handed
+// straight to the model over the live channel, and the toolbar says so while
+// that is happening ("… fixing", with the indicator pulsing). When the fix
+// lands, the model's `status done` reloads the page, this pass re-measures a
+// document that fits, and the message goes away by itself.
+//
+// Deduped by SIGNATURE, per server (same reasoning as the selection notice):
+//   - the model's own edit reloads this tab, so a report per load would be a
+//     loop — a problem it did not manage to fix would be handed back to it
+//     forever;
+//   - a genuinely NEW problem (more sheets than last time, or an overflow
+//     introduced by switching paper) has a new signature, so it IS reported;
+//   - a restarted server has never heard any of it, and the epoch check in
+//     the live channel clears the dedupe so it hears it once.
+const FIT_NOTICE_MS = 500;   // settle time — applySize can run several times
+
+// Re-split and re-measure the document as it stands now. applySize is the
+// whole fit pass (rewind to the authored flow, split, report), so the one
+// runtime change that comes from outside it — a committed browser edit — gets
+// there through this.
+function refit() { applySize(currentPaper); }
+
+let fitSig = null;      // the problem currently on screen, null when it fits
+let fitFixing = false;  // handed to the model this page load, no answer yet
+let fitTimer = null;
+
+// Paper is part of it: the same content that fits Letter may not fit Half, so
+// switching paper introduces a real, and differently-shaped, problem.
+function fitSignature({ authored, rendered, overflowing }) {
+  if (rendered <= authored && !overflowing) return null;
+  return `${authored}/${rendered}/${overflowing}@${currentPaper}-${currentOrientation}`;
+}
+
+// True only while the model can actually be working on it: reported on THIS
+// page load (a reload means it already came back), and someone is listening.
+function fitPending() { return fitFixing && modelListening; }
+
+function fitProblemText({ authored, rendered, overflowing }) {
+  const spilled = rendered > authored;
+  return overflowing && !spilled
+    ? 'content overflows the sheet'
+    : `content runs onto ${rendered} sheets`;
+}
+
+function noticeFit(fit = window.mpFit) {
+  clearTimeout(fitTimer);
+  if (location.protocol === 'file:' || !fit || !fitSig) return;
+  const sig = fitSig;
+  fitTimer = setTimeout(async () => {
+    // The measurement moved on while we settled, or this server was already
+    // told: nothing to say.
+    if (fitSig !== sig || ssGet('mpFitNoticed') === sig) return;
+    ssSet('mpFitNoticed', sig);
+    try {
+      const res = await fetch(liveUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'user',
+          kind: 'fit',
+          text: fitProblemText(fit),
+          data: { ...fit, paper: currentPaper, orientation: currentOrientation },
+        }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      fitFixing = true;
+      showFitBadge(fit);
+    } catch {
+      // Unreachable or refused: forget that we said it, so the next pass (or
+      // the next server we meet) reports the problem instead of assuming it
+      // landed.
+      ssSet('mpFitNoticed', '');
+    }
+  }, FIT_NOTICE_MS);
+}
+
+// The user's half of the same news: a status message, not a label — this is
+// the page telling them something is wrong with it and what is being done
+// about it. Red, because unlike everything else in this toolbar it reports a
+// failure; hidden entirely while the page fits, so the resting toolbar stays
+// Print and Edit.
+function showFitBadge(fit = window.mpFit) {
   const badge = mpq('#mp-fit-badge');
-  if (!badge) return;
+  if (!badge || !fit) return;
+  const { authored, rendered, overflowing } = fit;
   const spilled = rendered > authored;
   badge.style.display = (spilled || overflowing) ? 'inline-flex' : 'none';
   if (!spilled && !overflowing) return;
-  badge.textContent = overflowing && !spilled
-    ? 'content overflows the sheet'
-    : `content runs onto ${rendered} sheets`;
-  badge.title = overflowing
+  const fixing = fitPending();
+  const label = mpq('#mp-fit-badge .mp-fit-label');
+  if (label) label.textContent = fitProblemText(fit) + (fixing ? ' …fixing' : '');
+  // Drives the indicator's pulse (chrome.css) — the message is the same
+  // message either way, so the state is an attribute, not a second element.
+  badge.toggleAttribute('data-mp-fixing', fixing);
+  const problem = overflowing
     ? 'Some content is too tall for any sheet and hangs past the paper edge. ' +
       'It prints clipped — shorten it, or give it a sheet laid out for it.'
     : `This page was authored as ${authored} sheet${authored === 1 ? '' : 's'} and its ` +
       `content needs ${rendered}. Nothing is lost — the extra sheets print — but the ` +
       'breaks fall where the content ran out of room rather than where they were designed.';
+  badge.title = fixing ? problem + ' The model has been told, and is fixing it.' : problem;
 }
 
 function paginateSheet(origin, p) {
@@ -570,7 +665,15 @@ function enableEditMode() {
       // (and it strips the markers it has addressed).
       if (el.innerHTML !== before) {
         el.setAttribute('data-mp-edited', '');
-        savePage();
+        // Their text can outgrow the sheet it is on, and that is the same
+        // failure as content that never fitted: re-split and re-measure, so
+        // the toolbar says so and the model is handed it to fix (reportFit).
+        // AFTER the write lands, not beside it — the file the model goes and
+        // reads has to be the one they just typed into.
+        //
+        // At commit, never while they type: the fit pass moves nodes between
+        // sheets, which under a live caret would take the caret with it.
+        savePage().finally(refit);
       }
     };
     editingEl = el;
@@ -880,6 +983,9 @@ function setListening(on) {
   if (on === modelListening) return;
   modelListening = on;
   renderLiveStatus();
+  // "…fixing" claims someone is working on it — that claim is only true while
+  // a model is listening, so it comes and goes with the connection.
+  showFitBadge();
 }
 
 // The toolbar's one piece of connection state, pinned to the right. It answers
@@ -912,6 +1018,12 @@ function applyStatus(state, text, ts) {
   workingSince = 0;
   workingNote = '';
   renderLiveStatus();
+  // The model has come back. Whatever it did, it is no longer fixing: either
+  // the reload below re-measures a page that fits and the message goes with
+  // it, or the problem survived and the user should see it standing, not
+  // still pretending to be in progress.
+  fitFixing = false;
+  showFitBadge();
   // `done` means the file has reached its final state — don't wait out a tick
   // to show it.
   if (state === 'done') reloadIfChanged?.();
@@ -937,6 +1049,10 @@ function initLiveChannel() {
         ssSet('mpToldEpoch', body.epoch);
         noticedSelector = null;
         noticeSelection();
+        // Same for a page that does not fit: the problem is still on screen,
+        // and this server has never been told about it.
+        ssSet('mpFitNoticed', '');
+        noticeFit();
       }
       for (const m of body.messages) {
         liveCursor = Math.max(liveCursor, m.id);
@@ -1266,12 +1382,20 @@ function injectChrome() {
   live.appendChild(liveLabel);
   toolbar.appendChild(live);
 
-  // Overflow notice — hidden while the page fits (showFitBadge). Last in the
+  // Fit status — hidden while the page fits (showFitBadge). Last in the
   // toolbar, so appearing and disappearing never moves the buttons under the
-  // user's cursor.
+  // user's cursor. Built like the connection status beside it (indicator plus
+  // label) because that is what it is: a live report on the page's state,
+  // with a dot that pulses while the model is fixing it.
   const fit = document.createElement('span');
   fit.id = 'mp-fit-badge';
   fit.style.display = 'none';
+  const fitDot = document.createElement('span');
+  fitDot.className = 'mp-fit-dot';
+  const fitLabel = document.createElement('span');
+  fitLabel.className = 'mp-fit-label';
+  fit.appendChild(fitDot);
+  fit.appendChild(fitLabel);
   toolbar.appendChild(fit);
 
   const ov = document.createElement('div');

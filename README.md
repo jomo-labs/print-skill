@@ -22,7 +22,10 @@ edge. This skill packages print as a design discipline:
   local server at view time (generated files stay pure printable documents).
   Double-click anything and your model — connected to the page, and shown as
   such in the toolbar — knows what you picked, so you can just say "make this
-  bigger" in the session you're already in. That chrome renders in its own
+  bigger" in the session you're already in. And when a page stops fitting its
+  sheets — because the layout outgrew them, or because you typed too much into
+  it — the toolbar says so in red and hands the problem straight to your model
+  to fix, then clears itself when the fix lands. That chrome renders in its own
   shadow root, so however wildly a page is themed, the controls stay put.
   Print is WYSIWYG: the on-screen sheet and the printed sheet are
   dimension-identical, 1:1.
