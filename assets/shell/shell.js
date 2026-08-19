@@ -53,6 +53,312 @@ function paperDims() {
   return { w: p.w, h: p.h, css: p.css };
 }
 
+// ── Overflow pagination ─────────────────────────────────────────────────────
+// Paper is a fixed physical size, so content that outgrows a sheet has to go
+// somewhere: it continues onto another sheet. A real one — same paper, same
+// margins, same themed frame and shadow as the sheet it continues, offset
+// below it on screen and printed as the next page of the PDF.
+//
+// The split is a RUNTIME VIEW of the document, never part of it. The file on
+// disk keeps the single authored flow: unpaginate() rewinds to that flow
+// before every pass, applySize() re-splits from scratch on load, on paper
+// change and on variant switch, and serializeForSave() unpaginates the DOM it
+// writes back. That is also what makes the split idempotent for the print
+// pipeline, which re-renders the LIVE DOM — an already-split page re-splits
+// into exactly the same sheets.
+//
+// Sheets fill greedily, and a node moves WHOLE whenever it would fit on a
+// sheet of its own: only content too tall for ANY sheet is cut, so a
+// paragraph or a section is never torn merely for straddling the boundary.
+// What cannot be cut at all — an image, a table, one oversized block — stays
+// where it is and overflows its sheet, spilling past the paper edge onto the
+// canvas. Nothing is drawn to point that out: a block visibly hanging off the
+// sheet it belongs to is already the clearest possible statement that the
+// content, not the layout, is the thing to fix.
+
+// A runaway guard, not an expected limit: every pass leaves at least one node
+// behind (splitOff returns null when it cannot), so this only ever catches a
+// bug in the fitting below.
+const MAX_SHEETS = 200;
+
+// Never cut these: their content is not a flow that can be continued, so they
+// move whole or they overflow.
+const ATOMIC_TAGS = new Set([
+  'IMG', 'SVG', 'CANVAS', 'VIDEO', 'AUDIO', 'IFRAME', 'OBJECT', 'EMBED',
+  'TABLE', 'HR', 'BR', 'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'PRE',
+]);
+
+// Ties a cut element to the shells carrying the rest of it, so unpaginate()
+// can put the pieces back in the right place.
+let splitSeq = 0;
+
+function isContinuation(el) {
+  return !!el && el.nodeType === 1 && el.hasAttribute('data-mp-continuation');
+}
+
+// A sheet plus every continuation hanging off it, in order.
+function sheetChain(sheet) {
+  const chain = [sheet];
+  for (let n = sheet.nextElementSibling; isContinuation(n); n = n.nextElementSibling) chain.push(n);
+  return chain;
+}
+
+// The sheets pagination owns: every sheet of a nested multi-sheet assembly,
+// or the one active top-level sheet. Inactive variants are left alone — they
+// are not on screen, and splitting them would only be undone at the next
+// variant switch.
+function originSheets() {
+  const nested = Array.from(document.querySelectorAll('#page > .page')).filter(el => !isContinuation(el));
+  if (nested.length) return nested;
+  const active = getActivePage();
+  return active ? [active] : [];
+}
+
+// Rewind to the authored flow: every continuation sheet's content goes back
+// where it came from and the sheet itself disappears. Runs on the live
+// document before each pass, and on the clone serializeForSave() writes out —
+// same function, so the file can never disagree with what a reload rebuilds.
+function unpaginate(root) {
+  const destinations = new Set();
+  for (const cont of Array.from(root.querySelectorAll('[data-mp-continuation]'))) {
+    // A chain merges front to back and each sheet is removed as it goes, so
+    // the previous sibling is always the sheet this one continues.
+    const dest = cont.previousElementSibling;
+    if (dest) {
+      destinations.add(dest);
+      while (cont.firstChild) mergeBack(dest, cont.firstChild);
+    }
+    cont.remove();
+  }
+  root.querySelectorAll('[data-mp-split-src]').forEach(el => el.removeAttribute('data-mp-split-src'));
+  // splitText() cuts at a word boundary and leaves the whitespace on the
+  // head, so joining the halves back into one text node restores the original
+  // string exactly.
+  destinations.forEach(el => el.normalize());
+}
+
+// Move one node from a continuation sheet back where it came from. A node
+// that is the tail shell of a cut element is not restored as a node at all —
+// its children rejoin the element it was cut from.
+function mergeBack(dest, node) {
+  const gid = node.nodeType === 1 && node.getAttribute('data-mp-split');
+  if (gid) {
+    const target = dest.querySelector(`[data-mp-split-src="${gid}"]`);
+    if (target) {
+      while (node.firstChild) mergeBack(target, node.firstChild);
+      node.remove();
+      return;
+    }
+  }
+  dest.appendChild(node);
+}
+
+// Split every sheet that overflows into as many sheets as its content needs.
+// `data-mp-paginate="off"` on the body opts a page out and restores the old
+// behaviour: one sheet, and overflow spilling past its edge.
+function paginate(p) {
+  if (document.body.dataset.mpPaginate === 'off') return;
+  for (const origin of originSheets()) paginateSheet(origin, p);
+}
+
+// What the pass had to do, published three ways: to the toolbar, to the body
+// as data-mp-overflow, and to window.mpFit for fit-cli.mjs.
+//
+// This is the point of the whole reporting path. Sheets the shell had to add
+// are sheets the AUTHOR did not lay out, and where a document breaks is a
+// design decision — which page each thing lands on, whether a page feels
+// complete (principles.md VII). The split keeps that content from being lost,
+// but it chooses the breaks by what happened to fit, which is exactly the
+// accident the design is supposed to prevent. So the shell says so, loudly
+// enough that the generation can go back and either make it fit one sheet or
+// lay the further sheets out on purpose.
+//
+// A page that fits carries NO attribute — the diagnostic only ever marks a
+// failure, so a clean document stays clean.
+function reportFit(p) {
+  const origins = originSheets();
+  let rendered = 0, overflowing = 0;
+  for (const origin of origins) {
+    for (const sheet of sheetChain(origin)) {
+      rendered++;
+      if (sheet.scrollHeight > p.h + 1) overflowing++;
+    }
+  }
+  const fit = { authored: origins.length, rendered, overflowing };
+  window.mpFit = fit;
+  if (rendered > fit.authored || overflowing) document.body.dataset.mpOverflow = String(rendered);
+  else delete document.body.dataset.mpOverflow;
+  showFitBadge(fit);
+  return fit;
+}
+
+// The user's half of the same news. Hidden while the page fits, so the
+// resting toolbar stays Print and Edit.
+function showFitBadge({ authored, rendered, overflowing }) {
+  const badge = mpq('#mp-fit-badge');
+  if (!badge) return;
+  const spilled = rendered > authored;
+  badge.style.display = (spilled || overflowing) ? 'inline-flex' : 'none';
+  if (!spilled && !overflowing) return;
+  badge.textContent = overflowing && !spilled
+    ? 'content overflows the sheet'
+    : `content runs onto ${rendered} sheets`;
+  badge.title = overflowing
+    ? 'Some content is too tall for any sheet and hangs past the paper edge. ' +
+      'It prints clipped — shorten it, or give it a sheet laid out for it.'
+    : `This page was authored as ${authored} sheet${authored === 1 ? '' : 's'} and its ` +
+      `content needs ${rendered}. Nothing is lost — the extra sheets print — but the ` +
+      'breaks fall where the content ran out of room rather than where they were designed.';
+}
+
+function paginateSheet(origin, p) {
+  let sheet = origin;
+  for (let i = 0; i < MAX_SHEETS; i++) {
+    const cs = getComputedStyle(sheet);
+    const top = parseFloat(cs.borderTopWidth) + parseFloat(cs.paddingTop);
+    const capacity = p.h - top - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth);
+    if (!(capacity > 0)) return;
+    // The sheet's own content-box bottom, in viewport coordinates. Every fit
+    // test below is a comparison against this one line.
+    const limit = sheet.getBoundingClientRect().top + top + capacity;
+    const overflow = splitOff(sheet, limit, capacity);
+    // null: the very first node overflows and cannot be cut, so nothing would
+    // stay behind and a continuation would only rebuild this same sheet. It
+    // stays put and overflows past the paper edge, in plain sight.
+    if (!overflow || !overflow.length) return;
+    const next = makeContinuation(sheet, p);
+    overflow.forEach(node => next.appendChild(node));
+    sheet = next;
+  }
+}
+
+// The nodes of `container` that do not fit above `limit`, in order. Returns
+// [] when everything fits, and null when nothing can be moved without leaving
+// the container empty (no progress — the caller must stop).
+function splitOff(container, limit, capacity) {
+  const kids = laidOutChildren(container);
+  for (let i = 0; i < kids.length; i++) {
+    const { node, box } = kids[i];
+    if (box.bottom <= limit) continue;
+    // Everything after it goes too — and that is every SIBLING, not just the
+    // laid-out ones. The whitespace between two elements is a node like any
+    // other, and leaving it behind while its neighbours move would quietly
+    // rewrite the authored markup (two inline elements that were separated by
+    // a space would come back joined). Read before splitNode() runs, so a
+    // text tail it inserts right after `node` isn't counted twice.
+    const rest = [];
+    for (let n = node.nextSibling; n; n = n.nextSibling) rest.push(n);
+    // Too tall for any sheet: cutting it is the only way it can ever be
+    // placed. Anything that WOULD fit on a sheet of its own moves whole
+    // instead, which is what keeps paragraphs and sections intact.
+    if (box.top < limit && box.height > capacity) {
+      const tail = splitNode(node, limit, capacity);
+      if (tail) return [tail, ...rest];
+    }
+    if (i === 0) return null;
+    return [node, ...rest];
+  }
+  return [];
+}
+
+// Cut `node` in two at `limit`: what fits stays, the rest moves into a shell
+// carrying the same tag, classes and attributes, so the continuation reads as
+// the same element. Returns the shell (detached), or null if it cannot be cut.
+function splitNode(node, limit, capacity) {
+  if (node.nodeType === 3) return splitText(node, limit);
+  if (node.nodeType !== 1 || ATOMIC_TAGS.has(node.tagName)) return null;
+  const tail = splitOff(node, limit, capacity);
+  if (!tail || !tail.length) return null;
+  // A shell that already carries a group id is itself the continuation of an
+  // earlier cut: its own tail rejoins the SAME original, so the id rides
+  // along rather than opening a new group.
+  let gid = node.getAttribute('data-mp-split');
+  if (!gid) {
+    gid = String(++splitSeq);
+    node.setAttribute('data-mp-split-src', gid);
+  }
+  const shell = node.cloneNode(false);
+  shell.removeAttribute('id');            // an id belongs to one element
+  shell.removeAttribute('data-mp-split-src');
+  shell.setAttribute('data-mp-split', gid);
+  tail.forEach(n => shell.appendChild(n));
+  return shell;
+}
+
+// Cut a run of text at the last word boundary that still clears `limit`. The
+// whitespace stays on the head, so head + tail is character-for-character the
+// original string and unpaginate() restores it by normalizing the two halves
+// back together.
+function splitText(node, limit) {
+  const text = node.nodeValue;
+  const bounds = [];
+  for (let i = 1; i < text.length; i++) {
+    if (/\s/.test(text[i - 1]) && !/\s/.test(text[i])) bounds.push(i);
+  }
+  if (!bounds.length) return null;
+  const range = document.createRange();
+  const fits = (end) => {
+    range.setStart(node, 0);
+    range.setEnd(node, end);
+    return range.getBoundingClientRect().bottom <= limit;
+  };
+  // Not even the first word clears the line — there is no cut to make here.
+  if (!fits(bounds[0])) return null;
+  let lo = 0, hi = bounds.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (fits(bounds[mid])) lo = mid; else hi = mid - 1;
+  }
+  return node.splitText(bounds[lo]);
+}
+
+// Children that take part in the sheet's flow, with their boxes. Comments,
+// whitespace-only text and display:none elements have no box to fit;
+// out-of-flow boxes (absolute, fixed) don't push content down, so they never
+// decide a break either.
+function laidOutChildren(el) {
+  const out = [];
+  for (const node of el.childNodes) {
+    const box = nodeRect(node);
+    if (box) out.push({ node, box });
+  }
+  return out;
+}
+
+function nodeRect(node) {
+  if (node.nodeType === 3) {
+    if (!node.nodeValue.trim()) return null;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const r = range.getBoundingClientRect();
+    return (r.width || r.height) ? r : null;
+  }
+  if (node.nodeType !== 1) return null;
+  const cs = getComputedStyle(node);
+  if (cs.display === 'none' || cs.position === 'absolute' || cs.position === 'fixed') return null;
+  const r = node.getBoundingClientRect();
+  return (r.width || r.height) ? r : null;
+}
+
+// A continuation sheet IS a sheet: it inherits the origin's own classes, so a
+// themed .page continues onto an identically themed one and picks up paper,
+// margins, frame and shadow from the page's own CSS with nothing restated
+// here. Only the id (which belongs to one element) and the variant/active
+// classes (which the chrome owns) are left behind.
+function makeContinuation(prev, p) {
+  const sheet = document.createElement('div');
+  sheet.className = Array.from(prev.classList)
+    .filter(c => c !== 'variant-page' && c !== 'active')
+    .join(' ');
+  sheet.classList.add('page', 'mp-continuation');
+  sheet.setAttribute('data-mp-continuation', '');
+  sheet.style.width = p.w + 'px';
+  sheet.style.height = p.h + 'px';
+  sheet.style.minHeight = '0';
+  prev.parentNode.insertBefore(sheet, prev.nextSibling);
+  return sheet;
+}
+
 function applySize(key, orientation) {
   // Legacy alias: 'landscape' was once a paper key meaning letter-landscape
   // (older pages carry applySize('landscape') lines or data-mp-paper values).
@@ -80,12 +386,23 @@ function applySize(key, orientation) {
   // alike — same width, same HEIGHT, no print-time zoom, no extra @page
   // margin. Its padding is the page margin. The dimension is IMMUTABLE —
   // paper is a fixed physical size, so content must be made to fit it, never
-  // the reverse: overflow spills visibly past the sheet's bottom edge (an
-  // error state to fix at generation time, marked by the break guides below)
-  // instead of silently stretching the page.
+  // the reverse. Content that outgrows a sheet continues onto another one
+  // (see paginate); the little that cannot be split spills visibly past the
+  // sheet's bottom edge, an error state to fix at generation time, rather
+  // than silently stretching the page.
+  // Back to the authored single flow before anything is measured: the sheets
+  // pagination added last pass are a view, and this pass rebuilds them from
+  // scratch against the paper that is current now.
+  unpaginate(document);
   const nested = document.querySelector('#page > .page');
   document.querySelectorAll('.variant-page, #page').forEach(el => {
     el.style.width = p.w + 'px';
+    // The screen-fit transform and its margin compensation are cleared before
+    // the fit pass: getBoundingClientRect reports SCALED pixels, and the
+    // capacity every fit test below is measured against is in CSS pixels.
+    // scaleToFit() puts both back at the end of applySize().
+    el.style.transform = '';
+    el.style.marginBottom = '';
     if (nested && el.id === 'page') {
       // Two-sheet assemblies: #page is a transparent container around the
       // nested sheets, not a sheet itself — it must grow around them.
@@ -102,38 +419,11 @@ function applySize(key, orientation) {
   document.querySelectorAll('#page > .page').forEach(el => {
     el.style.height = p.h + 'px';
     el.style.minHeight = '0';
+    el.style.transform = '';
+    el.style.marginBottom = '';
   });
-  // Page-break guides only on the active page, and only when its content
-  // actually overflows one sheet. Skipped for nested multi-page assemblies —
-  // their sheets are discrete .page elements, there is no fragmentation to
-  // mark. Print fragments an overflowing sheet with box-decoration-break:
-  // clone (every fragment repeats the sheet's own padding and border), so
-  // per-sheet content capacity is the paper height minus BOTH decoration
-  // edges, and the first break lands one bottom-decoration short of the
-  // paper height. Sections still snap breaks earlier via break-inside rules;
-  // the guides mark the latest possible break.
-  document.querySelectorAll('.page-break-guide').forEach(g => g.remove());
-  const activePg = getActivePage();
-  // Fixed sheet height means overflow no longer grows the element —
-  // scrollHeight is where the content actually ends.
-  if (!nested && activePg.scrollHeight > p.h + 1) {
-    const cs = getComputedStyle(activePg);
-    const decoTop = parseFloat(cs.paddingTop) + parseFloat(cs.borderTopWidth);
-    const decoBottom = parseFloat(cs.paddingBottom) + parseFloat(cs.borderBottomWidth);
-    const step = Math.max(p.h - decoTop - decoBottom, 1);
-    for (let y = p.h - decoBottom; y < activePg.scrollHeight; y += step) {
-      const guide = document.createElement('div');
-      guide.className = 'page-break-guide';
-      // !important throughout: these are chrome nodes living in the page's
-      // own flow, so inline importance is what keeps page CSS off them.
-      guide.style.cssText =
-        `position:absolute!important;left:0!important;right:0!important;top:${y}px!important;` +
-        `height:2px!important;margin:0!important;border:0!important;opacity:1!important;` +
-        `display:block!important;z-index:1!important;pointer-events:none!important;` +
-        `background:repeating-linear-gradient(90deg,oklch(67% 0.006 78) 0 6px,transparent 6px 12px)!important;`;
-      activePg.appendChild(guide);
-    }
-  }
+  paginate(p);
+  reportFit(p);
   // margin: 0 — the sheet fills the page box edge to edge. Physical printers
   // with a hardware non-printable border will offer their own fit/shrink in
   // the print dialog; the artifact itself is never pre-shrunk. (A user-facing
@@ -155,10 +445,19 @@ function scaleToFit(w) {
   const chatW = document.body.classList.contains('mp-chat-open') ? 336 : 0;
   const available = window.innerWidth - 80 - chatW;
   const s = Math.min(available / w, 1);
-  const el = getActivePage();
-  el.style.transform = s < 1 ? `scale(${s})` : '';
-  el.style.transformOrigin = 'top center';
-  el.parentElement.style.paddingBottom = s < 1 ? Math.round(el.offsetHeight * (s - 1)) + 'px' : '';
+  const active = getActivePage();
+  if (!active) return;
+  for (const el of sheetChain(active)) {
+    el.style.transform = s < 1 ? `scale(${s})` : '';
+    el.style.transformOrigin = 'top center';
+    // A scaled sheet still takes its FULL height in the flow — the transform
+    // is paint, not layout. Pulling the surplus back off the bottom is what
+    // keeps the offset between stacked sheets (and the room below the last
+    // one) the distance the screen actually shows, at every zoom. Print
+    // resets the margin: the offset is screen presentation, and the sheets
+    // print at 1:1 anyway.
+    el.style.marginBottom = s < 1 ? -Math.round(el.offsetHeight * (1 - s)) + 'px' : '';
+  }
 }
 
 // ── Variant picker ───────────────────────────────────────────────────────────
@@ -169,7 +468,7 @@ function showVariant(n) {
   variantCurrent = n;
   variantPages.forEach((el, i) => el.classList.toggle('active', i === n));
   mpq('#mp-variant-label').textContent = (n + 1) + ' / ' + variantTotal;
-  // Re-apply size so width/transform/guides target the newly active variant
+  // Re-apply size so width/transform/sheets target the newly active variant
   applySize(currentPaper);
 }
 
@@ -321,11 +620,16 @@ let saving = false;
 
 // The saved document is the live DOM minus runtime-only state, so the file
 // stays as clean as the assembly wrote it. Everything stripped here is
-// re-derived on load: applySize() sets page widths/guides, scaleToFit() sets
-// transform and padding, init() adds mp-embedded, edit mode adds the rest.
+// re-derived on load: applySize() sets page widths and splits the overflow
+// onto continuation sheets, scaleToFit() sets transform and margins, init()
+// adds mp-embedded, edit mode adds the rest.
 function serializeForSave() {
   const root = document.documentElement.cloneNode(true);
-  root.querySelectorAll('.page-break-guide, .mp-hover-box').forEach(el => el.remove());
+  root.querySelectorAll('.mp-hover-box').forEach(el => el.remove());
+  // Continuation sheets are a runtime view of one authored flow (see
+  // paginate) — the file keeps the flow. Same function the live document
+  // rewinds through, so what is saved is exactly what a reload re-splits.
+  unpaginate(root);
   // ALL chrome is runtime-only (injectChrome/chat.js rebuild it every load) —
   // stripping it here keeps the saved file a pure document, and turns the
   // first save of a legacy page (baked-in chrome) into a cleanse.
@@ -346,7 +650,7 @@ function serializeForSave() {
     body.classList.remove('edit-active', 'mp-embedded', 'mp-chat-open');
     if (!body.classList.length) body.removeAttribute('class');
   }
-  root.querySelectorAll('.variant-page, #page, .page-surround').forEach(el => el.removeAttribute('style'));
+  root.querySelectorAll('.page, .variant-page, .page-surround').forEach(el => el.removeAttribute('style'));
   return '<!DOCTYPE html>\n' + root.outerHTML;
 }
 
@@ -584,7 +888,11 @@ function injectChrome() {
   // Whatever chrome the document already carries goes: a legacy page's baked
   // toolbar, or the empty host left in a re-serialized DOM (the print
   // pipeline re-renders the serialized page).
-  document.querySelectorAll('#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel')
+  // .page-break-guide: dotted rules an older shell drew inside the sheet to
+  // mark where content would overflow. Continuation sheets replaced them —
+  // overflow that lands on its own sheet has nothing to warn about, and the
+  // remainder that still cannot be placed says so by hanging off the paper.
+  document.querySelectorAll('#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, .page-break-guide')
           .forEach(el => el.remove());
 
   chromeHost = document.createElement('div');
@@ -683,6 +991,14 @@ function injectChrome() {
   nav.appendChild(label);
   nav.appendChild(next);
   toolbar.appendChild(nav);
+
+  // Overflow notice — hidden while the page fits (showFitBadge). It sits at
+  // the end of the toolbar so appearing and disappearing never moves the
+  // buttons under the user's cursor.
+  const fit = document.createElement('span');
+  fit.id = 'mp-fit-badge';
+  fit.style.display = 'none';
+  toolbar.appendChild(fit);
 
   const ov = document.createElement('div');
   ov.id = 'mp-overlay';

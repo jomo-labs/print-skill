@@ -114,7 +114,8 @@ is one of: `header`, `calendar`, `checklist`, `scores`, `schedule`, `notes`,
 `table`, `writing`, `image`, `custom`. Do not mark the `<footer>` element — it is
 structural. Example: `<div data-mp-section="notes">...</div>`. The shell's print
 CSS uses these markers to break at section boundaries when content genuinely
-overflows, never mid-block.
+overflows, never mid-block — and the shell's pagination keeps a marked section
+whole whenever it fits on a sheet of its own.
 
 ---
 

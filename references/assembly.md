@@ -227,3 +227,8 @@ do not add another.
 - `data-mp-live-edit` appears nowhere — the attribute no longer exists.
 
 If any check fails, fix the copy — don't start over from a blank file.
+
+These are structural checks — they say the file is well-formed, not that the
+content fits the paper. Follow them with the fit check in SKILL.md Step 6
+(`node <skill-dir>/server/fit-cli.mjs <file>`), which is the one that catches a
+page whose content spills onto sheets nobody laid out.

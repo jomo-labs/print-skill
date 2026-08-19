@@ -90,8 +90,11 @@ form), a packing list wants half-letter, a European household wants A4.
 
 When content genuinely needs two pages, the break is a design decision, not a
 consequence — each page should feel complete, a spread rather than an
-accident. There is no print-time safety net: print is WYSIWYG, so content
-that overflows the on-screen sheet boundary spills onto continuation sheets
-exactly where the dashed guides show (each continuation sheet repeats the
-page's own margins and border). The only fix for overflow is knowing the
-content length before committing to the layout.
+accident. Content that outgrows a sheet does continue onto another one rather
+than being lost (the shell fills sheets greedily, moving a block whole
+wherever it would fit on a sheet of its own, and every continuation sheet
+carries the same paper, margins and border), and print gets those sheets as
+consecutive pages. That is a safety net, not a layout: it breaks where the
+content happens to run out of room, which is exactly the accident this rule
+is about. The fix for overflow is still knowing the content length before
+committing to the layout.

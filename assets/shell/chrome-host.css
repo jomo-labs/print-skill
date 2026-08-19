@@ -13,8 +13,11 @@
    this stylesheet as the page's FIRST stylesheet — so `mp-chrome` is the
    first layer, and these reservations hold no matter what the page does.
 
-   Screen-only, deliberately: print gets the document's own geometry,
-   untouched, exactly as a page opened without the server prints. */
+   Almost screen-only, deliberately: print gets the document's own geometry,
+   untouched, exactly as a page opened without the server prints. The one
+   exception is the @media print block at the end, and it covers the one thing
+   the chrome puts INSIDE the sheet flow — the continuation sheets pagination
+   adds, which are document nodes and therefore print. */
 
 @layer mp-chrome {
   @media screen {
@@ -79,12 +82,39 @@
       box-shadow: none !important;
       border-color: transparent !important;
     }
+
+    /* Continuation sheets — where content that outgrows one sheet goes (see
+       paginate() in shell.js). Everything that makes them look like sheets
+       comes from the page's own .page rule, so a themed document continues
+       onto identically themed paper and nothing is restated here; the only
+       thing the chrome adds is the offset that separates one sheet from the
+       next on screen. */
+    .mp-continuation { margin-top: 24px !important; }
   }
 
-  /* The overflow guides are chrome drawn inside the sheet (they have to be —
-     they mark where the content breaks), so they are the one chrome element
-     print has to be told about here. */
+  /* On paper the sheets ARE the pages: consecutive, and with none of the
+     separation the screen puts between them. */
   @media print {
-    .page-break-guide { display: none !important; }
+    /* Each continuation starts a printed page. break-BEFORE, not break-after
+       on its predecessor: a break-after would also fire on the last sheet of
+       a chain that is followed only by display:none variants, and print a
+       trailing blank page. */
+    .mp-continuation {
+      break-before: page !important;
+      break-after: auto !important;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+
+    /* The screen offset and the screen-fit margin compensation are both
+       screen presentation (see scaleToFit); on paper the sheets are the
+       pages, edge to edge. Scoped to the sheets the chrome manages so a
+       .page nested inside generated content is left alone. */
+    .page-surround > .page,
+    .page-surround > .variant-page,
+    #page > .page {
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
   }
 }
