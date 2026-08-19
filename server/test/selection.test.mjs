@@ -32,13 +32,12 @@ function assemble(template, documentCss, heading) {
     );
 }
 
-// Drain the chat log the way `chat-cli.mjs wait` does: as the model, from the
-// server-held cursor, without blocking.
+// Drain the way `chat-cli.mjs wait` does: as the model, from the server-held
+// cursor, without blocking — and server-wide, naming no page, which is how a
+// model actually listens.
 async function drain(serverUrl) {
-  const res = await fetch(
-    `${serverUrl}/chat/page.html/messages?consumer=model&from=user&wait=0`
-  );
-  assert.equal(res.ok, true, "draining the chat log");
+  const res = await fetch(`${serverUrl}/chat/messages?consumer=model&from=user&wait=0`);
+  assert.equal(res.ok, true, "draining the live log");
   return (await res.json()).messages;
 }
 
@@ -291,4 +290,63 @@ test("a restarted server is told the selection again", async (t) => {
   assert.equal(picked[0].data.selector, "#probe");
   assert.equal(await outlined(page), "probe", "and the page never lost it");
   await page.close();
+});
+
+// A model connects to the SERVER, not to a page. This is what lets "start the
+// server" and "be reachable on it" be one act: there is no page to name, so a
+// turn whose only job was to start the server has no excuse to end unwatched.
+test("one listener sees every page, including ones made later", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-allpages-"));
+  const [template, documentCss] = await Promise.all([
+    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
+    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
+  ]);
+  const write = (name, heading) =>
+    fs.writeFile(path.join(dir, `${name}.html`), assemble(template, documentCss, heading));
+  await Promise.all([write("alpha", "Alpha"), write("beta", "Beta")]);
+
+  const server = await startServer({ dir, port: 0 });
+  const browser = await chromium.launch({
+    headless: true,
+    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
+  });
+  t.after(async () => {
+    await browser.close();
+    await server.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  const selectIn = async (name) => {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+    await page.route("**://fonts.g*/**", (route) => route.abort());
+    await openPage(page, `${server.url}/${name}.html`);
+    await page.dblclick("#probe");
+    await page.waitForTimeout(SETTLE_MS);
+    return page;
+  };
+
+  const a = await selectIn("alpha");
+  const b = await selectIn("beta");
+  const first = selections(await drain(server.url));
+  assert.deepEqual(
+    first.map((m) => m.page).sort(),
+    ["/alpha.html", "/beta.html"],
+    "one drain, both pages — and each says which it came from"
+  );
+  await a.close();
+  await b.close();
+
+  // The listener was already running when this page came into existence. A
+  // per-page subscription would need to be told about it; this one does not.
+  await write("gamma", "Gamma");
+  const c = await selectIn("gamma");
+  const late = selections(await drain(server.url));
+  assert.equal(late.length, 1, "the new page is seen without re-subscribing");
+  assert.equal(late[0].page, "/gamma.html");
+  await c.close();
+
+  // And presence is server-wide with it: a model watching the server shows as
+  // connected on every page, not just the one it happened to name.
+  const state = await (await fetch(`${server.url}/chat/alpha.html/messages?wait=0`)).json();
+  assert.equal(state.listening, true, "alpha's toolbar sees the model that was never told about alpha");
 });

@@ -13,22 +13,30 @@
 // that can stream or background a command; a foreground-only harness is not
 // supported (see references/harness-support.md).
 //
-// <page> is the server path of the page — "<page>.html" under the default
-// flat out/ layout ("<dir>/<page>.html" for custom one-level layouts).
+// <page>, where a command takes one, is the server path of the page —
+// "<page>.html" under the default flat out/ layout ("<dir>/<page>.html" for
+// custom one-level layouts). `wait` is the one command that does not need it.
 //
-//   wait <page> [--timeout N] [--after ID] [--peek]
-//       Bounded poll for what the user does ON THE PAGE: kind:"selection"
+//   wait [<page>] [--timeout N] [--after ID] [--peek]
+//       Bounded poll for what the user does in the browser: kind:"selection"
 //       notices telling you which element they just double-clicked
 //       (data.selector null = they cleared it). What they want done with it
-//       they tell you directly, in your session. Prints exactly one of:
+//       they tell you directly, in your session.
+//
+//       WITH NO <page> THIS WATCHES EVERY PAGE THE SERVER SERVES, and that is
+//       how you should normally run it — you are connecting to the server, not
+//       to a document. Every entry carries the `page` it came from, so you
+//       always know which one the user is on, including pages made after you
+//       started listening. Name a page only to deliberately ignore the others.
+//       Prints exactly one of:
 //         {"epoch":"…","messages":[…]}    >=1 new message   (exit 0)
 //         NO_MESSAGE                       poll expired empty (exit 0)
 //       Exit 2 only for hard errors (server unreachable, unknown page).
 //       A server-held cursor means each run delivers only undelivered
 //       messages — safe to re-run forever. --after replays; --peek never
 //       advances the cursor.
-//   wait <page> --follow
-//       Never exits; prints one NDJSON line per message batch. Only for
+//   wait [<page>] --follow
+//       Never exits; prints one NDJSON line per batch. Only for
 //       harnesses that can stream or read a background command's output —
 //       never run this as a plain foreground command.
 //   status <page> <working|done|idle> [text]
@@ -118,7 +126,9 @@ async function pollOnce(p) {
   const params = new URLSearchParams({ consumer: "model", from: "user", wait: String(timeout) });
   if (after !== undefined) params.set("after", String(Math.max(0, Number(after) || 0)));
   if (peek) params.set("peek", "1");
-  return api(`/chat/${pagePath(p)}/messages?${params}`);
+  // No page named: the server-wide address, which is the normal case.
+  const path = p ? `/chat/${pagePath(p)}/messages` : "/chat/messages";
+  return api(`${path}?${params}`);
 }
 
 switch (command) {
@@ -176,5 +186,5 @@ switch (command) {
   }
 
   default:
-    die("usage: chat-cli.mjs <wait|status|edits> <page>.html …  (see file header)");
+    die("usage: chat-cli.mjs <wait [<page>.html]|status <page>.html|edits <page>.html> …  (see file header)");
 }

@@ -1,16 +1,23 @@
-// In-memory per-page event log for the live channel between a served page and
-// the model editing it. There is no chat: the user talks to their model in the
-// model's own session. What passes through here is the page reporting which
-// element the user selected, the model reporting that it is mid-edit, and the
-// presence the page's toolbar shows.
+// In-memory event log for the live channel between the pages this server
+// serves and the model editing them. There is no chat: the user talks to their
+// model in the model's own session. What passes through here is a page
+// reporting which element the user selected, the model reporting that it is
+// mid-edit, and the presence a page's toolbar shows.
 //
-// One store per served page, holding a bounded log plus the bookkeeping that
-// makes the two consumers work:
-//   - the shell polls with wait=0 on its usual 1.5s cadence;
+// ONE LOG PER SERVER, not one per page. A model connects to the server and
+// sees every page it serves — it does not have to know which page the user
+// will open, or be told again when they open another. Each entry carries the
+// `page` it came from, and a reader can narrow to one page if it wants to; the
+// default is everything. This is what lets "start the server" and "be
+// reachable on it" be the same act, with no page named in between.
+//
+// Two consumers:
+//   - each open page polls with wait=0 on its usual 1.5s cadence, narrowed to
+//     itself (it only cares about its own status messages);
 //   - the model's chat-cli polls with a bounded long-poll (20s default, up to
 //     300s for background one-shot listeners) as consumer=model, which drives
 //     both a server-held delivery cursor (so the stateless one-shot CLI never
-//     re-reads events) and the presence signal the toolbar shows as connected.
+//     re-reads events) and the presence signal every page's toolbar shows.
 //
 // Everything is in-memory by design: none of it is document state (the page
 // file remains the single source of truth for content). `epoch` is the restart
@@ -22,18 +29,31 @@ import crypto from "node:crypto";
 
 const MAX_MESSAGES = 500;
 
-function newStore() {
+// The scope key for a reader watching everything. Page paths always contain a
+// ".html", so this can never collide with one.
+const ALL = "*";
+
+/**
+ * One log per server instance — never a module-level singleton. Two servers in
+ * one process (the test suite runs several; render-cli starts an ephemeral
+ * one) would otherwise share state, and a restarted server would inherit the
+ * dead one's entries, cursor and `epoch` — which is precisely what the epoch
+ * is supposed to tell a client apart from.
+ */
+export function createLiveLog() {
   return {
     epoch: crypto.randomBytes(8).toString("hex"),
     nextId: 1,
     messages: [],
-    // Delivery cursor for consumer=model: advanced when a model poll is
-    // handed messages (unless peeking), so each CLI invocation gets only
-    // what hasn't been delivered yet.
-    modelCursor: 0,
-    // Presence: an open model long-poll, or one that ended recently. The
-    // grace window is sized so a loop of bounded 8–25s waits with gaps
-    // between harness turns still reads as "listening".
+    // Delivery cursors for consumer=model, keyed by what the reader is
+    // watching ("*" or one page path). Keyed rather than single because the
+    // ids are server-wide: a model watching one page would otherwise drag the
+    // cursor past entries from other pages that it never saw.
+    modelCursors: new Map(),
+    // Presence: an open model long-poll, or one that ended recently. Server-
+    // wide, because a model watching the server IS watching every page on it.
+    // The grace window is sized so a loop of bounded waits with gaps between
+    // harness turns still reads as "listening".
     openModelWaits: 0,
     lastModelWaitEnd: 0,
     lastModelWaitMs: 0,
@@ -42,114 +62,94 @@ function newStore() {
 }
 
 /**
- * One registry per server instance — never a module-level Map. Two servers in
- * one process (the test suite runs several; render-cli starts an ephemeral
- * one) would otherwise share a store for every page path that happened to
- * collide, and a restarted server would inherit the dead one's message log,
- * cursor and `epoch` — which is precisely what the epoch is supposed to tell
- * a client apart from.
+ * Resolve every pending long-poll (empty) so open sockets never hold the
+ * server up — called from startServer's close() ahead of server.close(),
+ * without which render-cli's one-shot server and SIGINT shutdown would hang
+ * until the longest poll times out.
  */
-export function createStoreRegistry() {
-  const stores = new Map();
-  return {
-    get(page) {
-      let s = stores.get(page);
-      if (!s) {
-        s = newStore();
-        stores.set(page, s);
-      }
-      return s;
-    },
-    /**
-     * Resolve every pending long-poll (empty) so open sockets never hold the
-     * server up — called from startServer's close() ahead of server.close(),
-     * without which render-cli's one-shot server and SIGINT shutdown would
-     * hang until the longest poll times out.
-     */
-    closeAll() {
-      for (const store of stores.values()) {
-        for (const w of [...store.waiters]) w.settle([]);
-      }
-    },
-  };
+export function closeAll(log) {
+  for (const w of [...log.waiters]) w.settle([]);
 }
 
-export function listening(store) {
-  if (store.openModelWaits > 0) return true;
+export function listening(log) {
+  if (log.openModelWaits > 0) return true;
   // Sized so a loop of bounded waits with harness-turn gaps reads as
   // listening, but capped: a long background wait (e.g. 240s) that ends and
   // never re-arms must not pin "model is listening" for many minutes —
   // re-arming after a wake takes seconds, not another full wait window.
-  const grace = Math.max(45_000, Math.min(2.5 * store.lastModelWaitMs, 120_000));
-  return Date.now() - store.lastModelWaitEnd < grace;
+  const grace = Math.max(45_000, Math.min(2.5 * log.lastModelWaitMs, 120_000));
+  return Date.now() - log.lastModelWaitEnd < grace;
 }
 
-function matches(msg, from) {
-  return from === "any" || msg.from === from;
+function matches(msg, from, page) {
+  if (from !== "any" && msg.from !== from) return false;
+  return page === undefined || msg.page === page;
 }
 
-function pending(store, after, from) {
-  return store.messages.filter((m) => m.id > after && matches(m, from));
+function pending(log, after, from, page) {
+  return log.messages.filter((m) => m.id > after && matches(m, from, page));
 }
 
-export function postMessage(store, { from, kind, text, data }) {
-  const msg = { id: store.nextId++, ts: Date.now(), from, kind, text };
+export function postMessage(log, { page, from, kind, text, data }) {
+  const msg = { id: log.nextId++, ts: Date.now(), page, from, kind, text };
   if (data !== undefined) msg.data = data;
-  store.messages.push(msg);
-  if (store.messages.length > MAX_MESSAGES) store.messages.shift();
-  // Wake long-polls whose filter this message satisfies.
-  for (const w of [...store.waiters]) {
-    if (matches(msg, w.from)) w.settle(pending(store, w.after, w.from));
+  log.messages.push(msg);
+  if (log.messages.length > MAX_MESSAGES) log.messages.shift();
+  // Wake long-polls whose filter this entry satisfies.
+  for (const w of [...log.waiters]) {
+    if (matches(msg, w.from, w.page)) w.settle(pending(log, w.after, w.from, w.page));
   }
   return msg;
 }
 
 /**
- * Resolve with messages matching {after, from} — immediately if any exist,
- * otherwise after a message arrives or waitMs elapses (then possibly []).
+ * Resolve with entries matching {after, from, page} — immediately if any
+ * exist, otherwise after one arrives or waitMs elapses (then possibly []).
+ * `page` undefined means every page this server serves.
+ *
  * consumer === "model" drives presence bookkeeping and defaults/advances the
- * server-held modelCursor (unless peek). onAbort registration lets the
- * caller drop the waiter when the client socket closes mid-poll.
+ * server-held cursor for this scope (unless peek). onAbort registration lets
+ * the caller drop the waiter when the client socket closes mid-poll.
  */
-export function awaitMessages(store, { after, from, waitMs, consumer, peek, onAbort }) {
+export function awaitMessages(log, { after, from, page, waitMs, consumer, peek, onAbort }) {
   const isModel = consumer === "model";
-  const effectiveAfter = after ?? (isModel ? store.modelCursor : 0);
+  const scope = page === undefined ? ALL : page;
+  const effectiveAfter = after ?? (isModel ? log.modelCursors.get(scope) ?? 0 : 0);
 
   const deliver = (msgs) => {
     if (isModel && !peek && msgs.length) {
-      store.modelCursor = Math.max(store.modelCursor, msgs[msgs.length - 1].id);
+      const last = msgs[msgs.length - 1].id;
+      log.modelCursors.set(scope, Math.max(log.modelCursors.get(scope) ?? 0, last));
     }
     return msgs;
   };
 
-  const ready = pending(store, effectiveAfter, from);
+  const ready = pending(log, effectiveAfter, from, page);
   if (ready.length || !waitMs) {
     if (isModel) {
-      store.lastModelWaitEnd = Date.now();
-      store.lastModelWaitMs = waitMs || 0;
+      log.lastModelWaitEnd = Date.now();
+      log.lastModelWaitMs = waitMs || 0;
     }
     return Promise.resolve(deliver(ready));
   }
 
   return new Promise((resolve) => {
-    const waiter = { after: effectiveAfter, from };
+    const waiter = { after: effectiveAfter, from, page };
     let timer = null;
     const finish = (msgs) => {
-      store.waiters.delete(waiter);
+      log.waiters.delete(waiter);
       clearTimeout(timer);
       if (isModel) {
-        store.openModelWaits--;
-        store.lastModelWaitEnd = Date.now();
-        store.lastModelWaitMs = waitMs;
+        log.openModelWaits--;
+        log.lastModelWaitEnd = Date.now();
+        log.lastModelWaitMs = waitMs;
       }
       resolve(deliver(msgs));
     };
     waiter.settle = finish;
-    store.waiters.add(waiter);
-    if (isModel) store.openModelWaits++;
+    log.waiters.add(waiter);
+    if (isModel) log.openModelWaits++;
     timer = setTimeout(() => finish([]), waitMs);
     if (onAbort) onAbort(() => finish([]));
   });
 }
-
-
