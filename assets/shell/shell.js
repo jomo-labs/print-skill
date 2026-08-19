@@ -145,6 +145,12 @@ function mergeBack(dest, node) {
   if (gid) {
     const target = dest.querySelector(`[data-mp-split-src="${gid}"]`);
     if (target) {
+      // The shell is about to stop existing, so anything the user's edit put
+      // ON it has to survive onto the element it was cut from — that element
+      // is the only one the file has. Without this, typing into the tail of a
+      // paragraph that runs onto the next sheet would save the words and lose
+      // the marker that tells the model they were typed.
+      if (node.hasAttribute('data-mp-edited')) target.setAttribute('data-mp-edited', '');
       while (node.firstChild) mergeBack(target, node.firstChild);
       node.remove();
       return;
@@ -617,6 +623,24 @@ function showHover(el) {
   overlay.appendChild(hoverBox);
 }
 
+// What a hover or a double-click landed on, or null when it is nothing this
+// page offers to edit.
+//
+// The reach test is the SHEET CHAIN, never the page element alone. Content
+// that outgrows its sheet continues onto sheets that are SIBLINGS of it (see
+// makeContinuation), so `#page.contains()` is false for everything past sheet
+// one — and asking the page instead of its chain is what used to leave edit
+// mode dead on every document long enough to need a second sheet. A nested
+// assembly is covered by the same test from the other side: its sheets, and
+// their continuations, all live inside the container this returns.
+function editableTarget(node) {
+  const el = node && node.nodeType === 1 ? node : null;
+  if (!el || !EDITABLE_TAGS.has(el.tagName.toLowerCase())) return null;
+  const pg = getActivePage();
+  if (!pg) return null;
+  return sheetChain(pg).some(sheet => sheet.contains(el)) ? el : null;
+}
+
 function enableEditMode() {
   editMode = true;
   mpq('#mp-btn-edit').classList.add('active');
@@ -629,15 +653,13 @@ function enableEditMode() {
   setChromeState('data-mp-edit-active', true);
 
   const onMove = (e) => {
-    const el = e.target;
-    const pg = getActivePage();
-    if (!el || !pg || !pg.contains(el) || !EDITABLE_TAGS.has(el.tagName.toLowerCase())) { clearHover(); return; }
+    const el = editableTarget(e.target);
+    if (!el) { clearHover(); return; }
     showHover(el);
   };
   const onDbl = (e) => {
-    const el = e.target;
-    const pg = getActivePage();
-    if (!el || !pg || !pg.contains(el) || !EDITABLE_TAGS.has(el.tagName.toLowerCase())) return;
+    const el = editableTarget(e.target);
+    if (!el) return;
     // Re-opening the element already being edited keeps its session — and the
     // pre-edit snapshot it holds, so the whole edit still counts as one.
     if (el === editingEl) { el.focus(); selectElement(el); return; }
@@ -688,13 +710,18 @@ function enableEditMode() {
 
   document.addEventListener('mousemove', onMove, { passive: true });
   document.addEventListener('dblclick', onDbl);
-  document.addEventListener('scroll', onScroll, { passive: true });
+  // Captured, because the sheets are not scrolled by the window: the canvas
+  // is its own scroll region (.page-surround, chrome-host.css) and a scroll
+  // event on an element does not bubble. Without the capture phase the hover
+  // box — pinned to viewport coordinates — stays behind the moment the user
+  // scrolls down toward sheet two.
+  document.addEventListener('scroll', onScroll, { passive: true, capture: true });
   document.addEventListener('keydown', onKey);
 
   editListeners = () => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('dblclick', onDbl);
-    document.removeEventListener('scroll', onScroll);
+    document.removeEventListener('scroll', onScroll, { capture: true });
     document.removeEventListener('keydown', onKey);
   };
 }
@@ -1084,13 +1111,22 @@ let selectedEl = null;
 let noticeTimer = null;
 let noticedSelector = null;
 
+// One element, however many pieces the split left it in. Picking the tail of
+// a paragraph that runs onto the next sheet is picking that paragraph: both
+// pieces wear the outline (they are one thing on the page, and one thing in
+// the file), and what is REMEMBERED is the head — the piece the authored flow
+// keeps, and so the only one certain to still be there after the next
+// re-split. Remembering the shell instead would drop the selection, silently,
+// the moment their own edit re-paginated the sheet they made it on.
 function selectElement(el) {
+  const head = splitHead(el);
+  const marked = new Set([el, head]);
   document.querySelectorAll('.mp-selected').forEach(s => {
-    if (s !== el) s.classList.remove('mp-selected');
+    if (!marked.has(s)) s.classList.remove('mp-selected');
   });
-  el.classList.add('mp-selected');
-  selectedEl = el;
-  ssSet('mpSelected', buildSelector(el));
+  marked.forEach(s => s.classList.add('mp-selected'));
+  selectedEl = head;
+  ssSet('mpSelected', buildSelector(head));
   noticeSelection();
 }
 
@@ -1105,16 +1141,19 @@ function clearSelection() {
 }
 
 // Captured fresh each time, so the snapshot carries whatever the user has
-// just typed into the element — minus the runtime-only state.
+// just typed into the element — minus the runtime-only state, and whole: an
+// element cut across two sheets is one element again here, because that is
+// how the model will find it.
 function captureElement(target) {
-  const clone = target.cloneNode(true);
+  const { el, pg } = authoredPosition(target);
+  const clone = el.cloneNode(true);
   clone.removeAttribute('contenteditable');
   clone.classList.remove('mp-selected');
   if (!clone.classList.length) clone.removeAttribute('class');
   return {
-    selector: buildSelector(target),
+    selector: selectorWithin(el, pg),
     snapshot: clone.outerHTML.slice(0, 2048),
-    edited: target.hasAttribute('data-mp-edited'),
+    edited: el.hasAttribute('data-mp-edited'),
   };
 }
 
@@ -1147,8 +1186,62 @@ function noticeSelection() {
   }, SELECT_NOTICE_MS);
 }
 
+// The selector is an address in the FILE, and the file keeps the authored
+// flow, never the runtime split (see paginate): a continuation sheet does not
+// exist there, and a shell carrying the tail of a cut element is not an
+// element there at all. Measured on the live DOM, an element on sheet two
+// therefore gets an address the model cannot follow — or, worse, on a nested
+// assembly, one that resolves in the file to a DIFFERENT authored sheet
+// sitting at the same index.
+//
+// So the path is measured after a rewind, through the same unpaginate() the
+// save writes through: what the model is told to look at is exactly what it
+// finds. The rewind runs on a CLONE — the live DOM keeps its sheets, and the
+// user keeps their caret.
+const LOCATE_ATTR = 'data-mp-locate';
+
 function buildSelector(target) {
+  const { el, pg } = authoredPosition(target);
+  return selectorWithin(el, pg);
+}
+
+// Where `target` sits in the authored flow, as an element/page pair. The pair
+// is the live one whenever nothing was split — the common case, and no clone
+// is taken for it.
+function authoredPosition(target) {
+  const el = splitHead(target);
   const pg = getActivePage();
+  if (!pg || el === pg || !document.querySelector('[data-mp-continuation]')) return { el, pg };
+  pg.setAttribute(LOCATE_ATTR, 'page');
+  el.setAttribute(LOCATE_ATTR, 'target');
+  try {
+    const root = document.documentElement.cloneNode(true);
+    unpaginate(root);
+    const cel = root.querySelector(`[${LOCATE_ATTR}="target"]`);
+    const cpg = root.querySelector(`[${LOCATE_ATTR}="page"]`);
+    if (!cel || !cpg) return { el, pg };   // rewound out of existence — say what is on screen
+    cel.removeAttribute(LOCATE_ATTR);
+    cpg.removeAttribute(LOCATE_ATTR);
+    return { el: cel, pg: cpg };
+  } finally {
+    // Both marks come off the live document before anything else can see it:
+    // the clone above is synchronous, so no save, no print and no render ever
+    // observes them.
+    pg.removeAttribute(LOCATE_ATTR);
+    el.removeAttribute(LOCATE_ATTR);
+  }
+}
+
+// The element a continuation shell is a piece of. splitNode() repeats the tag
+// onto each further sheet and ties the pieces together with a group id; only
+// the head — the one piece the authored flow keeps — carries the -src half of
+// that id, so it is the element the file, and the model, know.
+function splitHead(el) {
+  const gid = el.nodeType === 1 && el.getAttribute('data-mp-split');
+  return (gid && document.querySelector(`[data-mp-split-src="${gid}"]`)) || el;
+}
+
+function selectorWithin(target, pg) {
   if (target.id) return '#' + target.id;
   const parts = [];
   let cur = target;
@@ -1160,7 +1253,7 @@ function buildSelector(target) {
     cur = cur.parentElement;
   }
   if (parts[0]?.[0] !== '#') {
-    parts.unshift(pg.classList.contains('variant-page') ? '.variant-page.active' : '#page');
+    parts.unshift(pg?.classList.contains('variant-page') ? '.variant-page.active' : '#page');
   }
   return parts.join(' > ');
 }
