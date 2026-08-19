@@ -244,6 +244,76 @@ test("a selected element reaches the model, and stays the subject", async (t) =>
   });
 });
 
+// Selecting is a hunt that runs INWARD as often as sideways: the quote, then
+// the paragraph inside it. Its own test because it needs nested content — and
+// because the browser is what breaks it. Focus moving INTO an editing host
+// never blurs that host, so the ancestor's edit session is one nothing ends:
+// it stays contentEditable, wearing the browser's focus ring, right beside the
+// child the user just picked. Two marked elements, and no way to tell which
+// one the model is looking at.
+test("selecting a nested child releases its ancestor", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-nested-"));
+  const [template, documentCss] = await Promise.all([
+    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
+    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
+  ]);
+  await fs.writeFile(
+    path.join(dir, "page.html"),
+    template.replace("/* @@DOCUMENT_CSS@@ */", documentCss).replace(
+      "<!-- CONTENT -->",
+      // The padding is what makes the ancestor clickable in its own right —
+      // the same reason a real quote or callout is: it has room around the
+      // child that belongs to it and not to the child.
+      `<blockquote id="outer" style="padding:40px"><p id="inner">Nested text.</p></blockquote>`
+    )
+  );
+
+  const server = await startServer({ dir, port: 0 });
+  const browser = await chromium.launch({
+    headless: true,
+    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
+  });
+  t.after(async () => {
+    await browser.close();
+    await server.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.route("**://fonts.g*/**", (route) => route.abort());
+  await openPage(page, `${server.url}/page.html`);
+  await drain(server.url);
+
+  // Double-click the ancestor's own padding, where the child is not.
+  const box = await page.locator("#outer").boundingBox();
+  await page.mouse.dblclick(box.x + 8, box.y + 8);
+  await page.waitForTimeout(SETTLE_MS);
+  assert.equal(await outlined(page), "outer", "the ancestor is the subject first");
+  assert.equal(selections(await drain(server.url)).length, 1, "and the model was told so");
+
+  await page.dblclick("#inner");
+  await page.waitForTimeout(SETTLE_MS);
+
+  const marked = await page.evaluate(
+    `[...document.querySelectorAll(".mp-selected")].map((e) => e.id)`
+  );
+  assert.deepEqual(marked, ["inner"], "one outline, on the child — the ancestor let go");
+  const editable = await page.evaluate(
+    `[...document.querySelectorAll('[contenteditable="true"]')].map((e) => e.id)`
+  );
+  assert.deepEqual(editable, ["inner"], "and one editable element, so no stray focus ring");
+  assert.equal(
+    await page.evaluate(`document.activeElement?.id`),
+    "inner",
+    "typing goes to the child the user picked"
+  );
+
+  const picked = selections(await drain(server.url));
+  assert.equal(picked.length, 1, "the move inward is its own notice");
+  assert.equal(picked[0].data.selector, "#inner", "naming the child, not the quote");
+  await page.close();
+});
+
 // The restart case, which is its own test because it needs a server it can
 // kill: the model restarts the server (after a crash, or in a later turn) and
 // the tab is still open with something selected in it. The new process has an
