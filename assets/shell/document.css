@@ -75,10 +75,10 @@
      every edge — and lands at 0.5in by default, which clears the unprintable
      strip even at the bottom, where printers grip deepest. It is derived from
      the smallest page margin so it stays outside the content box if a theme
-     retunes the margins. Print strips the shadow. */
+     retunes the margins. The sheet's drop shadow is deliberately NOT a token:
+     it is preview chrome, not part of the printable (see .page below). */
   --page-border: none;
   --page-frame-inset: calc(var(--page-margin-top) * 3 / 4);
-  --page-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
 
   /* Imagery treatment. Grayscale is the default because color photos dither
      into muddy ink on a home printer — a theme that genuinely wants color
@@ -129,7 +129,13 @@ body {
   height: 1056px;
   background: var(--color-paper);
   padding: var(--page-margin-top) var(--page-margin-x) var(--page-margin-bottom);
-  box-shadow: var(--page-shadow);
+  /* The sheet's drop shadow is how the viewer shows paper floating on the
+     canvas — screen-only chrome that print strips, so it is never part of the
+     artifact being generated. A fixed literal rather than a token, locked the
+     same way the paper background below is: generated content styles the
+     document, not the UI around it. (The chrome's own overrides still win on
+     specificity — embedded mode and the print rules both drop it.) */
+  box-shadow: 0 6px 48px oklch(0% 0 0 / 0.16) !important;
   flex-shrink: 0;
 }
 /* The themed frame, inset so it prints. Purely decorative: it takes no

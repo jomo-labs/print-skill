@@ -77,11 +77,9 @@ panels are meant to feel packed, not airy.
 | Token | Value |
 |---|---|
 | `--page-border` | `5px solid var(--color-ink)` |
-| `--page-shadow` | `7px 7px 0 var(--color-ink)` |
 
-- **Page chrome:** the heavy ink frame and hard offset shadow are load-bearing
-  for this theme's identity, not optional. The offset shadow is screen-only, so
-  the inset frame carries the look in print.
+- **Page chrome:** the heavy ink frame is load-bearing for this theme's
+  identity, not optional — it is what carries the look onto paper.
   Border weights otherwise stay at the defaults.
 - **Signature motifs:** `.tilt` (default -0.6deg) on narrator boxes;
   `.halftone` for panel texture where a comic-print feel is wanted; `.badge`

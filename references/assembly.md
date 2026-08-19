@@ -126,7 +126,6 @@ below hides it on screen and the shell's print rules hide it in print.)
      the frame its theme gave sheet one. */
   padding: var(--page-margin-top) var(--page-margin-x) var(--page-margin-bottom);
   background: var(--color-paper) !important;
-  box-shadow: var(--page-shadow);
   display: flex;
   flex-direction: column;
 }

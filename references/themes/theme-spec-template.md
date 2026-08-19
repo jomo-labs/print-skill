@@ -20,7 +20,7 @@ theme means copying their values into a `:root { ... }` block in `custom_css`.
 | 2. Typography | `--font-display` `--font-body` `--font-label`; `--text-2xs` `--text-xs` `--text-body` `--text-md` `--text-lg` `--text-xl` `--text-2xl` `--text-3xl` `--text-4xl`; `--leading-display` `--leading-body` `--leading-label`; `--tracking-display` `--tracking-label` `--tracking-kicker` |
 | 3. Color | `--color-ink` `--color-mid` `--color-dim` `--color-ghost` `--color-rule` `--color-rule-light` `--color-pull-bg`; `--color-accent`; any theme-specific accent tokens it introduces (`--color-blue`, …). `--color-paper` is locked to white and may not be set. |
 | 4. Spacing & density | `--space-1` … `--space-20`; `--page-margin-top` `--page-margin-x` `--page-margin-bottom` |
-| 5. Surface & motifs | `--border-fat` `--border-mid` `--border-thin` `--border-hair`; `--page-border` `--page-shadow`; `--tilt-angle` `--tilt-angle-right`; `--image-filter` |
+| 5. Surface & motifs | `--border-fat` `--border-mid` `--border-thin` `--border-hair`; `--page-border` `--page-frame-inset`; `--tilt-angle` `--tilt-angle-right`; `--image-filter` |
 | 1, 6, 7 | No tokens — voice, component structure, and contrast evidence are prose. |
 
 A token the spec doesn't list keeps its default value. State only the ones the
@@ -74,11 +74,12 @@ the default rhythm says so in one line.
 
 - Border weights per role, where they differ from the defaults (5 / 3 / 1.5 /
   1px).
-- **Page chrome** — `--page-border` and `--page-shadow` (and
-  `--page-frame-inset` if the frame should sit closer in or further out than
-  the default half-margin). These are the single strongest carrier of theme
-  identity; state them, even when one is `none`. Print strips the shadow; the
-  frame is what survives onto paper.
+- **Page chrome** — `--page-border` (and `--page-frame-inset` if the frame
+  should sit closer in or further out than the default half-margin). The frame
+  is the single strongest carrier of theme identity; state it, even when it is
+  `none`. It is also the whole of the page chrome a theme sets: the sheet's
+  drop shadow is fixed preview chrome, not a token, because it never reaches
+  paper.
 - **Signature motifs** — theme-specific flourishes, and which of the shared
   opt-in utilities (`.tilt`, `.tilt-right`, `.badge`, `.chapter-label`,
   `.halftone`, `.kicker`) the theme uses, with any `--tilt-angle` change.
