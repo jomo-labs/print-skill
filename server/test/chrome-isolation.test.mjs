@@ -65,7 +65,7 @@ button, input, textarea, select, option, code, pre, i, svg, span, div, aside, fo
 #mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, #mp-page-setup,
 #mp-btn-edit, #mp-btn-print, #mp-chat-input, #mp-chat-log, #mp-chat-presence,
 #mp-paper-select, #mp-orient-select, .mp-combo, .mp-chat-send, .mp-msg,
-.mp-copy-row, .mp-copy-label, .mp-starter, [data-mp-chrome] {
+.mp-starter, [data-mp-chrome] {
   display: none !important;
   visibility: hidden !important;
   position: static !important;
@@ -90,9 +90,8 @@ const PROBES = [
   "#mp-toolbar", "#mp-btn-edit", "#mp-btn-edit-label", "#mp-btn-print", "#mp-toolbar .mp-sep",
   "#mp-page-setup", "#mp-paper-select", "#mp-orient-select", ".mp-combo",
   "#mp-overlay", "#mp-chat-panel", "#mp-chat-log", "#mp-chat-presence", "#mp-chat-form",
-  "#mp-chat-input", ".mp-chat-send", ".mp-msg-model", ".mp-starter", ".mp-copy-row",
-  ".mp-copy-row code", ".mp-copy-label", "#mp-chat-attach", ".mp-attach-chip",
-  ".mp-attach-label", ".mp-attach-clear",
+  "#mp-chat-input", ".mp-chat-send", ".mp-msg-model", ".mp-starter",
+  "#mp-chat-attach", ".mp-attach-chip", ".mp-attach-label", ".mp-attach-clear",
 ];
 // The hover box traces whatever page element it is over, and the hostile page
 // lays its content out differently — so these two are compared on appearance

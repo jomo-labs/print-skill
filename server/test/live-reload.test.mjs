@@ -41,8 +41,7 @@ const CHROME = `document.getElementById("mp-chrome-root").shadowRoot`;
 function assemble(template, documentCss, heading) {
   return template
     .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace("<!-- CONTENT -->", `<h1 id="probe">${heading}</h1>`)
-    .replace("<body>", '<body data-mp-live-edit="1">');
+    .replace("<!-- CONTENT -->", `<h1 id="probe">${heading}</h1>`);
 }
 
 const headingOf = (page) => page.evaluate(() => document.getElementById("probe")?.textContent);
