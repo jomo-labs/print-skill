@@ -13,8 +13,12 @@
    this stylesheet as the page's FIRST stylesheet — so `mp-chrome` is the
    first layer, and these reservations hold no matter what the page does.
 
-   Screen-only, deliberately: print gets the document's own geometry,
-   untouched, exactly as a page opened without the server prints. */
+   Almost screen-only, deliberately: print gets the document's own geometry,
+   untouched, exactly as a page opened without the server prints. The one
+   exception is the @media print block at the end, and it is the same
+   exception twice — the two things the chrome puts INSIDE the sheet flow
+   (the break guides, and the continuation sheets pagination adds) are the
+   only chrome print has to be told anything about. */
 
 @layer mp-chrome {
   @media screen {
@@ -79,12 +83,50 @@
       box-shadow: none !important;
       border-color: transparent !important;
     }
+
+    /* Continuation sheets — where content that outgrows one sheet goes (see
+       paginate() in shell.js). Everything that makes them look like sheets
+       comes from the page's own .page rule, so a themed document continues
+       onto identically themed paper and nothing is restated here; the only
+       thing the chrome adds is the offset that separates one sheet from the
+       next on screen. */
+    .mp-continuation { margin-top: 24px !important; }
+
+    /* The break guides' visibility lives here rather than in the inline style
+       shell.js writes, and that is the whole point: an important declaration
+       in a style attribute outranks every stylesheet rule of the same origin,
+       so a display set inline would put the guides beyond the reach of the
+       print rule below and they would print. Declared here, in the first
+       layer, page CSS still cannot touch them. */
+    .page-break-guide { display: block !important; }
   }
 
-  /* The overflow guides are chrome drawn inside the sheet (they have to be —
-     they mark where the content breaks), so they are the one chrome element
-     print has to be told about here. */
+  /* The two things the chrome puts inside the sheet flow are the two things
+     print has to be told about: the guides go away, and the sheets become
+     consecutive pages with none of their on-screen separation. */
   @media print {
     .page-break-guide { display: none !important; }
+
+    /* Each continuation starts a printed page. break-BEFORE, not break-after
+       on its predecessor: a break-after would also fire on the last sheet of
+       a chain that is followed only by display:none variants, and print a
+       trailing blank page. */
+    .mp-continuation {
+      break-before: page !important;
+      break-after: auto !important;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+
+    /* The screen offset and the screen-fit margin compensation are both
+       screen presentation (see scaleToFit); on paper the sheets are the
+       pages, edge to edge. Scoped to the sheets the chrome manages so a
+       .page nested inside generated content is left alone. */
+    .page-surround > .page,
+    .page-surround > .variant-page,
+    #page > .page {
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
   }
 }
