@@ -14,7 +14,9 @@
 //   GET  /pdf/<page>.html  render a served page -> application/pdf (headless use)
 //   POST /render-pdf       { html, title } -> application/pdf
 //   PUT  /<page>.html      raw html body -> saved to the page's file
-//   POST /chat/<page>.html/messages   append a chat message (shell or model)
+//   POST /chat/<page>.html/messages   append a chat message, a model status,
+//                          or a selection notice (the element the user just
+//                          double-clicked in the page, or its deselect)
 //   GET  /chat/<page>.html/messages   read/long-poll chat messages + presence
 //
 // Static files also answer HEAD and carry an ETag derived from mtime+size —
@@ -335,13 +337,21 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       }
       const { from, kind, text, data } = payload || {};
       if (from !== "user" && from !== "model") return fail(400, "from must be user|model");
-      if (kind !== "message" && kind !== "status") return fail(400, "kind must be message|status");
-      // Status carries state in data and may have empty text; messages must say something.
+      if (!["message", "status", "selection"].includes(kind)) {
+        return fail(400, "kind must be message|status|selection");
+      }
+      // Status and selection carry their payload in data and may have empty
+      // text; a message is an utterance and must say something.
       if (typeof text !== "string" || (kind === "message" && !text.trim())) {
         return fail(400, "missing text");
       }
       if (data !== undefined && (typeof data !== "object" || data === null)) {
         return fail(400, "data must be an object");
+      }
+      // A selection is entirely its data — including the deselect, which is
+      // data.selector === null. Without data there is nothing to report.
+      if (kind === "selection" && (!data || !("selector" in data))) {
+        return fail(400, "selection needs data.selector (null when deselected)");
       }
       const msg = postMessage(store, { from, kind, text, data });
       res.writeHead(200, { "Content-Type": "application/json" });

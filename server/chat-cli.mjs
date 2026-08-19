@@ -12,7 +12,10 @@
 // flat out/ layout ("<dir>/<page>.html" for custom one-level layouts).
 //
 //   wait <page> [--timeout N] [--after ID] [--peek]
-//       Bounded poll for new user messages. Prints exactly one of:
+//       Bounded poll for new user activity — messages the user sent, and
+//       kind:"selection" notices telling you which element they just
+//       double-clicked (data.selector null = they cleared it). Prints
+//       exactly one of:
 //         {"epoch":"…","messages":[…]}    >=1 new message   (exit 0)
 //         NO_MESSAGE                       poll expired empty (exit 0)
 //       Exit 2 only for hard errors (server unreachable, unknown page).
