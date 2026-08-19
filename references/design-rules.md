@@ -73,7 +73,7 @@ must not restate them and cannot opt out — it describes only what it changes.
    match whatever theme, character, or mood the request implies. The one token you
    may never move is `--color-paper`: it must stay exactly `white` (or be left
    alone). Every token you redefine applies to the printable document only: the
-   server's editing chrome (toolbar, chat panel) renders in a shadow root with a
+   server's editing chrome (toolbar, edit overlay) renders in a shadow root with a
    private palette, so no override reaches it — and no override can break it.
 
 3a. **Font choice must always resolve to a real, loaded typeface** — the shell

@@ -18,11 +18,14 @@ edge. This skill packages print as a design discipline:
 - **Built for paper** — ink-friendly, grayscale-safe, inside the margins real
   printers can reach.
 - **Interactive output** — served pages get a **Print / Save PDF** button,
-  double-click text editing with chat back to your model, and paper-size
-  switching, all injected by the local server at view time (generated files
-  stay pure printable documents). That chrome renders in its own shadow root,
-  so however wildly a page is themed, the controls stay put. Print is WYSIWYG: the on-screen sheet and
-  the printed sheet are dimension-identical, 1:1.
+  double-click text editing, and paper-size switching, all injected by the
+  local server at view time (generated files stay pure printable documents).
+  Double-click anything and your model — connected to the page, and shown as
+  such in the toolbar — knows what you picked, so you can just say "make this
+  bigger" in the session you're already in. That chrome renders in its own
+  shadow root, so however wildly a page is themed, the controls stay put.
+  Print is WYSIWYG: the on-screen sheet and the printed sheet are
+  dimension-identical, 1:1.
 - **Deterministic PDFs** — a bundled local server (Node + headless Chromium)
   serves your pages and renders pixel-identical PDFs on every machine, no
   dependence on the viewer's browser. Without it, pages still print fine via

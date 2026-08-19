@@ -1,5 +1,5 @@
-/* chrome.css — the skill's editing chrome: toolbar, edit mode, chat panel.
-   Injected by the local server at serve time (with shell.js/chat.js), never
+/* chrome.css — the skill's editing chrome: toolbar, edit mode.
+   Injected by the local server at serve time (with shell.js), never
    referenced by the document itself — so chrome updates apply automatically
    to every already-generated page.
 
@@ -17,7 +17,7 @@
 
    Consequence: theme a page in any direction and the chrome stays pixel
    identical. The only styles the chrome puts INTO the document — space for
-   the toolbar, the column beside the chat panel, the selection outline — live
+   the toolbar, the selection outline — live
    in chrome-host.css, deliberately small and deliberately one-directional. */
 
 :host {
@@ -54,7 +54,7 @@
    inherits nothing through the `all: initial` host — so the chrome states
    its own reset and names its own font on every subtree root. */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-#mp-toolbar, #mp-chat-panel, #mp-overlay {
+#mp-toolbar, #mp-overlay {
   font-family: var(--mp-font-ui);
   /* The chrome's own typographic baseline. It used to fall out of the
      document's body line-height, which is precisely the kind of inheritance
@@ -81,9 +81,6 @@ button, input, textarea, select {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* Left inset matches the chat panel's content inset (the 14px on #mp-chat-log
-     and #mp-chat-form), so Print and everything in the panel below it share one
-     left edge down the window. */
   padding: 0 24px 0 14px;
   z-index: 200;
 }
@@ -140,7 +137,7 @@ button, input, textarea, select {
 #mp-fit-badge {
   display: none;
   align-items: center;
-  margin-left: auto;
+  /* No margin-left:auto: .mp-toolbar-spacer does the pushing. */
   padding: 3px 8px;
   border: 1px solid var(--mp-notice);
   border-radius: 3px;
@@ -230,8 +227,6 @@ button, input, textarea, select {
    chrome-host.css. */
 @media screen {
   :host([data-mp-embedded]) #mp-toolbar { display: none; }
-  /* the host provides its own conversation surface */
-  :host([data-mp-embedded]) #mp-chat-panel { display: none; }
 }
 
 /* ── Edit mode ── */
@@ -264,259 +259,45 @@ button, input, textarea, select {
   text-transform: uppercase;
 }
 
-/* ── Chat panel — docked LEFT; the canvas takes the width beside it (never
-   under it) ── The document-side half of that split (body's reserved column
-   and the canvas's own scroll region) is in chrome-host.css. */
-#mp-chat-panel {
-  position: fixed;
-  top: 56px; left: 0; bottom: 0;
-  width: 336px;
-  background: var(--mp-paper);
-  border-right: 1px solid var(--mp-rule);
+/* ── Live indicator — the toolbar's right edge ──
+   The whole of what the chrome says about the model: whether one is listening
+   on this page. It sits after the spacer, so it holds the right edge as the
+   controls to its left come and go with edit mode. There is no conversation
+   here to size for — that lives in the model's own session. */
+/* Pushes everything after it to the toolbar's right edge (see injectChrome). */
+.mp-toolbar-spacer { flex: 1 1 auto; }
+
+#mp-live-status {
   display: flex;
-  flex-direction: column;
-  z-index: 150; /* under the toolbar (200); the pointer-events-none overlay (9000) doesn't block clicks */
-  font-size: 12px;
-
-  /* Closed is parked off the left edge, not `display: none` — display can't
-     be transitioned, a transform can, and the panel is only ever 336px of
-     layout either way. visibility flips at the END of the slide out (and
-     instantly on the way in) so a closed panel is untabbable and inert
-     without cutting the animation short. */
-  transform: translateX(-100%);
-  visibility: hidden;
-  transition: transform var(--mp-slide) var(--mp-ease),
-              visibility 0s linear var(--mp-slide);
-}
-:host([data-mp-chat-open]) #mp-chat-panel {
-  transform: none;
-  visibility: visible;
-  transition: transform var(--mp-slide) var(--mp-ease), visibility 0s;
-}
-/* The FIRST open inserts the panel into the shadow root already matching the
-   open state, so there is no previous value to animate from — @starting-style
-   supplies one. (Engines without it simply show the panel at once; nothing
-   else depends on this rule.) */
-@starting-style {
-  :host([data-mp-chat-open]) #mp-chat-panel { transform: translateX(-100%); }
-}
-@media (prefers-reduced-motion: reduce) {
-  #mp-chat-panel,
-  :host([data-mp-chat-open]) #mp-chat-panel { transition: none; }
-}
-
-/* Panel body: the live conversation plus the not-connected overlay's
-   positioning context. */
-#mp-panel-body {
-  position: relative;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-#mp-chat-log {
-  flex: 1;
-  overflow-y: auto;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mp-msg {
-  max-width: 85%;
-  padding: 7px 11px;
-  border-radius: 8px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-/* Only YOUR entries are bubbles. The model's reply is just ink on the panel's
-   paper — no fill, no outline, no inset — so the conversation reads as the
-   model talking on the page and your turns marked out against it. The soft
-   fill the model used to carry is what the user bubble wears now, and the
-   Send button wears the same fill, so one faint surface means "you". */
-.mp-msg-user {
-  align-self: flex-end;
-  background: var(--mp-surface);
-  color: var(--mp-ink);
-}
-.mp-msg-model {
-  align-self: flex-start;
-  max-width: 100%;
-  background: none;
-  color: var(--mp-ink);
-  padding: 0;
-  border-radius: 0;
-}
-.mp-msg-failed { opacity: 0.55; }
-
-.mp-chat-divider {
-  align-self: center;
-  font-size: 10px;
-  color: var(--mp-dim);
-  letter-spacing: 0.04em;
-  padding: 2px 0;
-}
-
-.mp-paste-card {
-  border: 1px solid var(--mp-rule);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.mp-paste-card pre {
-  background: var(--mp-surface);
-  font-family: var(--mp-font-mono);
-  padding: 9px 11px;
-  font-size: 11px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 180px;
-  overflow-y: auto;
-}
-.mp-paste-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 9px;
-}
-.mp-copy-btn {
-  padding: 3px 10px;
-  background: transparent;
-  color: var(--mp-ink);
-  border: 1px solid var(--mp-rule);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  border-radius: 3px;
-  cursor: pointer;
-}
-.mp-copy-btn:hover { background: var(--mp-bg); }
-.mp-paste-hint { font-size: 10px; color: var(--mp-dim); }
-
-#mp-chat-presence {
-  padding: 5px 14px;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--mp-dim);
-  min-height: 21px;
-}
-#mp-chat-presence::before {
-  content: '●';
-  margin-right: 5px;
-  font-size: 8px;
-  vertical-align: 1px;
-}
-#mp-chat-presence:empty::before { content: none; }
-/* Status green — connected is a state, not a theme accent. ID-qualified so
-   the class color actually beats #mp-chat-presence's base color. */
-#mp-chat-presence.mp-presence-live { color: var(--mp-live); }
-#mp-chat-presence.mp-presence-off { color: var(--mp-dim); }
-
-/* Model-working indicator: a chat entry (not the status line) — animated
-   dots plus a label, always the last thing in the conversation. */
-.mp-working {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Subtle "model is working" indicator: three dots pulsing in sequence. */
-.mp-dots {
-  display: inline-flex;
-  gap: 3px;
-  margin-right: 7px;
-  vertical-align: 1px;
-}
-.mp-dots i {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: mp-dot-pulse 1.2s ease-in-out infinite;
-}
-.mp-dots i:nth-child(2) { animation-delay: 0.2s; }
-.mp-dots i:nth-child(3) { animation-delay: 0.4s; }
-@keyframes mp-dot-pulse {
-  0%, 60%, 100% { opacity: 0.25; }
-  30% { opacity: 1; }
-}
-
-/* Stacked: chip row, textarea, then a full-width Send underneath. */
-#mp-chat-form {
-  border-top: 1px solid var(--mp-rule);
-  padding: 10px 14px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-#mp-chat-attach { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-#mp-chat-attach:empty { display: none; }
-.mp-attach-chip {
-  display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--mp-surface);
-  border: 1px solid var(--mp-rule);
-  border-radius: 10px;
-  padding: 3px 9px 3px 6px;
   font-size: 10px;
-  color: var(--mp-ink);
-  max-width: 100%;
-}
-.mp-attach-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Removal X sits on the LEFT of the chip */
-.mp-attach-clear {
-  background: transparent;
-  border: none;
-  color: var(--mp-mid);
-  padding: 0;
-  font-size: 10px;
-  cursor: pointer;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.mp-attach-clear:hover { color: var(--mp-ink); }
-/* Paper white, deliberately: the faint surface marks the Send button and your
-   sent turns — the field you type into stays the brightest thing in the panel. */
-#mp-chat-input {
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 7px 9px;
-  border: 1px solid var(--mp-rule);
-  border-radius: 4px;
-  resize: none;
-  color: var(--mp-ink);
-  background: var(--mp-paper);
-}
-#mp-chat-input:focus { outline: none; border-color: var(--mp-mid); }
-.mp-chat-send {
-  width: 100%;
-  padding: 8px 14px;
-  background: var(--mp-surface);
-  color: var(--mp-ink);
-  border: 1px solid var(--mp-rule);
-  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  border-radius: 3px;
-  cursor: pointer;
+  color: var(--mp-dim);
+  white-space: nowrap;
 }
-.mp-chat-send:hover { background: var(--mp-bg); }
-
-#mp-chat-input:disabled, .mp-chat-send:disabled { opacity: 0.45; cursor: default; }
-
-/* ── Starter: the first conversation entry until a model connects — a
-   regular model bubble stacking its text over the copy row. ── */
-/* Full width of the log, inset only by the log's own padding — the opening
-   greeting reads as part of the panel, not as a bubble tucked against the
-   left edge. */
-.mp-starter {
-  align-self: stretch;
-  max-width: 100%;
+.mp-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
+/* Connected is a state, not a theme accent — the same green the presence line
+   used, now the only place it appears. */
+#mp-live-status.mp-live-on { color: var(--mp-live); }
+/* Mid-edit: the model is rewriting the file under this tab, and the reload is
+   deliberately held until it says done. Amber says "wait" without the page
+   appearing broken. */
+#mp-live-status.mp-live-working { color: var(--mp-mid); }
+#mp-live-status.mp-live-working .mp-live-dot { animation: mp-live-pulse 1.2s ease-in-out infinite; }
+@keyframes mp-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) {
+  #mp-live-status.mp-live-working .mp-live-dot { animation: none; }
+}
+
 
 /* ── Print: chrome never prints ──
    Hiding the chrome's own elements (not the host) keeps this independent of
@@ -525,5 +306,5 @@ button, input, textarea, select {
    print is told about those. */
 @media print {
   :host { display: none !important; }
-  #mp-toolbar, #mp-overlay, #mp-chat-panel { display: none !important; }
+  #mp-toolbar, #mp-overlay { display: none !important; }
 }

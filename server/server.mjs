@@ -5,8 +5,8 @@
 // renders deterministic PDFs via headless Chromium:
 //
 //   GET  /<page>.html      a generated page, wrapped with the skill's chrome
-//                          (chrome-host.css + chrome.css + shell.js + chat.js
-//                          injected at serve time — the file on disk is a pure
+//                          (chrome-host.css + chrome.css + shell.js injected
+//                          at serve time — the file on disk is a pure
 //                          document)
 //   GET  /shell/*          shell assets (served dir first, skill assets as fallback)
 //   GET  /                 index of served pages
@@ -14,10 +14,16 @@
 //   GET  /pdf/<page>.html  render a served page -> application/pdf (headless use)
 //   POST /render-pdf       { html, title } -> application/pdf
 //   PUT  /<page>.html      raw html body -> saved to the page's file
-//   POST /chat/<page>.html/messages   append a chat message, a model status,
-//                          or a selection notice (the element the user just
-//                          double-clicked in the page, or its deselect)
-//   GET  /chat/<page>.html/messages   read/long-poll chat messages + presence
+//   POST /chat/<page>.html/messages   append a selection notice (the element
+//                          the user just double-clicked, or its deselect) or a
+//                          model status (working/done)
+//   GET  /chat/<page>.html/messages   read/long-poll those + presence
+//
+// The /chat/ path is historical: there is no chat. The page has no panel and
+// the user talks to their model in the model's own session — what crosses
+// this endpoint is the page telling the model what is selected, the model
+// telling the page when it is mid-edit, and presence for the toolbar's
+// indicator.
 //
 // Static files also answer HEAD and carry an ETag derived from mtime+size —
 // the shell's auto-reload poll (see shell.js) HEADs its own URL and reloads
@@ -48,10 +54,11 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderPdf, closeBrowser } from "./render.mjs";
-import { getStore, postMessage, awaitMessages, listening, closeAll as closeChat } from "./chat-store.mjs";
+import { createStoreRegistry, postMessage, awaitMessages, listening } from "./chat-store.mjs";
 
 const DEFAULT_PORT = 4949;
-const SKILL_ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets");
+const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SKILL_ASSETS = path.join(SERVER_DIR, "..", "assets");
 const SHELL_DIR = path.join(SKILL_ASSETS, "shell");
 
 const MIME = {
@@ -113,7 +120,7 @@ function fileEtagPart(etag) {
 
 // Serve-time chrome wrap. Generated pages are pure documents (plain
 // printable HTML, no chrome references at all); serving one through this
-// server injects the chrome stylesheets and scripts so the toolbar/edit/chat
+// server injects the chrome stylesheets and scripts so the toolbar/edit
 // functionality appears — always the skill's CURRENT chrome, since nothing
 // in the file can go stale. Legacy pages that still link shell.js themselves
 // are left alone (double-loading the shell would double the chrome).
@@ -123,7 +130,7 @@ function fileEtagPart(etag) {
 // different roles — the split is what keeps a page's own CSS off the chrome:
 //
 //   chrome-host.css  the handful of rules the chrome needs the DOCUMENT to
-//                    honor (room under the toolbar, the chat gutter). Injected
+//                    honor (room under the toolbar). Injected
 //                    as the page's FIRST stylesheet, right after <head>, so
 //                    its `mp-chrome` cascade layer is the first layer declared
 //                    — important declarations in the first layer outrank
@@ -136,7 +143,7 @@ function fileEtagPart(etag) {
 //                    page CSS cannot reach it (see injectChrome()). Inlining
 //                    it rather than linking it keeps that adoption synchronous,
 //                    so the chrome never paints unstyled.
-const CHROME_BODY = `<script src="/shell/shell.js" data-mp-chrome></script>\n<script src="/shell/chat.js" data-mp-chrome></script>`;
+const CHROME_BODY = `<script src="/shell/shell.js" data-mp-chrome></script>`;
 
 // Shell CSS read straight from the skill's assets, re-read whenever the file
 // changes on disk (editing chrome.css and reloading the page is enough).
@@ -161,7 +168,7 @@ async function chromeAssets() {
 // stylesheets and the two scripts it links. Cheap enough to stat on each
 // request (four stats, no reads); a missing file just drops out of the
 // signature rather than failing the response.
-const CHROME_ASSET_FILES = ["chrome-host.css", "chrome.css", "shell.js", "chat.js"];
+const CHROME_ASSET_FILES = ["chrome-host.css", "chrome.css", "shell.js"];
 async function chromeSignature() {
   const parts = await Promise.all(CHROME_ASSET_FILES.map(async (name) => {
     try {
@@ -232,6 +239,9 @@ async function readBody(req, limit = 8 * 1024 * 1024) {
  */
 export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "127.0.0.1", autoPort = false } = {}) {
   const ROOT = path.resolve(dir);
+  // This server's own live-channel state. Per instance, not per module: see
+  // createStoreRegistry() for why a shared one would be wrong.
+  const chatStores = createStoreRegistry();
   // Bound after listen; handlers only run once requests arrive, so reads are safe.
   let baseUrl = null;
 
@@ -305,8 +315,8 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     res.end(JSON.stringify({ ok: true }));
   }
 
-  // /chat/<page>.html/messages — the Chat panel's transport (see chat-store.mjs).
-  // The shell POSTs user messages and polls with wait=0; the model's chat-cli
+  // /chat/<page>.html/messages — the live channel (see chat-store.mjs).
+  // The shell POSTs selection notices and polls with wait=0; the model's chat-cli
   // POSTs replies/status and long-polls as consumer=model. Chat exists only
   // for pages PUT could reach: same path rule (top-level or one project dir
   // deep), and the page file must exist — a chat thread never outlives (or
@@ -326,7 +336,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     } catch {
       return fail(404, "no such page");
     }
-    const store = getStore(pagePath);
+    const store = chatStores.get(pagePath);
 
     if (req.method === "POST") {
       let payload;
@@ -337,14 +347,12 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       }
       const { from, kind, text, data } = payload || {};
       if (from !== "user" && from !== "model") return fail(400, "from must be user|model");
-      if (!["message", "status", "selection"].includes(kind)) {
-        return fail(400, "kind must be message|status|selection");
+      // No "message" kind: the page has no chat to send one from, and the
+      // model has its own session to answer in.
+      if (!["status", "selection"].includes(kind)) {
+        return fail(400, "kind must be status|selection");
       }
-      // Status and selection carry their payload in data and may have empty
-      // text; a message is an utterance and must say something.
-      if (typeof text !== "string" || (kind === "message" && !text.trim())) {
-        return fail(400, "missing text");
-      }
+      if (typeof text !== "string") return fail(400, "missing text");
       if (data !== undefined && (typeof data !== "object" || data === null)) {
         return fail(400, "data must be an object");
       }
@@ -544,7 +552,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
           // Settle open chat long-polls first or close() waits out the longest
           // poll (render-cli's one-shot server and SIGINT both come through here).
           close: () => {
-            closeChat();
+            chatStores.closeAll();
             return new Promise((r) => server.close(r));
           },
         });
@@ -578,6 +586,17 @@ if (isMain) {
     autoPort: args.includes("--auto-port"),
   });
   console.log(`print-skill server: ${url}  (serving ${path.resolve(argValue("--dir", process.cwd()))})`);
+  // Addressed to the agent that just started this process. A served page is
+  // live-editable, but only if something is actually listening on it — and
+  // the moment that is most often missed is exactly this one, a restart in a
+  // turn that was about something else. So the next command is printed where
+  // the agent is already looking, not left to a doc it may not re-read.
+  console.log(
+    `live edit: nothing is listening yet. Before you end this turn, connect:\n` +
+    `  node ${path.join(SERVER_DIR, "chat-cli.mjs")} wait <page>.html --timeout 240 --url ${url}\n` +
+    `  (run it in the background and end your turn; its completion wakes you. ` +
+    `Skip only in a headless/pipeline run, where nobody is at a browser.)`
+  );
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, async () => {
       await close();

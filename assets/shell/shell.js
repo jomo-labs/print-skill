@@ -439,11 +439,9 @@ function setOrientation(o) {
 }
 
 function scaleToFit(w) {
-  // The open chat panel takes a column of the viewport; only the screen-fit
-  // transform reacts — sheet width/min-height/padding (the WYSIWYG print
-  // geometry) never change. chat.js re-applies size on panel open/close.
-  const chatW = document.body.classList.contains('mp-chat-open') ? 336 : 0;
-  const available = window.innerWidth - 80 - chatW;
+  // Only the screen-fit transform reacts to the viewport — sheet
+  // width/min-height/padding (the WYSIWYG print geometry) never change.
+  const available = window.innerWidth - 80;
   const s = Math.min(available / w, 1);
   const active = getActivePage();
   if (!active) return;
@@ -523,10 +521,6 @@ function enableEditMode() {
   // controls (chrome.css).
   document.body.classList.add('edit-active');
   setChromeState('data-mp-edit-active', true);
-  // Editing and the chat panel are one combined mode — chat.js (when
-  // present) opens the panel and auto-enables live through this hook. The
-  // shell stays fully functional without it.
-  window.mpChatOnEditMode?.(true);
 
   const onMove = (e) => {
     const el = e.target;
@@ -541,12 +535,10 @@ function enableEditMode() {
     const before = el.innerHTML;
     el.contentEditable = 'true';
     el.focus();
-    // Double-click is also the element-selection gesture for the chat panel:
-    // mark it (screen-only outline; serializeForSave strips the class) and
-    // hand it to chat.js, which shows it as a removable chip.
-    document.querySelectorAll('.mp-selected').forEach(s => { if (s !== el) s.classList.remove('mp-selected'); });
-    el.classList.add('mp-selected');
-    window.mpChatOnElementSelected?.(el);
+    // Double-click is also the selection gesture: it marks the element
+    // (screen-only outline; serializeForSave strips the class) and tells the
+    // model, which acknowledges it in the user's own session.
+    selectElement(el);
     el.addEventListener('blur', () => {
       el.contentEditable = 'false';
       // Committing an edit persists it — see the Save section. No-op commits
@@ -597,9 +589,8 @@ function disableEditMode() {
   setChromeState('data-mp-edit-active', false);
   blurActiveEdit();
   clearHover();
-  document.querySelectorAll('.mp-selected').forEach(s => s.classList.remove('mp-selected'));
+  clearSelection();
   if (editListeners) { editListeners(); editListeners = null; }
-  window.mpChatOnEditMode?.(false);
 }
 
 function toggleEditMode() { editMode ? disableEditMode() : enableEditMode(); }
@@ -630,7 +621,7 @@ function serializeForSave() {
   // paginate) — the file keeps the flow. Same function the live document
   // rewinds through, so what is saved is exactly what a reload re-splits.
   unpaginate(root);
-  // ALL chrome is runtime-only (injectChrome/chat.js rebuild it every load) —
+  // ALL chrome is runtime-only (injectChrome rebuilds it every load) —
   // stripping it here keeps the saved file a pure document, and turns the
   // first save of a legacy page (baked-in chrome) into a cleanse.
   // data-mp-edited markers on content are NOT stripped — persisting them is
@@ -752,8 +743,8 @@ async function printThisPage() {
 // changes.
 //
 // A CHANGED FILE ALWAYS RELOADS, IMMEDIATELY. Nothing about what the USER is
-// doing — typing in the chat panel, holding an uncommitted double-click text
-// edit — postpones it. That reads harsh for the text edit, so it's worth
+// doing — holding an uncommitted double-click text edit — postpones it. That
+// reads harsh for the text edit, so it's worth
 // saying why it isn't: an uncommitted edit is already unsaveable the moment
 // the file changes underneath it. Committing PUTs it with the stale ETag, the
 // server answers 412, and savePage() reloads and drops it (see Save). Holding
@@ -764,13 +755,13 @@ async function printThisPage() {
 // The MODEL is the one voice that can hold it, because it is the one that
 // knows the file is mid-change. Its live loop brackets an edit with `status
 // working` before the first write and `status done` after the last (SKILL.md
-// "Answering a chat message"), and in between the file passes through
-// versions the user was never meant to see. So chat.js holds the poll for
-// that window (window.mpModelWorking) and, on done, calls the tick itself —
-// the finished page arrives with the model's confirmation, in one reload
-// instead of a flicker through every intermediate write. The hold is capped
-// there, not here: a model that dies mid-edit must not freeze the preview,
-// which is the whole failure this poll exists to avoid.
+// "Handling a message"), and in between the file passes through versions the
+// user was never meant to see. So the live channel below holds the poll for
+// that window (modelWorking()) and, on done, calls the tick itself — the
+// finished page arrives with the model's confirmation, in one reload instead
+// of a flicker through every intermediate write. The hold is capped there,
+// not here: a model that dies mid-edit must not freeze the preview, which is
+// the whole failure this poll exists to avoid.
 //
 // What stays is not deferral:
 //   - file:// pages have no server to ask — skip entirely, same rule as
@@ -785,19 +776,17 @@ async function printThisPage() {
 //   - hosts that serve no ETag (a page uploaded somewhere static) get no
 //     auto-reload rather than spurious ones.
 //
-// Everything that reaches the file some other way — an edit made from the
-// harness conversation instead of the chat panel, a page the user rewrites by
-// hand, a model whose harness can't post status at all — still lands within a
-// tick. The model's signal makes the common path exact; the poll is what
-// makes every path work.
+// Everything that reaches the file some other way — a page the user rewrites
+// by hand, a model whose harness can't post status at all — still lands
+// within a tick. The model's signal makes the common path exact; the poll is
+// what makes every path work.
+let reloadIfChanged = null;
 function initAutoReload() {
   if (location.protocol === 'file:') return;
   const tick = async () => {
-    // Two holds, both of them bounded elsewhere by the thing that set them:
-    // an open IME composition (text that exists in neither the input's value
-    // nor the mirrored draft, so there would be nothing to restore), and the
-    // model's own working window.
-    if (saving || window.mpChatComposing?.() || window.mpModelWorking?.()) return;
+    // One hold besides our own write, bounded by the thing that set it: the
+    // model's working window (see the Live channel).
+    if (saving || modelWorking()) return;
     try {
       const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return;
@@ -811,14 +800,248 @@ function initAutoReload() {
     } catch { /* offline or server restarting — try again next tick */ }
   };
   // Out-of-band check, for a caller that KNOWS the file just reached its
-  // final state — chat.js on `status done`. Without it the finished page
-  // would still be up to a tick behind the message announcing it.
-  window.mpReloadIfChanged = tick;
+  // final state — the live channel on `status done`. Without it the finished
+  // page would still be up to a tick behind the message announcing it.
+  reloadIfChanged = tick;
   // Seed the baseline now, not on the first interval tick — an edit landing
   // within the first poll period would otherwise BECOME the baseline and
   // never trigger the reload it should have.
   tick();
   setInterval(tick, 1500);
+}
+
+// ── Live channel ────────────────────────────────────────────────────────────
+// The page's half of the connection to the model. There is no chat panel and
+// no chat: the user talks to their model in the model's OWN session, where
+// they already are and where the answer is going to appear anyway. What
+// crosses this channel is only what neither side can know alone:
+//
+//   page → model   the element the user just double-clicked, or cleared — so
+//                  the model can name it back to them in that session and
+//                  treat it as the subject of whatever they type next.
+//   model → page   `status working` / `status done` around an edit, which
+//                  holds the auto-reload across a half-written file; and
+//                  presence, which the toolbar shows and nothing else needs.
+//
+// Both directions ride one endpoint and one 1.5s poll. The poll runs for the
+// whole life of a served page, not only in edit mode: the toolbar's indicator
+// has to be honest before the user touches anything, and `status done` has to
+// refresh a page nobody happens to be editing.
+const SELECT_NOTICE_MS = 400;   // settle time before a selection is reported
+const WORKING_HOLD_MS = 30000;  // cap on the model's hold — see Auto-reload
+
+let modelListening = false;
+let liveCursor = 0;
+// The epoch of the server that has been told what is selected here. It is
+// per-tab-persistent, not per-page-load, and that is the whole point: the
+// model's own edit reloads this tab constantly, and re-announcing on every
+// one of those would be noise, while a server that RESTARTED has never heard
+// of the element still outlined on screen. Comparing epochs tells those two
+// apart; comparing page loads cannot.
+let toldEpoch = null;
+let workingSince = 0;
+let workingNote = '';
+
+function modelWorking() { return Date.now() - workingSince < WORKING_HOLD_MS; }
+
+const liveUrl = () => `/chat/${location.pathname.replace(/^\//, '')}/messages`;
+
+function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch {} }
+function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
+
+function setListening(on) {
+  if (on === modelListening) return;
+  modelListening = on;
+  renderLiveStatus();
+}
+
+// The toolbar's one piece of connection state, pinned to the right. It answers
+// exactly one question — is anyone on the other end — because that is the only
+// one the page can answer; everything else is in the model's session.
+function renderLiveStatus() {
+  const el = mpq('#mp-live-status');
+  if (!el) return;
+  const working = modelWorking();
+  el.classList.toggle('mp-live-on', modelListening);
+  el.classList.toggle('mp-live-working', working);
+  el.title = working
+    ? (workingNote || 'The model is editing this page')
+    : modelListening
+      ? 'A model is listening — ask it for changes in its own session'
+      : 'No model is listening on this page';
+  const label = mpq('#mp-live-status .mp-live-label');
+  if (label) {
+    label.textContent = working ? 'Working' : modelListening ? 'Live' : 'Not connected';
+  }
+}
+
+function applyStatus(state, text, ts) {
+  if (state === 'working') {
+    workingSince = ts || Date.now();
+    workingNote = text || '';
+    renderLiveStatus();
+    return;
+  }
+  workingSince = 0;
+  workingNote = '';
+  renderLiveStatus();
+  // `done` means the file has reached its final state — don't wait out a tick
+  // to show it.
+  if (state === 'done') reloadIfChanged?.();
+}
+
+function initLiveChannel() {
+  if (location.protocol === 'file:') return;
+  const tick = async () => {
+    try {
+      // from=model: the page only needs what the model says. Its own
+      // selection notices coming back would be noise.
+      const res = await fetch(`${liveUrl()}?after=${liveCursor}&from=model`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const body = await res.json();
+      if (body.epoch !== toldEpoch) {
+        // A server we have not spoken to: either the first poll of this tab's
+        // life, or one that restarted under us. Its message log is gone (so
+        // old ids would deadlock a cursor) and it knows nothing about the
+        // selection — say it again. Claim the epoch first, so this runs once
+        // per server and not once per tick.
+        liveCursor = 0;
+        toldEpoch = body.epoch;
+        ssSet('mpToldEpoch', body.epoch);
+        noticedSelector = null;
+        noticeSelection();
+      }
+      for (const m of body.messages) {
+        liveCursor = Math.max(liveCursor, m.id);
+        if (m.kind === 'status') applyStatus(m.data?.state, m.text, m.ts);
+      }
+      setListening(body.listening);
+      // The hold expires on its own if the model stops reporting (see
+      // Auto-reload); the label has to expire with it, or a model that died
+      // mid-edit would leave "Working" up for good.
+      if (workingSince && !modelWorking()) { workingSince = 0; workingNote = ''; }
+      renderLiveStatus();
+    } catch { /* offline or server restarting — next tick retries */ }
+  };
+  tick();
+  setInterval(tick, 1500);
+}
+
+// ── Selection ───────────────────────────────────────────────────────────────
+// Double-clicking an element in edit mode selects it, and the model is told at
+// once — that is what lets it answer "make it bigger" in its own session
+// without the user having to describe which thing they mean.
+//
+// Debounced, because selecting is a hunt: clicking through four paragraphs to
+// find the right one should reach the model once, at the one they settled on.
+// Deduped by selector, so a re-select (or a reload that restores it) says
+// nothing — the model already knows.
+
+let selectedEl = null;
+let noticeTimer = null;
+let noticedSelector = null;
+
+function selectElement(el) {
+  document.querySelectorAll('.mp-selected').forEach(s => {
+    if (s !== el) s.classList.remove('mp-selected');
+  });
+  el.classList.add('mp-selected');
+  selectedEl = el;
+  ssSet('mpSelected', buildSelector(el));
+  noticeSelection();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.mp-selected').forEach(s => {
+    s.classList.remove('mp-selected');
+    if (!s.classList.length) s.removeAttribute('class');
+  });
+  selectedEl = null;
+  ssSet('mpSelected', '');
+  noticeSelection();
+}
+
+// Captured fresh each time, so the snapshot carries whatever the user has
+// just typed into the element — minus the runtime-only state.
+function captureElement(target) {
+  const clone = target.cloneNode(true);
+  clone.removeAttribute('contenteditable');
+  clone.classList.remove('mp-selected');
+  if (!clone.classList.length) clone.removeAttribute('class');
+  return {
+    selector: buildSelector(target),
+    snapshot: clone.outerHTML.slice(0, 2048),
+    edited: target.hasAttribute('data-mp-edited'),
+  };
+}
+
+function noticeSelection() {
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(async () => {
+    if (location.protocol === 'file:') return;
+    const live = selectedEl?.isConnected ? selectedEl : null;
+    const payload = live ? captureElement(live) : { selector: null };
+    if (payload.selector === noticedSelector) return;
+    noticedSelector = payload.selector;
+    try {
+      const res = await fetch(liveUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'user',
+          kind: 'selection',
+          text: payload.selector ? `selected ${payload.selector}` : 'cleared the selection',
+          data: payload,
+        }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      // Unreachable or refused: forget that we said it, so the next change
+      // (or the next server we meet) reports the real state instead of
+      // assuming this one landed.
+      noticedSelector = null;
+    }
+  }, SELECT_NOTICE_MS);
+}
+
+function buildSelector(target) {
+  const pg = getActivePage();
+  if (target.id) return '#' + target.id;
+  const parts = [];
+  let cur = target;
+  while (cur && cur !== pg) {
+    if (cur.id) { parts.unshift('#' + cur.id); break; }
+    const tag = cur.tagName.toLowerCase();
+    const sibs = Array.from(cur.parentElement?.children || []).filter(c => c.tagName === cur.tagName);
+    parts.unshift(sibs.length > 1 ? `${tag}:nth-of-type(${sibs.indexOf(cur) + 1})` : tag);
+    cur = cur.parentElement;
+  }
+  if (parts[0]?.[0] !== '#') {
+    parts.unshift(pg.classList.contains('variant-page') ? '.variant-page.active' : '#page');
+  }
+  return parts.join(' > ');
+}
+
+// The reload that lands here is almost always the model's own edit to the
+// element the user has selected — so re-resolve it and re-mark it, silently:
+// the model told us to reload, it has not forgotten what we were discussing.
+// If the element did not survive that edit, the model's context IS stale, and
+// that is the one case worth reporting.
+function restoreSelection() {
+  toldEpoch = ssGet('mpToldEpoch');
+  const sel = ssGet('mpSelected');
+  if (!sel) return;
+  let el = null;
+  try { el = document.querySelector(sel); } catch { /* no longer parses */ }
+  if (el) {
+    selectedEl = el;
+    el.classList.add('mp-selected');
+    noticedSelector = sel;  // already known to the model — say nothing
+    return;
+  }
+  noticedSelector = sel;    // ...so the deselect below reads as a change
+  ssSet('mpSelected', '');
+  noticeSelection();
 }
 
 // ── Chrome injection ────────────────────────────────────────────────────────
@@ -831,7 +1054,7 @@ function initAutoReload() {
 // The chrome is built inside a SHADOW ROOT, and that is a guarantee, not a
 // detail: a generated page carries arbitrary CSS — a theme redefines every
 // --color-*/--font-* token, custom_css can name any selector — and none of it
-// may reach the toolbar, the edit overlay, or the chat panel. The shadow
+// may reach the toolbar or the edit overlay. The shadow
 // boundary stops page selectors; `all: initial` on the host stops inheritance
 // through it; chrome.css resolves its own --mp-* tokens so nothing depends on
 // a document token. The page's only remaining lever would be styling the host
@@ -862,13 +1085,13 @@ let chromeRoot = null;  // its shadow root — every chrome node lives in here
 
 // Chrome lookups. Chrome is NOT in the document, so document.getElementById
 // would never find it: everything that reaches for a chrome element goes
-// through these (chat.js included).
+// through these.
 function mpq(sel) { return chromeRoot ? chromeRoot.querySelector(sel) : null; }
 function mpAll(sel) { return chromeRoot ? Array.from(chromeRoot.querySelectorAll(sel)) : []; }
 
 // Screen-state flags the chrome styles itself by (chrome.css :host([...])).
 // The matching body classes stay too — chrome-host.css reads those for the
-// document side of the same state (toolbar space, the panel's column).
+// document side of the same state (toolbar space, the selection outline).
 function setChromeState(name, on) { if (chromeHost) chromeHost.toggleAttribute(name, !!on); }
 
 // The chrome's stylesheet. Served pages carry it inline in an inert
@@ -888,10 +1111,12 @@ function injectChrome() {
   // Whatever chrome the document already carries goes: a legacy page's baked
   // toolbar, or the empty host left in a re-serialized DOM (the print
   // pipeline re-renders the serialized page).
-  // .page-break-guide: dotted rules an older shell drew inside the sheet to
-  // mark where content would overflow. Continuation sheets replaced them —
-  // overflow that lands on its own sheet has nothing to warn about, and the
-  // remainder that still cannot be placed says so by hanging off the paper.
+  // Two of these are only ever found on older pages: .page-break-guide, the
+  // dotted rules an older shell drew inside the sheet to mark overflow
+  // (continuation sheets replaced them — overflow that lands on its own sheet
+  // has nothing to warn about, and a remainder that still cannot be placed
+  // says so by hanging off the paper), and #mp-chat-panel, from before the
+  // chat panel was retired. Both go like any other stale chrome.
   document.querySelectorAll('#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, .page-break-guide')
           .forEach(el => el.remove());
 
@@ -921,8 +1146,7 @@ function injectChrome() {
 
   toolbar.appendChild(sep());
 
-  // Combined edit+chat toggle: pencil when idle; X + "Editing" while active.
-  // chat.js (when present) opens/closes the side panel through the mode hook.
+  // Edit toggle: pencil when idle; X + "Editing" while active.
   const edit = document.createElement('button');
   edit.id = 'mp-btn-edit';
   edit.innerHTML =
@@ -992,9 +1216,32 @@ function injectChrome() {
   nav.appendChild(next);
   toolbar.appendChild(nav);
 
-  // Overflow notice — hidden while the page fits (showFitBadge). It sits at
-  // the end of the toolbar so appearing and disappearing never moves the
-  // buttons under the user's cursor.
+  // Everything after this spacer sits at the toolbar's right edge, and nothing
+  // to its left ever shifts. A spacer rather than margin-left:auto on the
+  // first right-hand item, so that item keeps a plain resolved margin whatever
+  // else is beside it — auto margins resolve to a used value that depends on
+  // the free space, which makes the right-hand group's computed style a
+  // function of the page's content.
+  const spacer = document.createElement('div');
+  spacer.className = 'mp-toolbar-spacer';
+  toolbar.appendChild(spacer);
+
+  // Connection state: the whole of the chrome's opinion about the model —
+  // whether one is listening. The conversation is elsewhere.
+  const live = document.createElement('div');
+  live.id = 'mp-live-status';
+  const dot = document.createElement('span');
+  dot.className = 'mp-live-dot';
+  const liveLabel = document.createElement('span');
+  liveLabel.className = 'mp-live-label';
+  liveLabel.textContent = 'Not connected';
+  live.appendChild(dot);
+  live.appendChild(liveLabel);
+  toolbar.appendChild(live);
+
+  // Overflow notice — hidden while the page fits (showFitBadge). Last in the
+  // toolbar, so appearing and disappearing never moves the buttons under the
+  // user's cursor.
   const fit = document.createElement('span');
   fit.id = 'mp-fit-badge';
   fit.style.display = 'none';
@@ -1033,13 +1280,22 @@ function injectChrome() {
   // tab must keep following the file, so the model's next edit can fix it
   // without the user having to reload by hand.
   initAutoReload();
+  // Before the live channel opens: its first poll reconciles the selection
+  // against the server's epoch, so the restored selection has to be in place
+  // by then.
+  restoreSelection();
+  // Same reasoning as the auto-reload, one step further: the live channel is
+  // what carries the model's `status done`, so it comes up before anything
+  // page-shaped too.
+  initLiveChannel();
+  renderLiveStatus();
 
   // Per-page configuration is declarative: assembly sets data attributes on
   // <body> (the document carries data, never chrome API calls). Legacy pages
   // instead carry an injected applySize() script line after this script —
   // that global still works, so they self-configure too. Live edit is NOT
   // among these: it is not a property of the document at all, only of
-  // whether this page is being served (see chat.js).
+  // whether this page is being served.
 
   // Pages ship their design baked in: the shell's :root tokens plus whatever
   // #content-overrides the generation wrote (ad-hoc theme tokens included).
