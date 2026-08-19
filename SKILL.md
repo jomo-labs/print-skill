@@ -14,14 +14,14 @@ metadata:
 Turn the user's request into a print-ready HTML page. You author the page
 **content**; the document template (`assets/page_template.html`) and the
 **shell chrome** it links (`assets/shell/` css+js — design tokens, print
-button, edit mode with chat, paper-size switching, WYSIWYG print geometry) are
+button, edit mode, paper-size switching, WYSIWYG print geometry) are
 never authored or retyped, only copied and filled (see
 `references/assembly.md`). The generated file is a pure document: all chrome
 is injected at runtime by the shell scripts, so shell updates apply to
 already-generated pages automatically. Chrome and document are also isolated
 from each other — the chrome renders inside a shadow root with its own tokens,
 so nothing you write in `custom_css` (a theme's `:root` override included) can
-reach the toolbar, edit overlay, or chat panel. Style the page freely; the
+reach the toolbar or the edit overlay. Style the page freely; the
 chrome is not yours to style, and you cannot break it by accident.
 A bundled local server (`server/`) serves the generated pages and renders
 deterministic PDFs with headless Chromium — the same renderer on every
@@ -37,7 +37,7 @@ means you are also the design validator: the self-check in
 ### Step 0 — Input & server warm-up
 
 **Live-mode invocation short-circuits everything**: if the request is `live`
-(`/print live`) or an ask in words to go live / connect to the page's chat,
+(`/print live`) or an ask in words to go live / connect to the page,
 skip the generation workflow entirely and follow "Live mode" below. You
 normally connect on your own at the end of Step 8, so this is re-entry after
 you signed off, or a user asking you to reconsider a page you judged
@@ -192,7 +192,8 @@ every page this project generates.
 4. If Node is unavailable or the install fails, skip serving — the generated
    file still works opened directly in a browser as a **plain printable**
    (styled and print-exact via the browser dialog; no toolbar, editing, or
-   chat — those are server-injected chrome). Say so in the report rather than
+   live connection — those are server-injected chrome). Say so in the report
+   rather than
    failing the task; this fallback is the one case where the report hands out
    a file path.
 
@@ -208,15 +209,15 @@ every page this project generates.
   For font or color changes, ask me to regenerate the page with new style
   instructions."
 - If you can run the listen loop (`references/harness-support.md`), add:
-  "Press **Edit** on the page to edit text and open the chat panel — I'm
-  connected to it, so just tell me what to change." If you can't, add: "Press
-  **Edit** on the page to edit text and open the chat panel, which turns your
-  requests into instructions you can copy and paste back to me." Don't
+  "Press **Edit** to change text right on the page, or double-click anything
+  and tell me here what to do with it — I'm connected to the page, so I'll
+  know what you picked." If you can't, add: "Press **Edit** to change text
+  right on the page, and tell me here what else you'd like changed." Don't
   explain the mechanism either way.
 - If the server couldn't run: give the file path, note the file is a plain
-  printable (print via the browser dialog; no editing/chat without the
-  server), and mention Node 18+ enables the exact-PDF server and the full
-  editing chrome.
+  printable (print via the browser dialog; no editing without the server),
+  and mention Node 18+ enables the exact-PDF server and the full editing
+  chrome.
 - **Then connect**, unless this is a headless/pipeline run: go straight into
   "Live mode" below — announce presence, arm the listen loop, end your turn.
   Not a question to ask the user; the page is served and you are the model
@@ -286,7 +287,7 @@ whenever no `file:`-opened legacy page still needs it.
 A page open in the browser via the local server refreshes itself within a
 couple of seconds of the file changing on disk (the shell polls the server's
 ETag) — after an edit, tell the user the open page has updated; don't ask
-them to refresh. In a live chat session the refresh is exact rather than
+them to refresh. In a live session the refresh is exact rather than
 merely quick: bracketing the edit with `status working` / `status done` (see
 "Handling a message") holds the preview across your writes and refreshes it
 the moment you report done.
@@ -299,169 +300,120 @@ the user's own edits).
 
 ## Live mode
 
-The generated page's chat panel (opened by the page's **Edit** button) talks
-to you through the local server. **It is on by default**: whenever you can
-run the listen loop, you connect at the end of Step 8 without being asked.
-Serving the page and being reachable on it are the same act — there is no
-switch in the page, no attribute in the file, and nothing for the user to
-discover. When you can't run the loop, the panel is a copy/paste surface
-instead, and that is the whole of the difference.
+While the local server is running, you can be **connected to the open page**:
+you learn which element the user has just selected in it, and the page learns
+when you are mid-edit so it doesn't flash a half-written file at them.
 
-All commands below are `node <skill-dir>/server/chat-cli.mjs …` against the
-running server (Step 7), with `--url` pointing at its actual port. The
-`<page>` argument is the page's server path — `<file>.html` under the out/
-layout. Target page: the page generated in this conversation; if none and
-exactly one page is served (GET `/` lists them), use it; otherwise ask
-which page.
+There is no chat in the page. The user asks you for changes **here, in this
+conversation** — where they already are, and where your answer was going to
+appear anyway. The page's job is to show them the printable and let them point
+at parts of it; yours is everything else.
 
-**Whenever the server is up, you should be listening on it.** Not only at
-the end of a generation run — every time the server comes up or comes back:
-after you restart a crashed one, when a later turn starts one for a page from
-earlier in the conversation, and after you pick a page back up under "Editing
-an existing page". The open tab reconnects on its own (its poll retries
-through the outage and resets itself when the server's epoch changes, which
-also re-announces whatever element the user has selected), so you are the
-only half that has to be put back deliberately. Do it before ending the turn.
+It is on by default: whenever the server is up and your harness can run the
+listen loop (`references/harness-support.md`), you connect — at the end of a
+generation run, after restarting a crashed server, or in any later turn that
+brings one up. Not something the user asks for.
 
-### Entering
+All commands are `node <skill-dir>/server/chat-cli.mjs …` against the running
+server (Step 7), with `--url` pointing at its actual port. The `<page>`
+argument is the page's server path — `<file>.html` under the out/ layout.
+Target page: the page generated in this conversation; if none and exactly one
+page is served (GET `/` lists them), use it; otherwise ask which page.
 
-1. Ensure the server is up (Step 7 probe). No server, no live mode — and
-   nothing else to check on the page: the document carries no live-edit
-   state at all.
+### Connecting
+
+1. Ensure the server is up (Step 7 probe). No server, no live mode.
 2. Run the decision in `references/harness-support.md` — the reachability
-   gate, then the ladder. It is a fact about your harness, not about the
-   page, so it holds for every page in this conversation. If it fails, tell
-   the user live mode can't work here and say why (unreachable browser vs.
-   foreground-only harness), not just "unsupported"; the panel still works
-   as a copy/paste surface.
-3. Pick your listen mechanism from the ladder under "Listening" below — the
-   highest rung your harness supports.
-4. Announce presence fast — `status <file>.html idle` — then start listening.
-   Say in one line that you're connected and how to stop (`say "done"` in
-   the panel, or just ask here). One line: this is the expected end of a
-   generation run, not an event.
+   gate, then the ladder. It is a fact about your harness, not about the page.
+   If it fails, say so once, plainly, and carry on: everything else about the
+   page still works, and the user can still ask you for changes here.
+3. Arm the listen loop at the **highest rung your harness supports**:
+   - **(a) Stream/monitor** — run `wait <page> --follow` under a tool that
+     streams its output back to you; each NDJSON line is an event.
+   - **(b) Background + wake** — run `wait <page> --timeout 240` as a
+     background task and **end your turn**. The completion notification wakes
+     you: handle whatever arrived, then arm the next one.
 
-### Listening
+   Never loop foreground `wait` commands; a harness that can do nothing else
+   does not support live mode at all.
+4. Post `status <file>.html idle` so the page's indicator goes live.
 
-Both rungs listen without occupying the foreground — that is exactly what
-makes connecting by default affordable. **Never loop foreground `wait`
-commands.** A harness that can do nothing else does not support live mode at
-all (`references/harness-support.md`): a foreground loop can never end its
-turn, so it reads as silent command churn and locks the user out of asking
-you anything else.
+### Staying quiet
 
-- **(a) Stream/monitor** — your harness can feed a background command's
-  output lines back to you as events: run `wait <page> --follow` in the
-  background and react to each NDJSON line. No polling at all.
-- **(b) Background + wake** — your harness runs commands in the background
-  and notifies you when they exit (e.g. Claude Code's background Bash):
-  run `wait <page> --timeout 240` as a background task and **end your
-  turn**. The completion notification wakes you — handle any messages, then
-  arm the next background wait. Idle cost: one wake per ~4 minutes, nothing
-  in the foreground.
-**Say nothing while you listen.** An empty wake is a non-event: re-arm and
-end the turn without writing a word about it. No "still listening", no wake
-counts, no "I'll stop if it stays quiet" — the user is looking at the page,
-not at this conversation, and a loop that narrates itself is exactly the
-churn that makes background listening not worth having. The only things
-worth saying in the harness are what you changed on the page and anything
-that blocked you.
+**Connecting is not news, and neither is waiting.** The user is looking at the
+page, not at this conversation.
 
-Exit 2 from any `wait` means the server died — restart it (Step 7, same
-`--dir`) and resume.
+- Say **nothing** when you arm or re-arm the loop. Not "Listening", not
+  "Still listening", not "Waiting for changes", not a note that you are going
+  to keep watching. An empty wake produces **no output at all** — re-arm and
+  end the turn silently.
+- Never count wakes, never announce a countdown, and never explain the
+  mechanism. There is no idle cap: quiet is the normal state of a page
+  someone is reading.
+- The one exception is the first connect in a generation run, where a single
+  clause in the Step 8 report ("I'm connected to the page") tells the user
+  the loop is running at all.
 
-What `wait` hands you is one of two things, and they are not handled the
-same way. A `kind: "selection"` entry is a **notice** — the user just
-double-clicked an element on the page, or cleared it — and is handled under
-"The current selection" below. Everything else is a message the user wrote;
-that is the loop directly below.
+The only things worth writing here are: what a user selected (below), what you
+changed and why, and anything that blocked you.
 
-### Handling a message
+### A selection arrives
 
-1. `status <file>.html working` — **post it before you touch the file**, not
-   just for the animated indicator: it also tells the open tab your edit is
-   in flight, so the preview holds still instead of flickering through every
-   intermediate write, and refreshes once when you report done. While you
-   work, push what's useful for the user to see: re-post `status <file>.html
-   working "<short progress note>"` to update the indicator's label as you
-   move through stages (each re-post also extends the hold), and use
-   `say <file>.html "<message>"` for anything worth keeping in the
-   conversation (a finding, a question, a caveat) — it appears as a chat
-   bubble immediately, not just at the end.
-2. **Read the current file from disk** — never edit from memory. The user's
-   browser edits and their `data-mp-edited` markers live in the file, and the
-   message may carry element context in `data` (`selector`, `snapshot`,
-   `edited`) pointing into it. For a sweep of everything the user edited:
-   `edits <file>.html`. A message that carries its own `data.selector` is
-   about that element, whatever was selected before.
-3. Apply the change per "Editing an existing page" (same self-check rules for
-   CSS, same Step 6 greps). Strip the `data-mp-edited` attributes you
-   addressed as part of the edit — the marker means "not yet seen by the
-   model".
-4. `say <file>.html "<one-line confirmation>"`, then `status <file>.html done`
-   — that one is what refreshes the open tab, so post it only once the file
-   is final, and always post it: leaving a working status open holds the
-   preview until it times out. Then resume listening.
+`wait` delivers `kind: "selection"` entries. Each carries `data.selector`,
+`data.snapshot` and `data.edited` — or `data.selector: null` when the user
+cleared it. It means the user double-clicked something on the page. It is
+**never a request to edit**: don't touch the file, don't post a status.
 
-### The current selection
+Do two things:
 
-Double-clicking an element in edit mode selects it, and you are told the
-moment it happens — a `kind: "selection"` entry carrying `data.selector`,
-`data.snapshot` and `data.edited`, or `data.selector: null` when the user
-cleared it. It arrives before the user has typed anything.
+1. **Say one short line in this conversation** naming the element the way the
+   user would — from `data.snapshot`, not from the selector: "Looking at the
+   subtitle." / "Got the Saturday row." That line is the whole point: it is
+   how they know you are looking where they are looking, and it belongs here,
+   in front of them, not on the page.
+2. **Hold it as the subject.** Their next message will usually not name what
+   it is about — "make it bigger", "shorter", "move this up" — and it means
+   the selected element. It stays the subject until they select another or
+   clear it, so a whole run of requests can be about the same one.
 
-**A selection is never a request to edit.** Do not touch the file, do not
-post a `working` status. Do exactly two things:
+Then go back to listening, silently.
 
-1. **Acknowledge it in one short line** — `say <file>.html "…"` — naming the
-   element the way the user would, not by its selector: "Looking at the
-   subtitle." / "Got the Saturday row." Read `data.snapshot` so you can name
-   it from its actual content. One line, no offer of options, no plan. The
-   point is that the user can see you are looking where they are looking.
-2. **Hold it as the target** for whatever they say next. When their next
-   message doesn't name what it's about — "make it bigger", "shorter",
-   "move this up" — it means the selected element. The chip stays on screen
-   until they clear it or pick another, so a whole run of messages can be
-   about the same element; keep applying it for as long as it stands.
-
-Then go straight back to listening. No status, no reload — nothing about
-the page changed.
-
-Housekeeping that keeps this honest:
-
-- **Newest wins.** If a batch carries several selections (the user hunted
-  around while you were busy), only the last one counts.
-- **`selector: null` means nothing is selected.** Drop the context; a later
-  bare "make it bigger" now has no target, so ask which element.
-- **Don't re-acknowledge the same element.** You are told again only if the
+- **Newest wins.** If a batch carries several (they hunted around while you
+  were busy), only the last counts.
+- **`selector: null`** means nothing is selected: drop the subject, and if a
+  later bare "make it bigger" arrives, ask which element.
+- **Don't re-acknowledge** the same element. You are told again only when the
   selection actually changed.
-- **Never let it override an explicit target.** If the user names something
-  else ("the title", "every heading"), that wins — the selection is a
-  default, not a lock.
+- **An explicitly named target always wins.** "the title", "every heading" —
+  the selection is a default, not a lock.
 
-### Leaving
+### Editing the page
 
-**There is no idle cap and no wake budget.** Quiet is the normal state of a
-page someone is reading — it is not a signal to disconnect. Never count
-empty wakes, never announce a countdown, and never leave the loop merely
-because nothing has happened. An empty wake costs one background command and
-nothing in the foreground, so an hour of listening costs what a minute does,
-per minute.
+The request comes from the user, here. Apply it per "Editing an existing
+page", bracketed so the open tab doesn't show a half-written file:
 
-Live mode ends when something actually ends it:
+1. `status <file>.html working` — **before you touch the file**. It holds the
+   tab's auto-reload and lights its indicator. Re-post it with a short note
+   (`status <file>.html working "restyling the header"`) to extend the hold on
+   a long edit; the note becomes the indicator's tooltip.
+2. **Read the current file from disk** — never edit from memory. The user's
+   own browser edits and their `data-mp-edited` markers live in it, and the
+   selection's `data.selector` points into it. For a sweep of everything they
+   edited: `edits <file>.html`.
+3. Apply the change (same self-check rules for CSS, same Step 6 greps), and
+   strip the `data-mp-edited` markers you addressed — the marker means "not
+   yet seen by the model".
+4. `status <file>.html done` — always, and only once the file is final: that
+   is what refreshes the open tab. Leaving a working status open holds their
+   preview until it times out. Then confirm in one line here, and resume
+   listening.
 
-- **The user says so** — a chat message that just says done/stop/that's all,
-  or the same ask in the harness conversation. Post a sign-off (`say`), then
-  `status <file>.html idle`, and leave the loop. Say once, in the harness,
-  that chat is paused and `/print live` reconnects.
-- **The server dies** — exit 2 from any `wait`. That is an interruption, not
-  an ending: restart it (Step 7, same `--dir`) and re-arm the loop in the
-  same turn. Only if it won't come back do you say so and stop.
-- **The session ends.** Nothing to do: the page keeps working, and the panel
-  simply shows no model connected.
+### Disconnecting
 
-Anything the user asks in the harness conversation itself always outranks the
-loop — answer it, then go back to listening. That is where you were.
+Live mode ends when the server dies (exit 2 from any `wait` — restart it and
+re-arm in the same turn), when the session ends, or when the user asks you to
+stop. Nothing else ends it, and none of those need a paragraph: a line when
+something actually broke, silence otherwise.
 
 ## Scope notes
 

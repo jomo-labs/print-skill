@@ -62,10 +62,9 @@ button, input, textarea, select, option, code, pre, i, svg, span, div, aside, fo
   opacity: 0.3 !important;
 }
 /* Aimed at the chrome by name. */
-#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, #mp-page-setup,
-#mp-btn-edit, #mp-btn-print, #mp-chat-input, #mp-chat-log, #mp-chat-presence,
-#mp-paper-select, #mp-orient-select, .mp-combo, .mp-chat-send, .mp-msg,
-.mp-starter, [data-mp-chrome] {
+#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-page-setup,
+#mp-btn-edit, #mp-btn-print, #mp-live-status, .mp-live-dot, .mp-live-label,
+#mp-paper-select, #mp-orient-select, .mp-combo, [data-mp-chrome] {
   display: none !important;
   visibility: hidden !important;
   position: static !important;
@@ -79,7 +78,6 @@ html > div { display: none !important; }
 @font-face { font-family: 'Inter'; src: local('Times New Roman'); }
 @font-face { font-family: 'system-ui'; src: local('Times New Roman'); }
 /* Reclaim what the chrome reserves in the document. */
-body.mp-chat-open { padding-left: 0 !important; }
 .page-surround { height: auto !important; overflow: visible !important; margin-left: 336px !important; }
 body.edit-active { cursor: crosshair !important; }
 .mp-selected { outline: none !important; outline-offset: 0 !important; }
@@ -89,14 +87,19 @@ body.edit-active { cursor: crosshair !important; }
 const PROBES = [
   "#mp-toolbar", "#mp-btn-edit", "#mp-btn-edit-label", "#mp-btn-print", "#mp-toolbar .mp-sep",
   "#mp-page-setup", "#mp-paper-select", "#mp-orient-select", ".mp-combo",
-  "#mp-overlay", "#mp-chat-panel", "#mp-chat-log", "#mp-chat-presence", "#mp-chat-form",
-  "#mp-chat-input", ".mp-chat-send", ".mp-msg-model", ".mp-starter",
-  "#mp-chat-attach", ".mp-attach-chip", ".mp-attach-label", ".mp-attach-clear",
+  "#mp-overlay", "#mp-live-status", ".mp-live-dot", ".mp-live-label",
 ];
 // The hover box traces whatever page element it is over, and the hostile page
-// lays its content out differently — so these two are compared on appearance
-// alone, with position and size left out.
-const APPEARANCE_ONLY = [".mp-hover-box", ".mp-hover-label"];
+// lays its content out differently — so these are compared on appearance
+// alone, with position and size left out. The live indicator is here for a
+// related reason: it heads the toolbar's right-hand group, so its x moves when
+// the overflow badge beside it appears, and whether content overflows is a
+// property of the page's CONTENT, not of its CSS reaching the chrome. Its
+// styling still has to match exactly.
+const APPEARANCE_ONLY = [
+  ".mp-hover-box", ".mp-hover-label",
+  "#mp-live-status", ".mp-live-dot", ".mp-live-label",
+];
 const GEOMETRY = ["width", "height", "top", "left", "right", "bottom"];
 const PROPS = [
   "display", "position", "visibility", "opacity", "z-index", "box-sizing",
@@ -142,21 +145,16 @@ async function chromeSnapshot(page, probes) {
   );
 }
 
-// Load a page, open edit mode (which builds the chat panel), snapshot.
+// Load a page, open edit mode, snapshot.
 async function inspect(browser, url) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await page.goto(url, { waitUntil: "networkidle" });
   await page.evaluate(() => document.getElementById("mp-chrome-root").shadowRoot
     .getElementById("mp-btn-edit").click());
   await page.waitForFunction(() => document.getElementById("mp-chrome-root").shadowRoot
-    .querySelector("#mp-chat-panel .mp-starter"));
-  // The panel slides in and the canvas gives up its column over ~220ms — every
-  // measurement below is of the settled layout, never a frame of that motion.
-  await page.waitForFunction(() => getComputedStyle(document.body).paddingLeft === "336px"
-    && document.getElementById("mp-chrome-root").shadowRoot
-       .getElementById("mp-chat-panel").getBoundingClientRect().left === 0);
+    .querySelector("#mp-page-setup"));
   // Drive the two edit-mode gestures so their chrome exists to be compared:
-  // double-click selects (chip + outline), hover draws the element box.
+  // double-click selects (outline), hover draws the element box.
   await page.dblclick("#probe");
   await page.hover("h1");
   await page.waitForFunction(() => document.getElementById("mp-chrome-root").shadowRoot
@@ -183,7 +181,7 @@ async function inspect(browser, url) {
     await page.emulateMedia({ media: "print" });
     const hidden = await page.evaluate(() => {
       const root = document.getElementById("mp-chrome-root").shadowRoot;
-      return ["#mp-toolbar", "#mp-chat-panel", "#mp-overlay"]
+      return ["#mp-toolbar", "#mp-overlay"]
         .every((s) => getComputedStyle(root.querySelector(s)).display === "none");
     });
     await page.emulateMedia({ media: "screen" });
@@ -227,18 +225,20 @@ test("page CSS cannot reach the server-managed chrome", async (t) => {
   // The document-side reservations hold too (chrome-host.css).
   assert.equal(hostile.document_.bodyPaddingTop, "56px", "the page reclaimed the toolbar's space");
   assert.equal(hostile.document_.cursor, "text", "edit-mode cursor overridden by the page");
-  // The panel's column is reserved on the body, and the canvas keeps its own
-  // scroll region below the toolbar — so the panel never lands on content.
-  assert.equal(hostile.document_.bodyPaddingLeft, "336px", "the page closed the chat panel's column");
-  assert.equal(hostile.document_.surroundMarginLeft, "0px", "the page re-opened a gutter beside the reserved column");
+  // The canvas keeps its own scroll region below the toolbar, and the page
+  // cannot shove it sideways: the retired panel's column is gone, so the
+  // canvas owns the full width and the hostile margin-left must not take.
+  // No horizontal reservation is asserted: with the panel retired the chrome
+  // claims no column, so the page's own body padding is its business. What it
+  // still may not do is shove the canvas out from under the toolbar.
+  assert.equal(hostile.document_.surroundMarginLeft, "0px", "the page pushed the canvas sideways");
   assert.equal(hostile.document_.surroundOverflowY, "auto", "the page took away the canvas's scroll region");
-  assert.equal(plain.document_.canvasLeft, 336, "the canvas does not start beside the panel");
+  assert.equal(plain.document_.canvasLeft, 0, "the canvas does not start at the left edge");
   assert.equal(plain.document_.canvasTop, 56, "the canvas does not start below the toolbar");
   assert.equal(plain.document_.canvasHeight, 1000 - 56, "the canvas is not the viewport below the toolbar");
   // The hostile page's own margins and borders move its canvas a few px in —
   // that is its box model, not a lost reservation. What must hold is that it
-  // never reaches back into the panel's column or under the toolbar.
-  assert.ok(hostile.document_.canvasLeft >= 336, "the hostile canvas reached under the panel");
+  // never reaches back under the toolbar.
   assert.ok(hostile.document_.canvasTop >= 56, "the hostile canvas reached under the toolbar");
   assert.equal(hostile.document_.selectedOutline, "2px", "the page erased the selection outline");
   assert.equal(plain.document_.selectedOutline, "2px");

@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-// Model-side CLI for the shell's Chat panel. Zero dependencies, Node 18+.
+// Model-side CLI for the page's live channel. Zero dependencies, Node 18+.
+//
+// There is no chat panel and no chat: the user asks for changes in YOUR
+// session, not in the page. This CLI carries only what the page knows and you
+// don't (which element they have selected) and what you know and it doesn't
+// (that you are mid-edit). Everything you want to SAY, say in your session.
 //
 // Every command is one-shot and bounded so a listener can be re-armed after
 // every wake without losing anything: a server-held cursor delivers each
@@ -12,10 +17,10 @@
 // flat out/ layout ("<dir>/<page>.html" for custom one-level layouts).
 //
 //   wait <page> [--timeout N] [--after ID] [--peek]
-//       Bounded poll for new user activity — messages the user sent, and
-//       kind:"selection" notices telling you which element they just
-//       double-clicked (data.selector null = they cleared it). Prints
-//       exactly one of:
+//       Bounded poll for what the user does ON THE PAGE: kind:"selection"
+//       notices telling you which element they just double-clicked
+//       (data.selector null = they cleared it). What they want done with it
+//       they tell you directly, in your session. Prints exactly one of:
 //         {"epoch":"…","messages":[…]}    >=1 new message   (exit 0)
 //         NO_MESSAGE                       poll expired empty (exit 0)
 //       Exit 2 only for hard errors (server unreachable, unknown page).
@@ -26,13 +31,16 @@
 //       Never exits; prints one NDJSON line per message batch. Only for
 //       harnesses that can stream or read a background command's output —
 //       never run this as a plain foreground command.
-//   say <page> <text…|->        Post a model reply ('-' reads stdin).
 //   status <page> <working|done|idle> [text]
-//                               Post loading/status state (drives the
-//                               panel's animated working indicator, not a
-//                               chat bubble). Re-post `status working
-//                               "<note>"` to update the indicator's label
-//                               with progress while you work.
+//                               Tell the open tab where you are. `working`
+//                               holds its auto-reload while the file is
+//                               half-written and lights the toolbar's
+//                               indicator; `done` releases the hold and
+//                               refreshes it at once; `idle` just clears.
+//                               The optional text becomes the indicator's
+//                               tooltip. There is no way to send the user a
+//                               message here, and no need for one — you are
+//                               already talking to them in your own session.
 //   edits <page> [--full]       List elements carrying data-mp-edited in the
 //                               served file (the markers the shell stamps on
 //                               user-edited elements); --full prints the
@@ -113,12 +121,6 @@ async function pollOnce(p) {
   return api(`/chat/${pagePath(p)}/messages?${params}`);
 }
 
-async function readStdin() {
-  const chunks = [];
-  for await (const c of process.stdin) chunks.push(c);
-  return Buffer.concat(chunks).toString("utf-8").trim();
-}
-
 switch (command) {
   case "wait": {
     if (follow) {
@@ -137,14 +139,6 @@ switch (command) {
     } else {
       console.log("NO_MESSAGE");
     }
-    break;
-  }
-
-  case "say": {
-    const text = rest[0] === "-" ? await readStdin() : rest.join(" ").trim();
-    if (!text) die("say: empty message");
-    const body = await post(page, { from: "model", kind: "message", text });
-    console.log(JSON.stringify({ ok: true, id: body.id }));
     break;
   }
 
@@ -182,5 +176,5 @@ switch (command) {
   }
 
   default:
-    die("usage: chat-cli.mjs <wait|say|status|edits> <page>.html …  (see file header)");
+    die("usage: chat-cli.mjs <wait|status|edits> <page>.html …  (see file header)");
 }

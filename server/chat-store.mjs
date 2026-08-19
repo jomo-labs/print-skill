@@ -1,24 +1,26 @@
-// In-memory per-page chat store for the shell's Chat panel.
+// In-memory per-page event log for the live channel between a served page and
+// the model editing it. There is no chat: the user talks to their model in the
+// model's own session. What passes through here is the page reporting which
+// element the user selected, the model reporting that it is mid-edit, and the
+// presence the page's toolbar shows.
 //
-// One store per served page, holding a bounded message log plus the
-// bookkeeping that makes the two consumers work:
+// One store per served page, holding a bounded log plus the bookkeeping that
+// makes the two consumers work:
 //   - the shell polls with wait=0 on its usual 1.5s cadence;
-//   - the model's chat-cli polls with a bounded long-poll (20s foreground
-//     default, up to 300s for background one-shot listeners) as
-//     consumer=model, which drives both a server-held delivery cursor (so the
-//     stateless one-shot CLI never re-reads messages) and the presence signal
-//     the panel shows as "model is listening".
+//   - the model's chat-cli polls with a bounded long-poll (20s default, up to
+//     300s for background one-shot listeners) as consumer=model, which drives
+//     both a server-held delivery cursor (so the stateless one-shot CLI never
+//     re-reads events) and the presence signal the toolbar shows as connected.
 //
-// Everything is in-memory by design: chat history is conversation, not
-// document state (the page file remains the single source of truth for
-// content). `epoch` is the restart contract — a client that sees the epoch
-// change resets its cursor to 0 instead of silently deadlocking on a stale
-// `after` id that the new process will never reach.
+// Everything is in-memory by design: none of it is document state (the page
+// file remains the single source of truth for content). `epoch` is the restart
+// contract — a client that sees the epoch change resets its cursor to 0
+// instead of silently deadlocking on a stale `after` id that the new process
+// will never reach, and re-announces what it has selected, since a fresh
+// server has never been told.
 import crypto from "node:crypto";
 
 const MAX_MESSAGES = 500;
-
-const stores = new Map();
 
 function newStore() {
   return {
@@ -39,13 +41,37 @@ function newStore() {
   };
 }
 
-export function getStore(page) {
-  let s = stores.get(page);
-  if (!s) {
-    s = newStore();
-    stores.set(page, s);
-  }
-  return s;
+/**
+ * One registry per server instance — never a module-level Map. Two servers in
+ * one process (the test suite runs several; render-cli starts an ephemeral
+ * one) would otherwise share a store for every page path that happened to
+ * collide, and a restarted server would inherit the dead one's message log,
+ * cursor and `epoch` — which is precisely what the epoch is supposed to tell
+ * a client apart from.
+ */
+export function createStoreRegistry() {
+  const stores = new Map();
+  return {
+    get(page) {
+      let s = stores.get(page);
+      if (!s) {
+        s = newStore();
+        stores.set(page, s);
+      }
+      return s;
+    },
+    /**
+     * Resolve every pending long-poll (empty) so open sockets never hold the
+     * server up — called from startServer's close() ahead of server.close(),
+     * without which render-cli's one-shot server and SIGINT shutdown would
+     * hang until the longest poll times out.
+     */
+    closeAll() {
+      for (const store of stores.values()) {
+        for (const w of [...store.waiters]) w.settle([]);
+      }
+    },
+  };
 }
 
 export function listening(store) {
@@ -126,14 +152,4 @@ export function awaitMessages(store, { after, from, waitMs, consumer, peek, onAb
   });
 }
 
-/**
- * Resolve every pending long-poll (empty) so open sockets never hold the
- * server up — called from startServer's close() ahead of server.close(),
- * without which render-cli's one-shot server and SIGINT shutdown would hang
- * until the longest poll times out.
- */
-export function closeAll() {
-  for (const store of stores.values()) {
-    for (const w of [...store.waiters]) w.settle([]);
-  }
-}
+

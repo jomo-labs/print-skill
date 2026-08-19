@@ -1,9 +1,9 @@
 /* chrome-host.css — the ONLY styles the chrome puts into the document.
    Everything the chrome DRAWS lives in a shadow root (chrome.css) where no
    page CSS can reach it; these few rules are the reverse direction — what the
-   chrome needs FROM the page: room under the fixed toolbar, a column beside
-   the open chat panel, the canvas's own scroll region, the edit-mode cursor,
-   the outline on a picked element, and the embedded-mode trim. Nothing here
+   chrome needs FROM the page: room under the fixed toolbar, the canvas's own
+   scroll region, the edit-mode cursor, the outline on a selected element, and
+   the embedded-mode trim. Nothing here
    styles chrome; nothing in chrome.css depends on the page honoring it.
 
    Why a layer, why the !important on every declaration: a generated page can
@@ -25,37 +25,17 @@
     body { padding-top: 56px !important; }
     body.edit-active { cursor: text !important; }
 
-    /* The open chat panel takes a column of the viewport rather than covering
-       it. The reservation is made on the BODY, not on .page-surround: body is
-       the one element the chrome can count on existing, so the panel never
-       lands on top of page content, whatever markup the page carries.
-       (scaleToFit() shrinks the preview to match the narrower canvas.) */
-    body.mp-chat-open { padding-left: 336px !important; }
-
-    /* The canvas gives up (and takes back) that column in the same motion as
-       the panel's slide — same duration and curve as --mp-slide/--mp-ease in
-       chrome.css, restated because custom properties don't reach out of the
-       chrome's shadow root. The sheet's fit-scale (an inline transform
-       scaleToFit writes) rides the same curve, so the column narrowing and
-       the preview shrinking read as one movement instead of a jump. */
-    body { transition: padding-left 220ms cubic-bezier(0.22, 0.61, 0.36, 1) !important; }
-    .page, .variant-page { transition: transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1) !important; }
-    @media (prefers-reduced-motion: reduce) {
-      body, .page, .variant-page { transition: none !important; }
-    }
-
     /* The canvas is the app's main region: it starts below the fixed toolbar,
-       takes all the width the toolbar and the panel leave, and scrolls
-       ITSELF when the sheet doesn't fit. Scrolling inside the region rather
-       than the window is what keeps the sheet from sliding under the toolbar
-       and keeps a wide sheet out from under the panel. */
+       takes the width the toolbar leaves, and scrolls ITSELF when the sheet
+       doesn't fit. Scrolling inside the region rather than the window is what
+       keeps the sheet from sliding under the toolbar. */
     .page-surround {
       height: calc(100vh - 56px) !important;
       overflow: auto !important;
       margin-left: 0 !important;
     }
 
-    /* Element picked by double-click in edit mode. The outline sits on a
+    /* Element selected by double-click in edit mode. The outline sits on a
        document node, so it belongs here — serializeForSave() strips the
        class, and print never sees it (this whole block is screen-only). */
     .mp-selected {

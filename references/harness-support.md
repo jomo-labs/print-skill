@@ -1,8 +1,8 @@
 # Live edit support
 
-Whether the page's Chat panel can talk to you — while you run a listen loop
-against the local server — is a property of the **agent harness you are
-running in**, not of the underlying model and not of the page. Nothing is
+Whether the open page can reach you — while you run a listen loop against the
+local server, so you learn what the user selects in it and it learns when you
+are mid-edit — is a property of the **agent harness you are running in**, not of the underlying model and not of the page. Nothing is
 recorded in the generated file: every page the server serves is live-capable,
 and the only question is whether *you* can listen. Decide that with this
 document, at Step 8 when you connect (and again at any later `/print live`).
@@ -30,8 +30,8 @@ listen loop in SKILL.md's "Live mode" section:
 
 - **(a) PUSH** — you have a tool that streams a long-running command's output
   back into the conversation as events as it appears. Run
-  `chat-cli.mjs wait <page> --follow` under it; each NDJSON line is a user
-  message arriving.
+  `chat-cli.mjs wait <page> --follow` under it; each NDJSON line is an event
+  from the page arriving.
 - **(b) BACKGROUND+WAKE** — you can start a command in the background
   (`run_in_background`, `is_background`, `&`…). If your harness *notifies*
   you when a background command exits (Claude Code does), run one-shot
@@ -48,9 +48,10 @@ Looping bounded foreground `wait` commands does technically work, and this
 skill used to describe it as a third rung; it is no longer supported. The
 turn can never end while you are listening, so the user watches a stream of
 silent command churn for as long as the session lasts and cannot ask you
-anything else without breaking the loop. The page still gets its Chat panel
-in copy/paste mode, which costs the user one paste and costs the conversation
-nothing.
+anything else without breaking the loop. Nothing else about the page is lost:
+it still prints, still edits text in place, and the user still asks you for
+changes in your session — you just won't know what they have selected unless
+they say.
 
 Unknown/unlisted harness: don't guess from the name — apply the ladder.
 
@@ -66,8 +67,8 @@ running.
 
 One limit on that default: **interactive runs only.** In headless / pipeline
 use (SKILL.md's "Headless / pipeline use" — the output goes to an automated
-consumer and the run ends at a PDF), there is nobody at a browser to chat
-with, so never arm the listen loop there whatever the ladder says.
+consumer and the run ends at a PDF), there is nobody at a browser, so never
+arm the listen loop there whatever the ladder says.
 
 Having connected, stay connected and stay quiet: no idle cap, no wake
 budget, and no narration of empty wakes (SKILL.md's "Leaving"). `/print live`
