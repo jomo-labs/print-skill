@@ -490,6 +490,17 @@ const ELEMENT_LABELS = {h1:'Title',h2:'Heading',h3:'Subheading',h4:'Subheading',
 
 let editMode = false, hoverBox = null, editListeners = null;
 
+// The element with an open contentEditable session, and the commit that ends
+// it (flips contentEditable back off, persists a real change). Tracked here
+// as well as on the element's own blur, because blur is NOT guaranteed to
+// fire: double-clicking a NESTED element leaves focus on the ancestor editing
+// host, so the ancestor never blurs — it would stay editable, with the
+// browser's focus ring still drawn around it, beside the child the user
+// actually just picked. One double-click has to mean one editable element and
+// one outline, so the previous session is ended from here first.
+let editingEl = null;
+let finishEdit = null;
+
 // Assigned by injectChrome() — the overlay is runtime-built chrome, so it
 // does not exist yet when this script parses (a const lookup here would bind
 // null and silently kill the hover boxes).
@@ -532,6 +543,12 @@ function enableEditMode() {
     const el = e.target;
     const pg = getActivePage();
     if (!el || !pg || !pg.contains(el) || !EDITABLE_TAGS.has(el.tagName.toLowerCase())) return;
+    // Re-opening the element already being edited keeps its session — and the
+    // pre-edit snapshot it holds, so the whole edit still counts as one.
+    if (el === editingEl) { el.focus(); selectElement(el); return; }
+    // Whatever else was being edited is done — including an ancestor of this
+    // element, whose blur will never come (see finishEdit).
+    finishEdit?.();
     const before = el.innerHTML;
     el.contentEditable = 'true';
     el.focus();
@@ -539,7 +556,11 @@ function enableEditMode() {
     // (screen-only outline; serializeForSave strips the class) and tells the
     // model, which acknowledges it in the user's own session.
     selectElement(el);
-    el.addEventListener('blur', () => {
+    const commit = () => {
+      if (finishEdit !== commit) return;   // this session already ended
+      editingEl = null;
+      finishEdit = null;
+      el.removeEventListener('blur', commit);
       el.contentEditable = 'false';
       // Committing an edit persists it — see the Save section. No-op commits
       // (focused but unchanged) skip the write so ETags only move on real
@@ -551,12 +572,14 @@ function enableEditMode() {
         el.setAttribute('data-mp-edited', '');
         savePage();
       }
-    }, { once: true });
+    };
+    editingEl = el;
+    finishEdit = commit;
+    el.addEventListener('blur', commit);
   };
   const onScroll = () => { clearHover(); };
   const onKey = (e) => {
-    // Escape commits (blurs) an in-progress text edit — blur is the only
-    // thing that flips contentEditable back off (see onDbl's once-blur).
+    // Escape commits an in-progress text edit — see blurActiveEdit.
     if (e.key === 'Escape') { blurActiveEdit(); clearHover(); }
   };
 
@@ -575,9 +598,13 @@ function enableEditMode() {
 
 // Ends an in-progress contentEditable session. Both Escape and leaving edit
 // mode route through here — otherwise toggling Edit off would leave the
-// last-edited element silently editable.
+// last-edited element silently editable. The blur commits the session the
+// normal way; finishEdit is the backstop for a session whose element is not
+// the focused one (a nested double-click leaves focus on the ancestor), and a
+// no-op once blur has already run it.
 function blurActiveEdit() {
   if (document.activeElement?.isContentEditable) document.activeElement.blur();
+  finishEdit?.();
 }
 
 function disableEditMode() {
