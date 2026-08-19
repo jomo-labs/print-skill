@@ -25,10 +25,11 @@
 //                           (data.selector null = they cleared it). What they
 //                           want done with it they tell you directly, in your
 //                           session.
-//         kind:"fit"        the page no longer fits the sheets it lays out —
-//                           data carries {authored, rendered, overflowing,
-//                           paper, orientation}. This one IS a request: the
-//                           layout is yours, the page is showing the user a
+//         kind:"fit"        the page no longer fits the sheets it lays out,
+//                           and the user pressed FIX on it — data carries
+//                           {authored, rendered, overflowing, paper,
+//                           orientation}. This one IS a request, and they made
+//                           it: the layout is yours, their toolbar now reads
 //                           red "… fixing", go and fix it (SKILL.md, "A fit
 //                           problem arrives").
 //

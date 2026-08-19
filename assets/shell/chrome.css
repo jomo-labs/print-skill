@@ -136,15 +136,16 @@ button, input, textarea, select {
    toolbar that is actually WRONG — the breaks fell where the content ran out
    of room rather than where they were designed — and the one thing the user
    cannot fix themselves, since the layout is the model's. So it is red and it
-   is a status message (indicator + line), not a quiet outlined note: it
-   states the problem, then states that it is being fixed, then disappears
-   when the model's edit lands and the page fits. */
+   is a status message (indicator + line + the FIX button that hands it over),
+   not a quiet outlined note: it states the problem, offers the one move that
+   answers it, then states that it is being fixed, then disappears when the
+   model's edit lands and the page fits. */
 #mp-fit-badge {
   display: none;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   /* No margin-left:auto: .mp-toolbar-spacer does the pushing. */
-  padding: 3px 8px;
+  padding: 3px 4px 3px 9px;
   border: 1px solid color-mix(in oklab, var(--mp-error) 35%, transparent);
   border-radius: 3px;
   background: color-mix(in oklab, var(--mp-error) 8%, transparent);
@@ -172,6 +173,40 @@ button, input, textarea, select {
 @media (prefers-reduced-motion: reduce) {
   #mp-fit-badge[data-mp-fixing] .mp-fit-dot { animation: none; }
 }
+/* While the model has it the button is gone, so the line gets its padding
+   back and the badge stays a plain status message. */
+#mp-fit-badge[data-mp-fixing] { padding-right: 9px; }
+
+/* FIX. Nothing about this page's problem reaches the model until this is
+   pressed, so it is the one control in the toolbar that is asking to be —
+   solid in the error colour, against the Print button's ink and the outlined
+   quiet of everything else. Sized to the status line it sits in, not to the
+   toolbar's primary buttons, so it reads as part of the message. */
+#mp-toolbar #mp-fit-fix {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 9px;
+  background: var(--mp-error);
+  color: var(--mp-paper);
+  border: none;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+/* Nobody is listening: the problem stands, but there is nowhere to send it.
+   pointer-events:none so the hover falls through to the badge, whose tooltip
+   is the one that says why (showFitBadge). */
+#mp-toolbar #mp-fit-fix:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+#mp-toolbar #mp-fit-fix:focus-visible { outline: 2px solid var(--mp-error); outline-offset: 2px; }
 
 #mp-variant-nav { display: none; align-items: center; gap: 8px; }
 #mp-variant-label {
