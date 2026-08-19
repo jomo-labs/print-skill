@@ -195,7 +195,7 @@ Neither set → leave the body tag untouched.
 
 There is deliberately no live-edit attribute. Whether the page can reach a
 model is not a property of the document — it is whether the page is being
-served (see `references/harness-support.md`), which the chrome reads at load
+served (see `references/harness-support.md` Part 1), which the chrome reads at load
 from its own origin.
 
 ### 6. Content
