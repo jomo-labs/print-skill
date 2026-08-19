@@ -41,9 +41,14 @@
 
   // ── Intent registry ───────────────────────────────────────────────────────
   // payload shapes:
-  //   chat-message    { text }
-  //   element-request { text, selector, snapshot, edited }
-  //   page-request    { text }
+  //   chat-message     { text }
+  //   element-request  { text, selector, snapshot, edited }
+  //   page-request     { text }
+  //   element-selected { selector, snapshot, edited } — selector null = none
+  //
+  // `quiet: true` marks an intent that is a NOTICE rather than something the
+  // user said: it posts without a chat bubble, and it has no paste form,
+  // because there is no model to notify when nothing is served.
   const INTENTS = {
     'chat-message': {
       toLive: p => ({ kind: 'message', text: p.text }),
@@ -61,6 +66,16 @@
       toPaste: p => `Please re-read ${pageFileName()} from disk (it contains my latest browser edits, ` +
                     `marked with data-mp-edited) and then: ${p.text}`,
     },
+    'element-selected': {
+      quiet: true,
+      toLive: p => ({
+        kind: 'selection',
+        text: p.selector ? `selected ${p.selector}` : 'cleared the selection',
+        data: p.selector
+          ? { selector: p.selector, snapshot: p.snapshot, edited: p.edited }
+          : { selector: null },
+      }),
+    },
   };
 
   /**
@@ -69,10 +84,16 @@
    * is never lost); file:// → paste card into the log.
    */
   async function dispatchIntent(intent) {
-    openPanel();
     const spec = INTENTS[intent.type];
     if (!spec) return;
+    // A notice never opens the panel. Leaving edit mode clears the selection,
+    // and that clear is itself a notice — opening the panel for it would pop
+    // the panel back up 400ms after the user pressed Done.
+    if (!spec.quiet) openPanel();
     if (isPasteState(panelState())) {
+      // Nothing is served, so there is nobody to notify — a notice is simply
+      // dropped rather than becoming a paste card the user never asked for.
+      if (spec.quiet) return;
       manualTransport.send(intent, spec);
     } else {
       await liveTransport.send(intent, spec);
@@ -95,7 +116,7 @@
       const label = intent.type === 'element-request'
         ? `⌖ ${intent.payload.selector}\n${intent.payload.text}`
         : intent.payload.text;
-      const bubble = addBubble('user', label);
+      const bubble = spec.quiet ? null : addBubble('user', label);
       try {
         const res = await fetch(chatUrl(), {
           method: 'POST',
@@ -107,8 +128,11 @@
         seenIds.add(body.id);
         setListening(body.listening);
       } catch {
-        // Server unreachable — degrade to the manual transport for this
-        // intent; the bubble stays as a record of what the card contains.
+        // Server unreachable. A notice is dropped — it describes a state the
+        // page still shows, and the next one supersedes it anyway. Anything
+        // the user actually said degrades to the manual transport, with the
+        // bubble left as a record of what the card contains.
+        if (spec.quiet) return;
         bubble.classList.add('mp-msg-failed');
         addPasteCard(spec.toPaste(intent.payload),
           'Could not reach the local server — paste this to your model instead.');
@@ -128,6 +152,12 @@
             // deadlock against the new id sequence.
             cursor = 0;
             seenIds.clear();
+            // The selection lived in that history too. The element is still
+            // selected on the page and still chipped in the panel, so the
+            // model that reconnects must be told again — otherwise the user
+            // is looking at a chip the model has never heard of.
+            noticedSelector = null;
+            noticeSelection();
             addDivider('server restarted — earlier messages were lost');
           }
           epoch = body.epoch;
@@ -136,6 +166,7 @@
             if (seenIds.has(m.id)) continue;
             seenIds.add(m.id);
             if (m.kind === 'status') setStatus(m.data?.state, m.text, m.ts);
+            else if (m.kind === 'selection') continue; // a notice, not conversation
             else if (m.from === 'model') addBubble('model', m.text);
             else addBubble('user', m.text); // another tab's message
           }
@@ -270,11 +301,13 @@
       inputEl.value = '';
       rememberDraft();
       // Element context is captured at SEND time from the live element, so
-      // the snapshot includes the edits the user just made to it.
+      // the snapshot includes the edits the user just made to it — and it is
+      // re-captured for EVERY message while the chip stands, which is what
+      // makes the selection a running context rather than a one-shot tag.
+      // The chip deliberately survives the send; only the user clears it.
       const intent = attachCtx?.el?.isConnected
         ? { type: 'element-request', payload: { text, ...captureElement(attachCtx.el) } }
         : { type: 'chat-message', payload: { text } };
-      clearAttach();
       dispatchIntent(intent);
     });
     body.appendChild(form);
@@ -289,8 +322,9 @@
   // Combined mode: shell.js owns the EDIT/Done button and calls this hook
   // when edit mode flips — the panel has no chrome of its own to close it.
   window.mpChatOnEditMode = (on) => {
-    if (on) openPanel();
-    else closePanel();
+    if (on) { openPanel(); return; }
+    clearAttach();
+    closePanel();
   };
 
   function openPanel() {
@@ -435,15 +469,45 @@
     });
   }
 
-  // ── Element selection chips ──────────────────────────────────────────────
+  // ── Element selection ────────────────────────────────────────────────────
   // Double-click in edit mode is the selection gesture: shell.js marks the
   // element .mp-selected and calls the hook below; the chip in the chat area
   // is the removable handle for that selection. No separate pick mode.
+  //
+  // A selection does two things. It tells the model straight away which
+  // element the user is looking at — so the model can acknowledge it before a
+  // word is typed — and it STICKS: the chip survives sending, so every
+  // message after it carries the same element as its target until the user
+  // picks another one or clears it. That is the whole point of selecting
+  // something: "this is what we are talking about now", not "this one
+  // message is about that".
 
   window.mpChatOnElementSelected = (target) => {
     attachCtx = { el: target };
     renderAttachChip();
+    noticeSelection();
   };
+
+  // ── Telling the model ────────────────────────────────────────────────────
+  // Debounced, because selecting is a hunt: a user double-clicking through
+  // four paragraphs to find the right one should wake the model once, at the
+  // element they settled on, not four times. And deduped by selector, so a
+  // re-select of the same element (or a reload that restores it) says
+  // nothing — the model already knows.
+  const SELECT_NOTICE_MS = 400;
+  let noticeTimer = null;
+  let noticedSelector = null;
+
+  function noticeSelection() {
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => {
+      const live = attachCtx?.el?.isConnected ? attachCtx.el : null;
+      const payload = live ? captureElement(live) : { selector: null };
+      if (payload.selector === noticedSelector) return;
+      noticedSelector = payload.selector;
+      dispatchIntent({ type: 'element-selected', payload });
+    }, SELECT_NOTICE_MS);
+  }
 
   // Fresh capture at send time — includes the user's just-made edits, minus
   // runtime-only state (selection class, contenteditable).
@@ -463,6 +527,10 @@
     const row = mpq('#mp-chat-attach');
     if (!row) return;
     row.querySelector('.mp-attach-chip')?.remove();
+    // Mirrored for the reload the model's own edit causes: the selection has
+    // to outlive it, or the context would drop out from under the user
+    // exactly when they are iterating on one element (see restore()).
+    ssSet('mpChatSel', attachCtx?.el?.isConnected ? buildSelector(attachCtx.el) : '');
     if (!attachCtx?.el) return;
     const chip = el('span', 'mp-attach-chip');
     const x = el('button', 'mp-attach-clear', '✕');
@@ -474,7 +542,10 @@
     row.appendChild(chip);
   }
 
-  // Removing the chip also deselects the element on the page.
+  // Removing the chip also deselects the element on the page — and tells the
+  // model, so it stops treating that element as what the conversation is
+  // about. Leaving edit mode clears it the same way: selection is an
+  // edit-mode idea, and a stale one would silently steer later messages.
   function clearAttach() {
     if (attachCtx?.el) {
       attachCtx.el.classList.remove('mp-selected');
@@ -483,6 +554,7 @@
     }
     attachCtx = null;
     renderAttachChip();
+    noticeSelection();
   }
 
   function buildSelector(target) {
@@ -505,9 +577,9 @@
 
   // ── Session persistence ───────────────────────────────────────────────────
   // The auto-reload poll replaces the whole document whenever the model edits
-  // the file; per-tab sessionStorage carries the panel open-state and the
-  // input's draft, caret and focus across that reload. Live history is
-  // refetched from the server (cursor 0).
+  // the file; per-tab sessionStorage carries the panel open-state, the input's
+  // draft, caret and focus, and the selected element across that reload. Live
+  // history is refetched from the server (cursor 0).
 
   function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch {} }
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
@@ -530,6 +602,7 @@
     } else {
       openPanel();
     }
+    restoreSelection();
     if (!inputEl) return;
     const draft = ssGet('mpChatDraft');
     if (draft) inputEl.value = draft;
@@ -540,6 +613,29 @@
       const caret = Math.min(Number(ssGet('mpChatCaret')) || 0, inputEl.value.length);
       try { inputEl.setSelectionRange(caret, caret); } catch {}
     }
+  }
+
+  // The reload that lands here is almost always the model's own edit to the
+  // element the user has selected — so re-resolve it and put the chip back,
+  // silently: the model told us to reload, it has not forgotten what we were
+  // discussing. If the element did not survive the edit (rewritten, renamed,
+  // removed), the model's context IS stale, and that is the one case worth a
+  // notice.
+  function restoreSelection() {
+    const sel = ssGet('mpChatSel');
+    if (!sel) return;
+    let el = null;
+    try { el = document.querySelector(sel); } catch { /* selector no longer parses */ }
+    if (el) {
+      attachCtx = { el };
+      el.classList.add('mp-selected');
+      noticedSelector = sel;   // already known to the model — say nothing
+      renderAttachChip();
+      return;
+    }
+    noticedSelector = sel;     // ...so the deselect below reads as a change
+    ssSet('mpChatSel', '');
+    noticeSelection();
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────

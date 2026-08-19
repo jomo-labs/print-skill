@@ -151,7 +151,12 @@ every page this project generates.
    If the Step 0 background `npm install` is still running, wait for it to
    finish first; if it was skipped or failed, run `npm install` in
    `<skill-dir>/server` now (its postinstall fetches the Chromium build).
-3. If Node is unavailable or the install fails, skip serving — the generated
+3. A running server is what live mode is: if you can run the listen loop,
+   you should be listening on it (see "Live mode"). That holds whether you
+   started the server just now or reused one that was already up. Arm the
+   loop at the end of the turn, after the Step 8 report — never here, or the
+   report never gets written.
+4. If Node is unavailable or the install fails, skip serving — the generated
    file still works opened directly in a browser as a **plain printable**
    (styled and print-exact via the browser dialog; no toolbar, editing, or
    chat — those are server-injected chrome). Say so in the report rather than
@@ -272,6 +277,15 @@ layout. Target page: the page generated in this conversation; if none and
 exactly one page is served (GET `/` lists them), use it; otherwise ask
 which page.
 
+**Whenever the server is up, you should be listening on it.** Not only at
+the end of a generation run — every time the server comes up or comes back:
+after you restart a crashed one, when a later turn starts one for a page from
+earlier in the conversation, and after you pick a page back up under "Editing
+an existing page". The open tab reconnects on its own (its poll retries
+through the outage and resets itself when the server's epoch changes, which
+also re-announces whatever element the user has selected), so you are the
+only half that has to be put back deliberately. Do it before ending the turn.
+
 ### Entering
 
 1. Ensure the server is up (Step 7 probe). No server, no live mode — and
@@ -319,6 +333,12 @@ that blocked you.
 Exit 2 from any `wait` means the server died — restart it (Step 7, same
 `--dir`) and resume.
 
+What `wait` hands you is one of two things, and they are not handled the
+same way. A `kind: "selection"` entry is a **notice** — the user just
+double-clicked an element on the page, or cleared it — and is handled under
+"The current selection" below. Everything else is a message the user wrote;
+that is the loop directly below.
+
 ### Handling a message
 
 1. `status <file>.html working` — **post it before you touch the file**, not
@@ -335,7 +355,8 @@ Exit 2 from any `wait` means the server died — restart it (Step 7, same
    browser edits and their `data-mp-edited` markers live in the file, and the
    message may carry element context in `data` (`selector`, `snapshot`,
    `edited`) pointing into it. For a sweep of everything the user edited:
-   `edits <file>.html`.
+   `edits <file>.html`. A message that carries its own `data.selector` is
+   about that element, whatever was selected before.
 3. Apply the change per "Editing an existing page" (same self-check rules for
    CSS, same Step 6 greps). Strip the `data-mp-edited` attributes you
    addressed as part of the edit — the marker means "not yet seen by the
@@ -344,6 +365,42 @@ Exit 2 from any `wait` means the server died — restart it (Step 7, same
    — that one is what refreshes the open tab, so post it only once the file
    is final, and always post it: leaving a working status open holds the
    preview until it times out. Then resume listening.
+
+### The current selection
+
+Double-clicking an element in edit mode selects it, and you are told the
+moment it happens — a `kind: "selection"` entry carrying `data.selector`,
+`data.snapshot` and `data.edited`, or `data.selector: null` when the user
+cleared it. It arrives before the user has typed anything.
+
+**A selection is never a request to edit.** Do not touch the file, do not
+post a `working` status. Do exactly two things:
+
+1. **Acknowledge it in one short line** — `say <file>.html "…"` — naming the
+   element the way the user would, not by its selector: "Looking at the
+   subtitle." / "Got the Saturday row." Read `data.snapshot` so you can name
+   it from its actual content. One line, no offer of options, no plan. The
+   point is that the user can see you are looking where they are looking.
+2. **Hold it as the target** for whatever they say next. When their next
+   message doesn't name what it's about — "make it bigger", "shorter",
+   "move this up" — it means the selected element. The chip stays on screen
+   until they clear it or pick another, so a whole run of messages can be
+   about the same element; keep applying it for as long as it stands.
+
+Then go straight back to listening. No status, no reload — nothing about
+the page changed.
+
+Housekeeping that keeps this honest:
+
+- **Newest wins.** If a batch carries several selections (the user hunted
+  around while you were busy), only the last one counts.
+- **`selector: null` means nothing is selected.** Drop the context; a later
+  bare "make it bigger" now has no target, so ask which element.
+- **Don't re-acknowledge the same element.** You are told again only if the
+  selection actually changed.
+- **Never let it override an explicit target.** If the user names something
+  else ("the title", "every heading"), that wins — the selection is a
+  default, not a lock.
 
 ### Leaving
 
@@ -360,8 +417,9 @@ Live mode ends when something actually ends it:
   or the same ask in the harness conversation. Post a sign-off (`say`), then
   `status <file>.html idle`, and leave the loop. Say once, in the harness,
   that chat is paused and `/print live` reconnects.
-- **The server dies** — exit 2 from any `wait`. Restart it and resume; if it
-  won't come back, say so.
+- **The server dies** — exit 2 from any `wait`. That is an interruption, not
+  an ending: restart it (Step 7, same `--dir`) and re-arm the loop in the
+  same turn. Only if it won't come back do you say so and stop.
 - **The session ends.** Nothing to do: the page keeps working, and the panel
   simply shows no model connected.
 
