@@ -15,8 +15,9 @@
 //   POST /render-pdf       { html, title } -> application/pdf
 //   PUT  /<page>.html      raw html body -> saved to the page's file
 //   POST /chat/<page>.html/messages   append a selection notice (the element
-//                          the user just double-clicked, or its deselect) or a
-//                          model status (working/done)
+//                          the user just double-clicked, or its deselect), a
+//                          fit report (the page no longer fits its sheets), or
+//                          a model status (working/done)
 //   GET  /chat/<page>.html/messages   read/long-poll one page's events + presence
 //   GET  /chat/messages    read/long-poll EVERY served page's events. This is
 //                          what a model watches: it connects to the server,
@@ -25,9 +26,9 @@
 //
 // The /chat/ path is historical: there is no chat. The page has no panel and
 // the user talks to their model in the model's own session — what crosses
-// this endpoint is the page telling the model what is selected, the model
-// telling the page when it is mid-edit, and presence for the toolbar's
-// indicator.
+// this endpoint is the page telling the model what is selected and when it has
+// stopped fitting its sheets, the model telling the page when it is mid-edit,
+// and presence for the toolbar's indicator.
 //
 // Static files also answer HEAD and carry an ETag derived from mtime+size —
 // the shell's auto-reload poll (see shell.js) HEADs its own URL and reloads
@@ -458,9 +459,12 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       const { from, kind, text, data } = payload || {};
       if (from !== "user" && from !== "model") return fail(400, "from must be user|model");
       // No "message" kind: the page has no chat to send one from, and the
-      // model has its own session to answer in.
-      if (!["status", "selection"].includes(kind)) {
-        return fail(400, "kind must be status|selection");
+      // model has its own session to answer in. What the page CAN send is
+      // what it alone observes: what the user pointed at ("selection"), and
+      // that it no longer fits its sheets ("fit") — a real defect in the
+      // model's own layout, so the page hands it back for fixing.
+      if (!["status", "selection", "fit"].includes(kind)) {
+        return fail(400, "kind must be status|selection|fit");
       }
       if (typeof text !== "string") return fail(400, "missing text");
       if (data !== undefined && (typeof data !== "object" || data === null)) {
@@ -470,6 +474,11 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       // data.selector === null. Without data there is nothing to report.
       if (kind === "selection" && (!data || !("selector" in data))) {
         return fail(400, "selection needs data.selector (null when deselected)");
+      }
+      // A fit report is a measurement — without the numbers there is nothing
+      // for the model to act on, and no way to tell one problem from another.
+      if (kind === "fit" && (!data || typeof data.rendered !== "number" || typeof data.authored !== "number")) {
+        return fail(400, "fit needs data.authored and data.rendered");
       }
       // A POST is always about one page — there is no such thing as a
       // selection on "every page".
