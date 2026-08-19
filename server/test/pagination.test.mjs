@@ -172,7 +172,11 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
           applySize(currentPaper, currentOrientation);
           return html;
         });
-        const strip = (s) => s.replace(/ data-mp-paginate="off"/g, "");
+        // data-mp-overflow is the one thing the split is ALLOWED to leave in
+        // the file: the diagnostic reportFit() writes, which by definition
+        // cannot be known with pagination switched off. Everything else — all
+        // of the content — must match character for character.
+        const strip = (s) => s.replace(/ data-mp-(paginate="off"|overflow="\d+")/g, "");
         assert.equal(strip(saved), strip(unsplit), `${name}: saved DOM differs from the unsplit one`);
       });
     }
@@ -191,6 +195,63 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
         });
       });
     }
+  });
+
+  await t.test("the shell reports sheets it had to add, and stays quiet when it didn't", async () => {
+    // The design half of the contract: content is never lost, but a break the
+    // shell chose is a decision the generation still owes, so it has to be
+    // visible rather than silently absorbed.
+    for (const name of Object.keys(BODIES)) {
+      await withPage(name, async (page) => {
+        const { fit, attr, badge } = await page.evaluate(() => ({
+          fit: window.mpFit,
+          attr: document.body.dataset.mpOverflow,
+          badge: (() => {
+            const el = document.getElementById("mp-chrome-root").shadowRoot.getElementById("mp-fit-badge");
+            return { shown: getComputedStyle(el).display !== "none", text: el.textContent };
+          })(),
+        }));
+        assert.equal(fit.authored, 1, `${name}: authored sheets`);
+        assert.ok(fit.rendered > 1, `${name}: rendered sheets`);
+        assert.equal(attr, String(fit.rendered), `${name}: data-mp-overflow`);
+        assert.ok(badge.shown, `${name}: the toolbar should say so`);
+        assert.match(badge.text, /runs onto \d+ sheets/, `${name}: badge text`);
+        // And it survives into the file, which is where the model reads it.
+        assert.match(await page.evaluate(() => serializeForSave()),
+          new RegExp(`data-mp-overflow="${fit.rendered}"`), `${name}: diagnostic not saved`);
+      });
+    }
+
+    // A page that fits carries nothing and says nothing.
+    await fs.writeFile(path.join(dir, "fits.html"),
+      assemble(`<h1>Short</h1><p>Comfortably inside one sheet.</p>`));
+    await withPage("fits", async (page) => {
+      const state = await page.evaluate(() => ({
+        fit: window.mpFit,
+        attr: document.body.dataset.mpOverflow,
+        shown: getComputedStyle(document.getElementById("mp-chrome-root")
+          .shadowRoot.getElementById("mp-fit-badge")).display !== "none",
+        saved: serializeForSave(),
+      }));
+      assert.deepEqual(state.fit, { authored: 1, rendered: 1, overflowing: 0 });
+      assert.equal(state.attr, undefined, "a page that fits should carry no diagnostic");
+      assert.equal(state.shown, false, "a page that fits should show no notice");
+      assert.ok(!state.saved.includes("data-mp-overflow"), "diagnostic leaked into a clean file");
+    });
+
+    // Sheets the author DID lay out are not an overflow.
+    const sheet = (title, n) => `<div class="page"><h1>${title}</h1>` +
+      Array.from({ length: n }, (_, i) => `<p>Line ${i}</p>`).join("") + `</div>`;
+    await fs.writeFile(path.join(dir, "authored.html"), assemble(sheet("One", 28) + sheet("Two", 28)));
+    await withPage("authored", async (page) => {
+      const state = await page.evaluate(() => ({
+        fit: window.mpFit,
+        attr: document.body.dataset.mpOverflow,
+      }));
+      assert.deepEqual(state.fit, { authored: 2, rendered: 2, overflowing: 0 },
+        "an authored two-sheet page should report as fitting");
+      assert.equal(state.attr, undefined, "an authored two-sheet page is not an overflow");
+    });
   });
 
   await t.test("changing paper re-splits from the authored flow", async () => {

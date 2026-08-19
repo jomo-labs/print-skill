@@ -170,6 +170,56 @@ function paginate(p) {
   for (const origin of originSheets()) paginateSheet(origin, p);
 }
 
+// What the pass had to do, published three ways: to the toolbar, to the body
+// as data-mp-overflow, and to window.mpFit for fit-cli.mjs.
+//
+// This is the point of the whole reporting path. Sheets the shell had to add
+// are sheets the AUTHOR did not lay out, and where a document breaks is a
+// design decision — which page each thing lands on, whether a page feels
+// complete (principles.md VII). The split keeps that content from being lost,
+// but it chooses the breaks by what happened to fit, which is exactly the
+// accident the design is supposed to prevent. So the shell says so, loudly
+// enough that the generation can go back and either make it fit one sheet or
+// lay the further sheets out on purpose.
+//
+// A page that fits carries NO attribute — the diagnostic only ever marks a
+// failure, so a clean document stays clean.
+function reportFit(p) {
+  const origins = originSheets();
+  let rendered = 0, overflowing = 0;
+  for (const origin of origins) {
+    for (const sheet of sheetChain(origin)) {
+      rendered++;
+      if (sheet.scrollHeight > p.h + 1) overflowing++;
+    }
+  }
+  const fit = { authored: origins.length, rendered, overflowing };
+  window.mpFit = fit;
+  if (rendered > fit.authored || overflowing) document.body.dataset.mpOverflow = String(rendered);
+  else delete document.body.dataset.mpOverflow;
+  showFitBadge(fit);
+  return fit;
+}
+
+// The user's half of the same news. Hidden while the page fits, so the
+// resting toolbar stays Print and Edit.
+function showFitBadge({ authored, rendered, overflowing }) {
+  const badge = mpq('#mp-fit-badge');
+  if (!badge) return;
+  const spilled = rendered > authored;
+  badge.style.display = (spilled || overflowing) ? 'inline-flex' : 'none';
+  if (!spilled && !overflowing) return;
+  badge.textContent = overflowing && !spilled
+    ? 'content overflows the sheet'
+    : `content runs onto ${rendered} sheets`;
+  badge.title = overflowing
+    ? 'Some content is too tall for any sheet and hangs past the paper edge. ' +
+      'It prints clipped — shorten it, or give it a sheet laid out for it.'
+    : `This page was authored as ${authored} sheet${authored === 1 ? '' : 's'} and its ` +
+      `content needs ${rendered}. Nothing is lost — the extra sheets print — but the ` +
+      'breaks fall where the content ran out of room rather than where they were designed.';
+}
+
 function paginateSheet(origin, p) {
   let sheet = origin;
   for (let i = 0; i < MAX_SHEETS; i++) {
@@ -382,6 +432,7 @@ function applySize(key, orientation) {
     el.style.marginBottom = '';
   });
   paginate(p);
+  reportFit(p);
   // margin: 0 — the sheet fills the page box edge to edge. Physical printers
   // with a hardware non-printable border will offer their own fit/shrink in
   // the print dialog; the artifact itself is never pre-shrunk. (A user-facing
@@ -949,6 +1000,14 @@ function injectChrome() {
   nav.appendChild(label);
   nav.appendChild(next);
   toolbar.appendChild(nav);
+
+  // Overflow notice — hidden while the page fits (showFitBadge). It sits at
+  // the end of the toolbar so appearing and disappearing never moves the
+  // buttons under the user's cursor.
+  const fit = document.createElement('span');
+  fit.id = 'mp-fit-badge';
+  fit.style.display = 'none';
+  toolbar.appendChild(fit);
 
   const ov = document.createElement('div');
   ov.id = 'mp-overlay';

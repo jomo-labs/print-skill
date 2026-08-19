@@ -105,6 +105,18 @@ matters (paper size, DPI, margins). Produce these channels:
 | `title` | Page title; also becomes the filename. |
 | `answer_key_html` | Worksheets with an answer key only; otherwise empty. Never author the key as a second page inside `content_html`. |
 
+**Fit one sheet.** Size the content to the paper before you write it (Principle
+VII, and the content-box dimensions in `references/page-types.md`): count the
+steps, items or rows and pick a layout that holds them. If the content genuinely
+will not fit, author the further sheets **explicitly** — the two-sheet form in
+`references/assembly.md` — and decide what lands on each, so every sheet reads
+as complete.
+
+Never leave it to the shell. Content that outgrows its sheet is continued onto
+another one at runtime rather than being lost, but the shell breaks where the
+content ran out of room, not where the design wanted a break. Step 6 checks for
+exactly that, and a page that trips it is not finished.
+
 ### Step 4 — Self-check
 
 Run the full Part B checklist in `references/design-rules.md` against your
@@ -130,6 +142,27 @@ template or stylesheet.
 Run the grep checks listed at the end of `references/assembly.md` against the
 written file (no leftover `<!-- CONTENT -->`, shell intact, anchors in order).
 Fix in place if anything fails.
+
+Then check that the content fits the sheets you laid out:
+
+```
+node <skill-dir>/server/fit-cli.mjs out/<file>.html
+```
+
+It loads the page exactly as the browser and the PDF renderer do and reports
+what the shell had to do. Exit 0 means the content fits as authored. Exit 1
+means it does not, and says how:
+
+- *authored N sheets, content needs M* — the shell had to continue the content
+  onto sheets you did not lay out. Nothing is lost and all M sheets print, but
+  the breaks are accidents. Cut or tighten the content to fit N, or author the
+  M sheets and place the breaks yourself. Re-run until it passes.
+- *content too tall to place on any sheet* — one block is taller than the paper.
+  It hangs past the edge and **prints clipped**. Always fix this: split the
+  block, shorten it, or give it its own sheet.
+
+Needs Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in the
+report that the fit check could not run.
 
 ### Step 7 — Serve
 
@@ -196,6 +229,10 @@ directly after Step 6:
   (default: next to the HTML), prints the output path on stdout, and exits.
 - **Against the running server** (Step 7 already done):
   `curl -fsS -o <file>.pdf http://127.0.0.1:<port>/pdf/<file>.html`
+
+`fit-cli.mjs` (Step 6) is the gate to run before either: it exits non-zero when
+the content did not fit the sheets the page lays out, so a pipeline can stop on
+an accidental page break instead of shipping it.
 
 Both need Node 18+ and the Step 0 `npm install`. There is no dialog fallback
 without a human: if Node is unavailable, report the HTML path and say the PDF
