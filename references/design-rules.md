@@ -38,9 +38,10 @@ must not restate them and cannot opt out — it describes only what it changes.
    zero blur radius, solid var() color: `box-shadow: 8px 8px 0 var(--color-accent)`
    is legal, `box-shadow: 0 4px 12px ...` is not, and the same applies to
    text-shadow. A blurred shadow is a gradient, and gradients print as muddy
-   dithered ink (checked in the self-check below). The page border's own drop
-   shadow is screen-only chrome — print strips it automatically, so never rely on
-   any shadow for printed identity. The only backgrounds ever allowed are
+   dithered ink (checked in the self-check below). The sheet's own drop shadow is
+   the viewer's chrome, not yours — it is fixed, it never prints, and no token or
+   rule of yours changes it, so never rely on any shadow for printed identity.
+   The only backgrounds ever allowed are
    `var(--color-ink)`, `var(--color-paper)`, `var(--color-pull-bg)`,
    `transparent`, `none`, or `inherit`. Never
    `var(--color-accent)` as a background.
@@ -68,7 +69,7 @@ must not restate them and cannot opt out — it describes only what it changes.
 
 3. **Ad-hoc theming is wide open, except paper.** Freely define your own accent,
    ink, rule, and subtle-tone colors, your own headline/body/label fonts, and your
-   own page chrome — border weight, corner treatment, a non-inset drop-shadow — to
+   own page chrome — border weight, corner treatment, frame inset — to
    match whatever theme, character, or mood the request implies. The one token you
    may never move is `--color-paper`: it must stay exactly `white` (or be left
    alone). Every token you redefine applies to the printable document only: the

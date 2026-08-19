@@ -38,9 +38,11 @@ novelty font. Every spec is written as a section-to-token map (see
    spec doesn't list keep their defaults; don't invent values for them. Set
    `font_import` to the spec's plain Google Fonts URL (it is given as a URL,
    not a CSS `@import` — `custom_css` may not contain `@import` or `url(`).
-2. **Page chrome** — set `--page-border` and `--page-shadow` in that same
-   block; never write a `.page` rule. This pair carries more theme identity
-   than anything else, and only the border survives onto paper.
+2. **Page chrome** — set `--page-border` in that same block; never write a
+   `.page` rule. The frame carries more theme identity than anything else, and
+   it is the part of the sheet's chrome that survives onto paper. (The sheet's
+   drop shadow is not themeable — it is fixed preview chrome, not part of the
+   printable.)
 3. **Signature components** — structure the page out of the spec's section 6
    blocks, using the shared utilities it names (`.kicker`, `.tilt`, `.badge`,
    `.chapter-label`, `.halftone`, `.invert`, `.tint`). Map the content INTO
@@ -64,9 +66,10 @@ writing content, decide and then execute ALL of:
    Fonts, `font_import` set), 1-3 accent colors true to the source material,
    and any scale steps the theme moves. Work through the section-to-token map
    in `theme-spec-template.md` rather than improvising tokens one at a time.
-2. **Page chrome** — set `--page-border` and `--page-shadow` deliberately,
-   even if one is `none`. The frame is what makes the sheet read as the theme's
-   world at a glance, and only it survives print — the shadow is screen-only.
+2. **Page chrome** — set `--page-border` deliberately, even if it is `none`.
+   The frame is what makes the sheet read as the theme's world at a glance, and
+   it is the only page chrome a theme owns — the sheet's drop shadow is fixed
+   preview chrome and never prints.
 3. **Signature motifs** — invent 2-3 recurring theme-specific components (a
    stamped badge, tilted callouts, section headers with an accent stripe,
    in-world labels) and use them as the page's actual structure, reusing the
