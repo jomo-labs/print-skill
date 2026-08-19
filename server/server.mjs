@@ -462,7 +462,8 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       // model has its own session to answer in. What the page CAN send is
       // what it alone observes: what the user pointed at ("selection"), and
       // that it no longer fits its sheets ("fit") — a real defect in the
-      // model's own layout, so the page hands it back for fixing.
+      // model's own layout, which the user hands back for fixing by pressing
+      // FIX on the page's own notice.
       if (!["status", "selection", "fit"].includes(kind)) {
         return fail(400, "kind must be status|selection|fit");
       }

@@ -24,9 +24,10 @@ edge. This skill packages print as a design discipline:
   such in the toolbar — knows what you picked, so you can just say "make this
   bigger" in the session you're already in. And when a page stops fitting its
   sheets — because the layout outgrew them, or because you typed too much into
-  it — the toolbar says so in red and hands the problem straight to your model
-  to fix, then clears itself when the fix lands. That chrome renders in its own
-  shadow root, so however wildly a page is themed, the controls stay put.
+  it — the toolbar says so in red, with a FIX button that hands the problem to
+  your model; the message clears itself when the fix lands. That chrome renders
+  in its own shadow root, so however wildly a page is themed, the controls stay
+  put.
   Print is WYSIWYG: the on-screen sheet and the printed sheet are
   dimension-identical, 1:1.
 - **Deterministic PDFs** — a bundled local server (Node + headless Chromium)
