@@ -456,7 +456,7 @@ async function printThisPage() {
 // server's ETag (an mtime+size signature — see serveFile in server.mjs)
 // changes.
 //
-// A CHANGED FILE ALWAYS RELOADS, IMMEDIATELY. Nothing about what the user is
+// A CHANGED FILE ALWAYS RELOADS, IMMEDIATELY. Nothing about what the USER is
 // doing — typing in the chat panel, holding an uncommitted double-click text
 // edit — postpones it. That reads harsh for the text edit, so it's worth
 // saying why it isn't: an uncommitted edit is already unsaveable the moment
@@ -465,6 +465,17 @@ async function printThisPage() {
 // the reload never rescued that edit; it only hid the newer page and let the
 // user pour more typing into something already lost. Reloading at once costs
 // the same edit and tells them straight away.
+//
+// The MODEL is the one voice that can hold it, because it is the one that
+// knows the file is mid-change. Its live loop brackets an edit with `status
+// working` before the first write and `status done` after the last (SKILL.md
+// "Answering a chat message"), and in between the file passes through
+// versions the user was never meant to see. So chat.js holds the poll for
+// that window (window.mpModelWorking) and, on done, calls the tick itself —
+// the finished page arrives with the model's confirmation, in one reload
+// instead of a flicker through every intermediate write. The hold is capped
+// there, not here: a model that dies mid-edit must not freeze the preview,
+// which is the whole failure this poll exists to avoid.
 //
 // What stays is not deferral:
 //   - file:// pages have no server to ask — skip entirely, same rule as
@@ -479,17 +490,19 @@ async function printThisPage() {
 //   - hosts that serve no ETag (a page uploaded somewhere static) get no
 //     auto-reload rather than spurious ones.
 //
-// The 1.5s cadence is also what keeps a multi-step model edit (write, then
-// correct it, then correct it again) from flashing through every intermediate
-// version — the ticks coalesce it into one reload of the finished page.
+// Everything that reaches the file some other way — an edit made from the
+// harness conversation instead of the chat panel, a page the user rewrites by
+// hand, a model whose harness can't post status at all — still lands within a
+// tick. The model's signal makes the common path exact; the poll is what
+// makes every path work.
 function initAutoReload() {
   if (location.protocol === 'file:') return;
   const tick = async () => {
-    // The one hold, and it cannot last: an open IME composition is text the
-    // user has typed that exists nowhere yet — not in the input's value, so
-    // not in the draft the reload would restore. It ends when they commit the
-    // characters, a keystroke or two away.
-    if (saving || window.mpChatComposing?.()) return;
+    // Two holds, both of them bounded elsewhere by the thing that set them:
+    // an open IME composition (text that exists in neither the input's value
+    // nor the mirrored draft, so there would be nothing to restore), and the
+    // model's own working window.
+    if (saving || window.mpChatComposing?.() || window.mpModelWorking?.()) return;
     try {
       const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return;
@@ -502,6 +515,10 @@ function initAutoReload() {
       currentEtag = tag;
     } catch { /* offline or server restarting — try again next tick */ }
   };
+  // Out-of-band check, for a caller that KNOWS the file just reached its
+  // final state — chat.js on `status done`. Without it the finished page
+  // would still be up to a tick behind the message announcing it.
+  window.mpReloadIfChanged = tick;
   // Seed the baseline now, not on the first interval tick — an edit landing
   // within the first poll period would otherwise BECOME the baseline and
   // never trigger the reload it should have.

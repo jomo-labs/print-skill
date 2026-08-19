@@ -143,7 +143,7 @@
             cursor = Math.max(cursor, m.id);
             if (seenIds.has(m.id)) continue;
             seenIds.add(m.id);
-            if (m.kind === 'status') setStatus(m.data?.state, m.text);
+            if (m.kind === 'status') setStatus(m.data?.state, m.text, m.ts);
             else if (m.from === 'model') addBubble('model', m.text);
             else addBubble('user', m.text); // another tab's message
           }
@@ -202,6 +202,24 @@
   // draft — so the poll waits out the composition, and only that.
   let composing = false;
   window.mpChatComposing = () => composing;
+
+  // ── Model work window (read by shell.js's auto-reload poll) ──────────────
+  // The model brackets an edit with `status working` before its first write
+  // and `status done` after its last (SKILL.md's live loop), and in between
+  // the file passes through versions nobody meant to show: a heading fixed
+  // but its spacing not yet, a section half-rewritten. So the preview holds
+  // across that window and refreshes once at the end, arriving with the
+  // model's confirmation rather than flickering ahead of it.
+  //
+  // Two things keep the hold from becoming the staleness it replaced. It is
+  // measured from the status message's OWN timestamp, so it expires on its
+  // own if the model stops reporting — a crashed edit, a harness that never
+  // sends done — and a working status replayed out of the server's history
+  // after a reload is already long expired, holding nothing. And `done`
+  // doesn't merely release it: it asks for the reload immediately.
+  const WORKING_HOLD_MS = 30000;
+  let workingSince = 0; // ts of the latest working status; 0 when not working
+  window.mpModelWorking = () => Date.now() - workingSince < WORKING_HOLD_MS;
 
   function el(tag, className, text) {
     const n = document.createElement(tag);
@@ -358,8 +376,11 @@
   // dots + label, kept last); the presence line below stays about the
   // connection. Re-posted `status working "<note>"` updates the label.
   let workingEl = null;
-  function setStatus(state, text) {
+  function setStatus(state, text, ts) {
     if (state === 'working') {
+      // Re-posted progress notes extend the window — a long edit that keeps
+      // reporting keeps holding, one that goes quiet stops.
+      workingSince = ts || Date.now();
       const label = text || 'Working…';
       if (workingEl?.isConnected) {
         workingEl.querySelector('.mp-working-label').textContent = label;
@@ -372,8 +393,13 @@
         scrolled(() => log.appendChild(workingEl));
       }
     } else {
+      // done / idle: the file has reached its final state, so show it now
+      // rather than up to a poll tick after the message that announces it.
+      const wasWorking = workingSince !== 0;
+      workingSince = 0;
       workingEl?.remove();
       workingEl = null;
+      if (wasWorking) window.mpReloadIfChanged?.();
     }
   }
 

@@ -235,7 +235,10 @@ whenever no `file:`-opened legacy page still needs it.
 A page open in the browser via the local server refreshes itself within a
 couple of seconds of the file changing on disk (the shell polls the server's
 ETag) — after an edit, tell the user the open page has updated; don't ask
-them to refresh.
+them to refresh. In a live chat session the refresh is exact rather than
+merely quick: bracketing the edit with `status working` / `status done` (see
+"Handling a message") holds the preview across your writes and refreshes it
+the moment you report done.
 
 Sync runs the other way too: text edits the user makes in the browser are
 saved back into the file when committed. So the file may have changed since
@@ -305,10 +308,13 @@ Exit 2 from any `wait` means the server died — restart it (Step 7, same
 
 ### Handling a message
 
-1. `status <file>.html working` — the panel shows an animated working
-   indicator. While you work, push what's useful for the user to see:
-   re-post `status <file>.html working "<short progress note>"` to update
-   the indicator's label as you move through stages, and use
+1. `status <file>.html working` — **post it before you touch the file**, not
+   just for the animated indicator: it also tells the open tab your edit is
+   in flight, so the preview holds still instead of flickering through every
+   intermediate write, and refreshes once when you report done. While you
+   work, push what's useful for the user to see: re-post `status <file>.html
+   working "<short progress note>"` to update the indicator's label as you
+   move through stages (each re-post also extends the hold), and use
    `say <file>.html "<message>"` for anything worth keeping in the
    conversation (a finding, a question, a caveat) — it appears as a chat
    bubble immediately, not just at the end.
@@ -320,9 +326,11 @@ Exit 2 from any `wait` means the server died — restart it (Step 7, same
 3. Apply the change per "Editing an existing page" (same self-check rules for
    CSS, same Step 6 greps). Strip the `data-mp-edited` attributes you
    addressed as part of the edit — the marker means "not yet seen by the
-   model". The open tab refreshes itself.
-4. `say <file>.html "<one-line confirmation>"`, then `status <file>.html done`,
-   then resume listening.
+   model".
+4. `say <file>.html "<one-line confirmation>"`, then `status <file>.html done`
+   — that one is what refreshes the open tab, so post it only once the file
+   is final, and always post it: leaving a working status open holds the
+   preview until it times out. Then resume listening.
 
 ### Exiting — mandatory caps
 

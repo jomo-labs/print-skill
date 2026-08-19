@@ -1,19 +1,25 @@
 // Live edit's other half: the model writes the page file, and the tab the
 // user is looking at has to show it. The shell polls the served ETag for
 // exactly this (shell.js "Auto-reload"), and the rule it enforces is blunt on
-// purpose — a changed file reloads the tab immediately, whatever the user is
+// purpose — a changed file reloads the tab immediately, whatever the USER is
 // in the middle of. Every previous attempt to be polite about that froze the
 // preview on a file that had already changed, and left the user staring at a
 // stale page with no reason to press reload.
 //
-// So these cases are the states that used to buy a delay: the chat input
-// still focused after a message was sent (the live-edit flow itself — the
-// model's answer arrives while the caret is exactly there), a half-written
-// chat draft, and an uncommitted double-click text edit. The last one looks
-// like data loss and is worth being precise about, so it's asserted here:
+// So the first cases here are the states that used to buy a delay: the chat
+// input still focused after a message was sent (the live-edit flow itself —
+// the model's answer arrives while the caret is exactly there), a half-
+// written chat draft, and an uncommitted double-click text edit. The last one
+// looks like data loss and is worth being precise about, so it's asserted:
 // that edit is ALREADY unsaveable once the file changes underneath it — the
 // commit PUTs a stale ETag, gets 412, and reloads it away regardless.
-// Reloading at once costs nothing extra and says so immediately.
+//
+// The exception is the MODEL, the one party that knows the file is mid-change
+// rather than final. It brackets an edit with `status working` / `status
+// done`, and the last cases cover that window: held while it works, refreshed
+// the instant it reports done, and — the part that decides whether this is an
+// improvement or a reinvention of the original bug — released on its own if
+// done never comes.
 //
 //   node --test server/test/          (needs `npm install` in server/)
 import test from "node:test";
@@ -47,6 +53,16 @@ async function expectHeading(page, text) {
     text,
     { timeout: 15000 }
   );
+}
+
+// What `chat-cli.mjs status <page> <state>` posts, straight to the endpoint.
+async function postStatus(serverUrl, state, text = "") {
+  const res = await fetch(`${serverUrl}/chat/page.html/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: "model", kind: "status", text, data: { state } }),
+  });
+  assert.equal(res.ok, true, `posting status ${state}`);
 }
 
 // Open the page, then open edit mode (which is also what builds the chat panel).
@@ -174,6 +190,46 @@ test("a page edited on disk reaches the open tab", async (t) => {
         panelOpen: true,
         editMode: true,
       });
+    });
+  });
+
+  // The model's edit is not one write. Between `working` and `done` the file
+  // can hold a heading fixed but its spacing not yet — versions the user was
+  // never meant to see, and the reason this window exists at all.
+  await t.test("the model's work window holds, and done shows the finished page", async () => {
+    await withPage(async (page) => {
+      let reloads = 0;
+      page.on("framenavigated", () => reloads++);
+      await postStatus(server.url, "working", "Rewriting the header");
+      await page.waitForFunction(`!!${CHROME}.querySelector(".mp-working")`); // window open
+      await writePage("HALF-DONE");
+      await new Promise((r) => setTimeout(r, SETTLE_MS));
+      assert.equal(await headingOf(page), "BEFORE", "intermediate writes stay off screen");
+      await writePage("AFTER");
+      await postStatus(server.url, "done");
+      await expectHeading(page, "AFTER");
+      assert.equal(reloads, 1, "one reload for the whole edit, not one per write");
+    });
+  });
+
+  // The failure that would make this a reinvention of the original bug: a
+  // model that announces work and never comes back. The window is measured
+  // from the status message's own timestamp, so it expires by itself.
+  await t.test("a work window nobody closes expires on its own", async () => {
+    await withPage(async (page) => {
+      await postStatus(server.url, "working", "Rewriting the header");
+      await page.waitForFunction(`!!${CHROME}.querySelector(".mp-working")`);
+      await writePage("AFTER");
+      await new Promise((r) => setTimeout(r, SETTLE_MS));
+      assert.equal(await headingOf(page), "BEFORE", "held while the window is open");
+      // The model dies here — no done, ever. Move the tab's clock past the cap.
+      await page.clock.setSystemTime(new Date(Date.now() + 60_000));
+      await expectHeading(page, "AFTER");
+      // Close it for the cases after this one: chat history is server-side and
+      // shared by every tab of this page, so an abandoned window holds the
+      // next tab that loads too (for the rest of the cap). That is the real
+      // behavior, not a test artifact — it just isn't this file's only case.
+      await postStatus(server.url, "done");
     });
   });
 
