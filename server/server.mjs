@@ -17,7 +17,11 @@
 //   POST /chat/<page>.html/messages   append a selection notice (the element
 //                          the user just double-clicked, or its deselect) or a
 //                          model status (working/done)
-//   GET  /chat/<page>.html/messages   read/long-poll those + presence
+//   GET  /chat/<page>.html/messages   read/long-poll one page's events + presence
+//   GET  /chat/messages    read/long-poll EVERY served page's events. This is
+//                          what a model watches: it connects to the server,
+//                          not to a page, so it sees whichever page the user
+//                          opens without being told about it.
 //
 // The /chat/ path is historical: there is no chat. The page has no panel and
 // the user talks to their model in the model's own session — what crosses
@@ -54,7 +58,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderPdf, closeBrowser } from "./render.mjs";
-import { createStoreRegistry, postMessage, awaitMessages, listening } from "./chat-store.mjs";
+import { createLiveLog, postMessage, awaitMessages, listening, closeAll } from "./chat-store.mjs";
 
 const DEFAULT_PORT = 4949;
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -239,9 +243,9 @@ async function readBody(req, limit = 8 * 1024 * 1024) {
  */
 export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "127.0.0.1", autoPort = false } = {}) {
   const ROOT = path.resolve(dir);
-  // This server's own live-channel state. Per instance, not per module: see
-  // createStoreRegistry() for why a shared one would be wrong.
-  const chatStores = createStoreRegistry();
+  // This server's own live-channel log — one for every page it serves, not
+  // one per page: see createLiveLog() for why.
+  const live = createLiveLog();
   // Bound after listen; handlers only run once requests arrive, so reads are safe.
   let baseUrl = null;
 
@@ -315,28 +319,36 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     res.end(JSON.stringify({ ok: true }));
   }
 
-  // /chat/<page>.html/messages — the live channel (see chat-store.mjs).
-  // The shell POSTs selection notices and polls with wait=0; the model's chat-cli
-  // POSTs replies/status and long-polls as consumer=model. Chat exists only
-  // for pages PUT could reach: same path rule (top-level or one project dir
-  // deep), and the page file must exist — a chat thread never outlives (or
-  // predates) its page.
+  // The live channel (see chat-store.mjs), at two addresses:
+  //
+  //   /chat/messages              every page this server serves — what a model
+  //                               watches, so it never has to name a page or
+  //                               be told when the user opens another
+  //   /chat/<page>.html/messages  one page — what that page's own poll uses,
+  //                               and where POSTs about it go
+  //
+  // A page-scoped address exists only for pages PUT could reach: same path
+  // rule (top-level or one project dir deep), and the file must exist — an
+  // event stream never outlives (or predates) its page. The server-wide
+  // address has no such check; there is no page to check.
   async function handleChat(req, res, urlPath, query) {
     const fail = (status, error) => {
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error }));
     };
-    const m = urlPath.match(/^\/chat(\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html)\/messages$/);
-    if (!m) return fail(404, "not a chat endpoint");
-    const pagePath = m[1];
-    const filePath = safeJoin(ROOT, pagePath);
-    if (!filePath) return fail(404, "no such page");
-    try {
-      if (!(await fs.stat(filePath)).isFile()) return fail(404, "no such page");
-    } catch {
-      return fail(404, "no such page");
+    let pagePath;  // undefined = every page
+    if (urlPath !== "/chat/messages") {
+      const m = urlPath.match(/^\/chat(\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html)\/messages$/);
+      if (!m) return fail(404, "not a live-channel endpoint");
+      pagePath = m[1];
+      const filePath = safeJoin(ROOT, pagePath);
+      if (!filePath) return fail(404, "no such page");
+      try {
+        if (!(await fs.stat(filePath)).isFile()) return fail(404, "no such page");
+      } catch {
+        return fail(404, "no such page");
+      }
     }
-    const store = chatStores.get(pagePath);
 
     if (req.method === "POST") {
       let payload;
@@ -361,9 +373,12 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       if (kind === "selection" && (!data || !("selector" in data))) {
         return fail(400, "selection needs data.selector (null when deselected)");
       }
-      const msg = postMessage(store, { from, kind, text, data });
+      // A POST is always about one page — there is no such thing as a
+      // selection on "every page".
+      if (!pagePath) return fail(404, "post to /chat/<page>.html/messages");
+      const msg = postMessage(live, { page: pagePath, from, kind, text, data });
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, id: msg.id, epoch: store.epoch, listening: listening(store) }));
+      return res.end(JSON.stringify({ ok: true, id: msg.id, epoch: live.epoch, listening: listening(live) }));
     }
 
     if (req.method === "GET") {
@@ -376,9 +391,10 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       const from = ["user", "model", "any"].includes(query.get("from")) ? query.get("from") : "any";
       const consumer = query.get("consumer") || "";
       const peek = query.get("peek") === "1";
-      const messages = await awaitMessages(store, {
+      const messages = await awaitMessages(live, {
         after,
         from,
+        page: pagePath,   // undefined at /chat/messages = every page
         waitMs,
         consumer,
         peek,
@@ -386,7 +402,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       });
       if (res.writableEnded) return; // client went away mid-poll
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, epoch: store.epoch, listening: listening(store), messages }));
+      return res.end(JSON.stringify({ ok: true, epoch: live.epoch, listening: listening(live), messages }));
     }
 
     return fail(405, "method not allowed");
@@ -552,7 +568,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
           // Settle open chat long-polls first or close() waits out the longest
           // poll (render-cli's one-shot server and SIGINT both come through here).
           close: () => {
-            chatStores.closeAll();
+            closeAll(live);
             return new Promise((r) => server.close(r));
           },
         });
@@ -593,9 +609,12 @@ if (isMain) {
   // the agent is already looking, not left to a doc it may not re-read.
   console.log(
     `live edit: nothing is listening yet. Before you end this turn, connect:\n` +
-    `  node ${path.join(SERVER_DIR, "chat-cli.mjs")} wait <page>.html --timeout 240 --url ${url}\n` +
-    `  (run it in the background and end your turn; its completion wakes you. ` +
-    `Skip only in a headless/pipeline run, where nobody is at a browser.)`
+    `  node ${path.join(SERVER_DIR, "chat-cli.mjs")} wait --timeout 240 --url ${url}\n` +
+    `  (No page argument — this watches every page this server serves, including\n` +
+    `  ones made later. Run it in the background and end your turn; its completion\n` +
+    `  wakes you, then arm the next one. This applies even if all you were asked to\n` +
+    `  do was start the server. Skip only in a headless/pipeline run, where nobody\n` +
+    `  is at a browser.)`
   );
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, async () => {

@@ -300,9 +300,16 @@ the user's own edits).
 
 ## Live mode
 
-While the local server is running, you can be **connected to the open page**:
-you learn which element the user has just selected in it, and the page learns
-when you are mid-edit so it doesn't flash a half-written file at them.
+While the local server is running, you can be **connected to it**: you learn
+which element the user has just selected in whatever page they have open, and
+their page learns when you are mid-edit so it doesn't flash a half-written
+file at them.
+
+**You connect to the server, not to a page.** One listener covers every page
+it serves — the one you just generated, one from earlier in the conversation,
+one made after you started listening. Each event tells you which page it came
+from. So there is never a page to choose before connecting, and never a reason
+to wait until a particular page is "in play".
 
 There is no chat in the page. The user asks you for changes **here, in this
 conversation** — where they already are, and where your answer was going to
@@ -310,15 +317,18 @@ appear anyway. The page's job is to show them the printable and let them point
 at parts of it; yours is everything else.
 
 It is on by default: whenever the server is up and your harness can run the
-listen loop (`references/harness-support.md`), you connect — at the end of a
-generation run, after restarting a crashed server, or in any later turn that
-brings one up. Not something the user asks for.
+listen loop (`references/harness-support.md`), you connect. At the end of a
+generation run, after restarting a crashed server, in any later turn that
+brings one up — **including a turn whose only job was to start the server.**
+"They only asked me to restart it" is not a reason to leave it unwatched:
+starting the server and being reachable on it are one act, and a server nobody
+is listening to silently drops everything the user does in the browser.
 
 All commands are `node <skill-dir>/server/chat-cli.mjs …` against the running
-server (Step 7), with `--url` pointing at its actual port. The `<page>`
-argument is the page's server path — `<file>.html` under the out/ layout.
-Target page: the page generated in this conversation; if none and exactly one
-page is served (GET `/` lists them), use it; otherwise ask which page.
+server (Step 7), with `--url` pointing at its actual port. `wait` takes no
+page. The commands that do — `status`, `edits` — take the page's server path
+(`<file>.html` under the out/ layout), which is the `page` field of the event
+you are responding to, or the page you just wrote.
 
 ### Connecting
 
@@ -328,15 +338,17 @@ page is served (GET `/` lists them), use it; otherwise ask which page.
    If it fails, say so once, plainly, and carry on: everything else about the
    page still works, and the user can still ask you for changes here.
 3. Arm the listen loop at the **highest rung your harness supports**:
-   - **(a) Stream/monitor** — run `wait <page> --follow` under a tool that
-     streams its output back to you; each NDJSON line is an event.
-   - **(b) Background + wake** — run `wait <page> --timeout 240` as a
-     background task and **end your turn**. The completion notification wakes
-     you: handle whatever arrived, then arm the next one.
+   - **(a) Stream/monitor** — run `wait --follow` under a tool that streams
+     its output back to you; each NDJSON line is an event.
+   - **(b) Background + wake** — run `wait --timeout 240` as a background task
+     and **end your turn**. The completion notification wakes you: handle
+     whatever arrived, then arm the next one.
 
-   Never loop foreground `wait` commands; a harness that can do nothing else
-   does not support live mode at all.
-4. Post `status <file>.html idle` so the page's indicator goes live.
+   No page argument in either. Never loop foreground `wait` commands; a
+   harness that can do nothing else does not support live mode at all.
+4. If you have just generated or edited a page, post `status <file>.html idle`
+   so that page's indicator goes live at once. Otherwise there is nothing to
+   post — a page shows itself as connected on its next poll either way.
 
 ### Staying quiet
 
@@ -359,10 +371,11 @@ changed and why, and anything that blocked you.
 
 ### A selection arrives
 
-`wait` delivers `kind: "selection"` entries. Each carries `data.selector`,
-`data.snapshot` and `data.edited` — or `data.selector: null` when the user
-cleared it. It means the user double-clicked something on the page. It is
-**never a request to edit**: don't touch the file, don't post a status.
+`wait` delivers `kind: "selection"` entries. Each carries the `page` it came
+from plus `data.selector`, `data.snapshot` and `data.edited` — or
+`data.selector: null` when the user cleared it. It means the user
+double-clicked something in that page. It is **never a request to edit**:
+don't touch the file, don't post a status.
 
 Do two things:
 
@@ -371,10 +384,11 @@ Do two things:
    subtitle." / "Got the Saturday row." That line is the whole point: it is
    how they know you are looking where they are looking, and it belongs here,
    in front of them, not on the page.
-2. **Hold it as the subject.** Their next message will usually not name what
-   it is about — "make it bigger", "shorter", "move this up" — and it means
-   the selected element. It stays the subject until they select another or
-   clear it, so a whole run of requests can be about the same one.
+2. **Hold it as the subject**, along with the page it is on. Their next
+   message will usually not name what it is about — "make it bigger",
+   "shorter", "move this up" — and it means that element, in that page. It
+   stays the subject until they select another or clear it, so a whole run of
+   requests can be about the same one.
 
 Then go back to listening, silently.
 
