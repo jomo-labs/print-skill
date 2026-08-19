@@ -50,10 +50,15 @@
 // one-shot variant that needs no running server).
 //
 // Usage: node server.mjs [--dir <pages-dir>] [--port <port>] [--auto-port]
+// --dir: the project's out/ — an absolute path is safest, since a shell that
+// ran `npm install` in <skill-dir>/server is still sitting there. Omitted or
+// pointed at a project root, the out/ inside it is used; pointed anywhere
+// inside the skill's own install, the server refuses to start rather than
+// serve a tree with none of the project's pages in it (see resolveServeDir).
 // --auto-port: if the port is taken (e.g. another project's print-skill
 // server), walk upward to the next free one instead of failing.
 import http from "node:http";
-import { promises as fs, realpathSync } from "node:fs";
+import { promises as fs, realpathSync, statSync, readdirSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -62,7 +67,8 @@ import { createLiveLog, postMessage, awaitMessages, listening, closeAll } from "
 
 const DEFAULT_PORT = 4949;
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
-const SKILL_ASSETS = path.join(SERVER_DIR, "..", "assets");
+const SKILL_DIR = path.resolve(SERVER_DIR, "..");
+const SKILL_ASSETS = path.join(SKILL_DIR, "assets");
 const SHELL_DIR = path.join(SKILL_ASSETS, "shell");
 
 const MIME = {
@@ -233,6 +239,98 @@ async function readBody(req, limit = 8 * 1024 * 1024) {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString("utf-8");
+}
+
+function isDirectory(p) {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function hasPages(dir) {
+  try {
+    return readdirSync(dir).some((entry) => entry.endsWith(".html"));
+  } catch {
+    return false;
+  }
+}
+
+function isInside(parent, child) {
+  const rel = path.relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+// Node realpaths import.meta.url, so SKILL_DIR is the real install path — but
+// a skill is commonly reached through a symlink (.claude/skills/print -> the
+// repo), and a --dir typed against that path would compare as somewhere else
+// entirely. Compare real paths so the symlinked route is the same place.
+function realOrSelf(p) {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p; // doesn't exist yet — the caller's own existence check reports it
+  }
+}
+
+/**
+ * Work out which directory the CLI should serve.
+ *
+ * The pages live in the PROJECT's out/ — never anywhere under the skill's own
+ * install, which only holds the shell assets and this server. But the shell a
+ * model drives the skill from carries its cwd across commands, so the process
+ * that starts the server often inherits a cwd left behind by an earlier step
+ * (`npm install` in <skill-dir>/server, most of all). A bare `node
+ * server.mjs`, or a relative `--dir out`, then resolved against the skill
+ * instead of the project: the server came up healthy, serving the wrong tree,
+ * and every page 404'd for a reason nothing on screen explained.
+ *
+ * So the root is resolved, not assumed:
+ *  - a directory holding an out/ and no pages of its own means out/ (the
+ *    project root was named, or inherited as cwd, where out/ was meant),
+ *  - a root inside the skill is refused outright — the skill is never a
+ *    project, and there is nothing on disk that says which project was,
+ *  - a root that doesn't exist is refused too, rather than served as an empty
+ *    tree that answers /healthz.
+ *
+ * Refusals throw with the fix in the message; the CLI prints it and exits.
+ */
+export function resolveServeDir(dirArg, cwd = process.cwd()) {
+  const named = dirArg ? path.resolve(cwd, dirArg) : path.resolve(cwd);
+  const notes = [];
+
+  // "--dir <cwd>" (or no flag at all) from the project root: out/ is right
+  // there, and the project root itself holds no pages. Serve what was meant.
+  let root = named;
+  const nested = path.join(root, "out");
+  if (!hasPages(root) && isDirectory(nested)) {
+    root = nested;
+    notes.push(`serving ${root} (the out/ inside ${named})`);
+  }
+
+  // The one root inside the skill that is a real project's: the skill's own
+  // out/, generated when the skill is used on itself. Everything else under
+  // the install — the skill root, server/, assets/ — is the skill, not output.
+  const skillOwnOut = path.join(SKILL_DIR, "out");
+  const realRoot = realOrSelf(root);
+  if (isInside(SKILL_DIR, realRoot) && realRoot !== realOrSelf(skillOwnOut)) {
+    throw new Error(
+      `refusing to serve ${root}: that is inside the print skill itself (${SKILL_DIR}), not a project's out/.\n` +
+      `This is what an inherited cwd looks like — the shell was left in the skill directory by an earlier step.\n` +
+      `Start the server with an absolute root instead: node ${path.join(SERVER_DIR, "server.mjs")} --dir <project>/out`
+    );
+  }
+
+  if (!isDirectory(root)) {
+    throw new Error(
+      `refusing to serve ${root}: no such directory.\n` +
+      `Generate the pages first, then start the server with an absolute root:\n` +
+      `  node ${path.join(SERVER_DIR, "server.mjs")} --dir <project>/out`
+    );
+  }
+
+  return { root, notes };
 }
 
 /**
@@ -596,12 +694,20 @@ if (isMain) {
     const i = args.indexOf(flag);
     return i !== -1 && args[i + 1] ? args[i + 1] : fallback;
   };
+  let root, notes;
+  try {
+    ({ root, notes } = resolveServeDir(argValue("--dir", null)));
+  } catch (err) {
+    console.error(`print-skill server: ${err.message}`);
+    process.exit(1);
+  }
+  for (const note of notes) console.log(`print-skill server: ${note}`);
   const { url, close } = await startServer({
-    dir: argValue("--dir", process.cwd()),
+    dir: root,
     port: Number(argValue("--port", DEFAULT_PORT)),
     autoPort: args.includes("--auto-port"),
   });
-  console.log(`print-skill server: ${url}  (serving ${path.resolve(argValue("--dir", process.cwd()))})`);
+  console.log(`print-skill server: ${url}  (serving ${root})`);
   // Addressed to the agent that just started this process. A served page is
   // live-editable, but only if something is actually listening on it — and
   // the moment that is most often missed is exactly this one, a restart in a
