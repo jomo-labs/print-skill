@@ -143,7 +143,7 @@
             cursor = Math.max(cursor, m.id);
             if (seenIds.has(m.id)) continue;
             seenIds.add(m.id);
-            if (m.kind === 'status') setStatus(m.data?.state, m.text);
+            if (m.kind === 'status') setStatus(m.data?.state, m.text, m.ts);
             else if (m.from === 'model') addBubble('model', m.text);
             else addBubble('user', m.text); // another tab's message
           }
@@ -208,6 +208,34 @@
   let panel = null, log = null, presenceEl = null, inputEl = null, sendEl = null;
   let attachCtx = null; // { el } — the element double-click selected in edit mode
 
+  // ── Composition signal (read by shell.js's auto-reload poll) ─────────────
+  // The poll reloads on a changed file no matter what the user is doing, and
+  // typing here is safe under that rule: the draft, caret and focus are
+  // mirrored to sessionStorage on every keystroke and restored on the other
+  // side. An IME composition is the exception the mirror can't cover — the
+  // characters being composed are in neither the input's value nor the
+  // draft — so the poll waits out the composition, and only that.
+  let composing = false;
+  window.mpChatComposing = () => composing;
+
+  // ── Model work window (read by shell.js's auto-reload poll) ──────────────
+  // The model brackets an edit with `status working` before its first write
+  // and `status done` after its last (SKILL.md's live loop), and in between
+  // the file passes through versions nobody meant to show: a heading fixed
+  // but its spacing not yet, a section half-rewritten. So the preview holds
+  // across that window and refreshes once at the end, arriving with the
+  // model's confirmation rather than flickering ahead of it.
+  //
+  // Two things keep the hold from becoming the staleness it replaced. It is
+  // measured from the status message's OWN timestamp, so it expires on its
+  // own if the model stops reporting — a crashed edit, a harness that never
+  // sends done — and a working status replayed out of the server's history
+  // after a reload is already long expired, holding nothing. And `done`
+  // doesn't merely release it: it asks for the reload immediately.
+  const WORKING_HOLD_MS = 30000;
+  let workingSince = 0; // ts of the latest working status; 0 when not working
+  window.mpModelWorking = () => Date.now() - workingSince < WORKING_HOLD_MS;
+
   function el(tag, className, text) {
     const n = document.createElement(tag);
     if (className) n.className = className;
@@ -244,7 +272,15 @@
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
     });
-    inputEl.addEventListener('input', () => ssSet('mpChatDraft', inputEl.value));
+    // Draft + caret + focus are mirrored into sessionStorage on every event
+    // that can move them, so the auto-reload poll can replace the document
+    // under a focused, half-written message and restore() puts it back
+    // exactly as it was (see Session persistence).
+    for (const type of ['input', 'keyup', 'click', 'focus', 'blur']) {
+      inputEl.addEventListener(type, rememberDraft);
+    }
+    inputEl.addEventListener('compositionstart', () => { composing = true; });
+    inputEl.addEventListener('compositionend', () => { composing = false; rememberDraft(); });
     form.appendChild(inputEl);
 
     sendEl = el('button', 'mp-chat-send', 'Send');
@@ -255,7 +291,7 @@
       const text = inputEl.value.trim();
       if (!text) return;
       inputEl.value = '';
-      ssSet('mpChatDraft', '');
+      rememberDraft();
       // Element context is captured at SEND time from the live element, so
       // the snapshot includes the edits the user just made to it.
       const intent = attachCtx?.el?.isConnected
@@ -349,8 +385,11 @@
   // dots + label, kept last); the presence line below stays about the
   // connection. Re-posted `status working "<note>"` updates the label.
   let workingEl = null;
-  function setStatus(state, text) {
+  function setStatus(state, text, ts) {
     if (state === 'working') {
+      // Re-posted progress notes extend the window — a long edit that keeps
+      // reporting keeps holding, one that goes quiet stops.
+      workingSince = ts || Date.now();
       const label = text || 'Working…';
       if (workingEl?.isConnected) {
         workingEl.querySelector('.mp-working-label').textContent = label;
@@ -363,8 +402,13 @@
         scrolled(() => log.appendChild(workingEl));
       }
     } else {
+      // done / idle: the file has reached its final state, so show it now
+      // rather than up to a poll tick after the message that announces it.
+      const wasWorking = workingSince !== 0;
+      workingSince = 0;
       workingEl?.remove();
       workingEl = null;
+      if (wasWorking) window.mpReloadIfChanged?.();
     }
   }
 
@@ -492,12 +536,21 @@
 
   // ── Session persistence ───────────────────────────────────────────────────
   // The auto-reload poll replaces the whole document whenever the model edits
-  // the file; per-tab sessionStorage carries the panel open-state and input
-  // draft across that reload. Live history is refetched from the server
-  // (cursor 0).
+  // the file; per-tab sessionStorage carries the panel open-state and the
+  // input's draft, caret and focus across that reload. Live history is
+  // refetched from the server (cursor 0).
 
   function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch {} }
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
+
+  // Everything about the input that a reload would otherwise drop: the text,
+  // where the caret sits in it, and whether it had focus at all.
+  function rememberDraft() {
+    if (!inputEl) return;
+    ssSet('mpChatDraft', inputEl.value);
+    ssSet('mpChatCaret', String(inputEl.selectionStart ?? inputEl.value.length));
+    ssSet('mpChatFocus', chromeRoot.activeElement === inputEl ? '1' : '0');
+  }
 
   function restore() {
     if (ssGet('mpChatOpen') !== '1') return;
@@ -508,8 +561,16 @@
     } else {
       openPanel();
     }
+    if (!inputEl) return;
     const draft = ssGet('mpChatDraft');
-    if (draft && inputEl) inputEl.value = draft;
+    if (draft) inputEl.value = draft;
+    // Focus last, and only if it was there before: the reload is meant to be
+    // invisible to someone in the middle of writing a message.
+    if (ssGet('mpChatFocus') === '1') {
+      inputEl.focus();
+      const caret = Math.min(Number(ssGet('mpChatCaret')) || 0, inputEl.value.length);
+      try { inputEl.setSelectionRange(caret, caret); } catch {}
+    }
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────

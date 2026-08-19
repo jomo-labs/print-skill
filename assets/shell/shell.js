@@ -454,26 +454,55 @@ async function printThisPage() {
 // page"); this poll makes those edits appear in an already-open tab without a
 // manual refresh. Every 1.5s the shell HEADs its own URL and reloads when the
 // server's ETag (an mtime+size signature — see serveFile in server.mjs)
-// changes. Guards, in order:
+// changes.
+//
+// A CHANGED FILE ALWAYS RELOADS, IMMEDIATELY. Nothing about what the USER is
+// doing — typing in the chat panel, holding an uncommitted double-click text
+// edit — postpones it. That reads harsh for the text edit, so it's worth
+// saying why it isn't: an uncommitted edit is already unsaveable the moment
+// the file changes underneath it. Committing PUTs it with the stale ETag, the
+// server answers 412, and savePage() reloads and drops it (see Save). Holding
+// the reload never rescued that edit; it only hid the newer page and let the
+// user pour more typing into something already lost. Reloading at once costs
+// the same edit and tells them straight away.
+//
+// The MODEL is the one voice that can hold it, because it is the one that
+// knows the file is mid-change. Its live loop brackets an edit with `status
+// working` before the first write and `status done` after the last (SKILL.md
+// "Answering a chat message"), and in between the file passes through
+// versions the user was never meant to see. So chat.js holds the poll for
+// that window (window.mpModelWorking) and, on done, calls the tick itself —
+// the finished page arrives with the model's confirmation, in one reload
+// instead of a flicker through every intermediate write. The hold is capped
+// there, not here: a model that dies mid-edit must not freeze the preview,
+// which is the whole failure this poll exists to avoid.
+//
+// What stays is not deferral:
 //   - file:// pages have no server to ask — skip entirely, same rule as
 //     printThisPage().
-//   - an in-progress double-click text edit is never yanked away: polling is
-//     deferred while a contentEditable element has focus, and while a save
-//     is in flight (the save's own write must update the baseline via the
-//     PUT response, not race the poll into a self-reload).
+//   - a save in flight, and the same re-check after the HEAD: the tab's OWN
+//     write moves the ETag too, and its new baseline arrives on the PUT
+//     response. Without this the tab reloads in reaction to itself.
 //   - non-ok responses and network errors are ignored, never reloaded on:
 //     a restarting server, or the deleted temp .render-*.html this same
 //     script polls from inside the headless PDF render, would otherwise
 //     wipe the page mid-print.
 //   - hosts that serve no ETag (a page uploaded somewhere static) get no
 //     auto-reload rather than spurious ones.
+//
+// Everything that reaches the file some other way — an edit made from the
+// harness conversation instead of the chat panel, a page the user rewrites by
+// hand, a model whose harness can't post status at all — still lands within a
+// tick. The model's signal makes the common path exact; the poll is what
+// makes every path work.
 function initAutoReload() {
   if (location.protocol === 'file:') return;
   const tick = async () => {
-    // Deferred while typing in the chat panel for the same reason as an
-    // in-progress text edit: a reload would eat the half-typed input.
-    if (saving || document.activeElement?.isContentEditable ||
-        chromeRoot?.activeElement?.closest('#mp-chat-panel')) return;
+    // Two holds, both of them bounded elsewhere by the thing that set them:
+    // an open IME composition (text that exists in neither the input's value
+    // nor the mirrored draft, so there would be nothing to restore), and the
+    // model's own working window.
+    if (saving || window.mpChatComposing?.() || window.mpModelWorking?.()) return;
     try {
       const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return;
@@ -486,6 +515,10 @@ function initAutoReload() {
       currentEtag = tag;
     } catch { /* offline or server restarting — try again next tick */ }
   };
+  // Out-of-band check, for a caller that KNOWS the file just reached its
+  // final state — chat.js on `status done`. Without it the finished page
+  // would still be up to a tick behind the message announcing it.
+  window.mpReloadIfChanged = tick;
   // Seed the baseline now, not on the first interval tick — an edit landing
   // within the first poll period would otherwise BECOME the baseline and
   // never trigger the reload it should have.
@@ -688,6 +721,12 @@ function injectChrome() {
   mpq('#mp-btn-print').addEventListener('click', printThisPage);
   mpq('#mp-btn-edit').addEventListener('click', toggleEditMode);
 
+  // Before the page-shaped work below, which reads elements a malformed or
+  // hand-written document may not have: whatever else this page breaks, the
+  // tab must keep following the file, so the model's next edit can fix it
+  // without the user having to reload by hand.
+  initAutoReload();
+
   // Per-page configuration is declarative: assembly sets data attributes on
   // <body> (the document carries data, never chrome API calls). Legacy pages
   // instead carry injected applySize()/setLiveEditSupported() script lines
@@ -714,6 +753,5 @@ function injectChrome() {
 
   initVariants();
   applySize(savedPaper, configuredOrient);
-  initAutoReload();
   window.addEventListener('resize', () => scaleToFit(paperDims().w));
 })();
