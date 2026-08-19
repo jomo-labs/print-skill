@@ -46,8 +46,10 @@ unsupported.
 First, warm up the PDF server in the background so the one-time Chromium
 download overlaps with authoring instead of stalling Step 7: if
 `<skill-dir>/server/node_modules` does not exist and Node is available, start
-`npm install` in `<skill-dir>/server` as a **background** task (its
-postinstall fetches the pinned Chromium build). Do not wait on it — continue
+`npm install --prefix <skill-dir>/server` as a **background** task (its
+postinstall fetches the pinned Chromium build). Use `--prefix` rather than
+`cd`-ing into the skill: a shell whose cwd persists between commands would
+still be sitting there at Step 7, where the served root is resolved. Do not wait on it — continue
 straight to the input check; Step 7 picks it up. If Node/npm is unavailable,
 skip this; Step 7 degrades gracefully.
 
@@ -181,9 +183,15 @@ every page this project generates.
    `node <skill-dir>/server/server.mjs --dir <cwd>/out --port 4949 --auto-port`.
    `--auto-port` walks to the next free port when 4949 is taken; the startup
    line prints the URL it actually bound — read it, don't assume 4949.
+   Give `--dir` as an **absolute** path: a shell that ran the Step 0
+   `npm install` is still sitting in `<skill-dir>/server`, and a relative
+   `out` resolves there instead of in the project. The server refuses to
+   start on a root inside the skill and says so — re-run with the absolute
+   path rather than reading the pages back out of the skill directory.
    If the Step 0 background `npm install` is still running, wait for it to
-   finish first; if it was skipped or failed, run `npm install` in
-   `<skill-dir>/server` now (its postinstall fetches the Chromium build).
+   finish first; if it was skipped or failed, run
+   `npm install --prefix <skill-dir>/server` now (its postinstall fetches the
+   Chromium build).
 3. A running server is what live mode is: if you can run the listen loop,
    you should be listening on it (see "Live mode"). That holds whether you
    started the server just now or reused one that was already up. Arm the
