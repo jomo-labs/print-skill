@@ -193,20 +193,15 @@
   let panel = null, log = null, presenceEl = null, inputEl = null, sendEl = null;
   let attachCtx = null; // { el } — the element double-click selected in edit mode
 
-  // ── Typing signal (read by shell.js's auto-reload poll) ───────────────────
-  // A reload while the user is mid-keystroke would land on top of their
-  // typing, so the poll asks here first. What counts is TYPING, not focus:
-  // after a message is sent the input keeps focus and the user waits for the
-  // model — the moment its edit lands is exactly when the preview must
-  // refresh. The window is deliberately short; the draft and caret survive
-  // the reload anyway (restore()), so a stale preview is the worse trade.
-  const TYPING_QUIET_MS = 1200;
-  let lastKeystroke = 0;
+  // ── Composition signal (read by shell.js's auto-reload poll) ─────────────
+  // The poll reloads on a changed file no matter what the user is doing, and
+  // typing here is safe under that rule: the draft, caret and focus are
+  // mirrored to sessionStorage on every keystroke and restored on the other
+  // side. An IME composition is the exception the mirror can't cover — the
+  // characters being composed are in neither the input's value nor the
+  // draft — so the poll waits out the composition, and only that.
   let composing = false;
-  function markTyping() { lastKeystroke = Date.now(); }
-  window.mpChatTyping = () =>
-    !!inputEl && chromeRoot.activeElement === inputEl &&
-    (composing || (!!inputEl.value && Date.now() - lastKeystroke < TYPING_QUIET_MS));
+  window.mpChatComposing = () => composing;
 
   function el(tag, className, text) {
     const n = document.createElement(tag);
@@ -251,12 +246,8 @@
     for (const type of ['input', 'keyup', 'click', 'focus', 'blur']) {
       inputEl.addEventListener(type, rememberDraft);
     }
-    inputEl.addEventListener('input', markTyping);
-    inputEl.addEventListener('keydown', markTyping);
-    // IME composition spans many input events with no keystrokes of its own;
-    // the flag holds the reload off for the whole composition.
-    inputEl.addEventListener('compositionstart', () => { composing = true; markTyping(); });
-    inputEl.addEventListener('compositionend', () => { composing = false; markTyping(); });
+    inputEl.addEventListener('compositionstart', () => { composing = true; });
+    inputEl.addEventListener('compositionend', () => { composing = false; rememberDraft(); });
     form.appendChild(inputEl);
 
     sendEl = el('button', 'mp-chat-send', 'Send');

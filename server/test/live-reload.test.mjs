@@ -1,17 +1,19 @@
 // Live edit's other half: the model writes the page file, and the tab the
 // user is looking at has to show it. The shell polls the served ETag for
-// exactly this (shell.js "Auto-reload"), but the poll also has to stand down
-// while the user is mid-input — and the interesting failures live in that
-// second rule, not the first. A guard that is too eager freezes the preview
-// on a file that has already changed, and the user is left staring at a stale
-// page with no reason to press reload.
+// exactly this (shell.js "Auto-reload"), and the rule it enforces is blunt on
+// purpose — a changed file reloads the tab immediately, whatever the user is
+// in the middle of. Every previous attempt to be polite about that froze the
+// preview on a file that had already changed, and left the user staring at a
+// stale page with no reason to press reload.
 //
-// So the cases here are the guard's edges: the chat input still focused after
-// a message was sent (the live-edit flow itself — the model's answer arrives
-// while the caret is exactly there), an uncommitted double-click text edit
-// (unsaved DOM, genuinely worth deferring for — and worth resuming the moment
-// it commits), and a half-written chat draft (deferred only while the keys
-// are actually moving, and carried across the reload).
+// So these cases are the states that used to buy a delay: the chat input
+// still focused after a message was sent (the live-edit flow itself — the
+// model's answer arrives while the caret is exactly there), a half-written
+// chat draft, and an uncommitted double-click text edit. The last one looks
+// like data loss and is worth being precise about, so it's asserted here:
+// that edit is ALREADY unsaveable once the file changes underneath it — the
+// commit PUTs a stale ETag, gets 412, and reloads it away regardless.
+// Reloading at once costs nothing extra and says so immediately.
 //
 //   node --test server/test/          (needs `npm install` in server/)
 import test from "node:test";
@@ -113,28 +115,46 @@ test("a page edited on disk reaches the open tab", async (t) => {
     });
   });
 
-  // The one deferral that must hold: a contentEditable edit lives only in the
-  // DOM until it commits, so a reload would destroy it. It must not hold
-  // forever, though — committing releases it.
-  await t.test("uncommitted text edit defers the reload, committing releases it", async () => {
+  // The state that looks like it deserves a delay, and doesn't: the second
+  // half asserts why — the edit the reload discarded could not have been
+  // saved anyway.
+  await t.test("uncommitted text edit does not hold the reload back", async () => {
     await withPage(async (page) => {
       await page.dblclick("#probe");
+      await page.keyboard.type(" HAND EDIT");
       await writePage("AFTER");
-      await new Promise((r) => setTimeout(r, SETTLE_MS));
-      assert.equal(await headingOf(page), "BEFORE", "reload must wait for the edit to commit");
-      await page.keyboard.press("Escape"); // commits (blurs) the edit
       await expectHeading(page, "AFTER");
     });
   });
 
-  // A draft is recoverable state (sessionStorage), so it buys a short quiet
-  // period, not an indefinite hold — and the reload puts it back untouched.
+  await t.test("that edit was unsaveable from the moment the file changed", async () => {
+    await withPage(async (page) => {
+      // Same situation, but let the user commit it the way they normally
+      // would, with the poll held off (offline) so nothing reloads first.
+      await page.route("**/page.html", (route) =>
+        route.request().method() === "HEAD" ? route.abort() : route.continue());
+      await page.dblclick("#probe");
+      await page.keyboard.type(" HAND EDIT");
+      await writePage("AFTER");
+      const put = page.waitForResponse((r) => r.request().method() === "PUT");
+      await page.keyboard.press("Escape"); // commits — PUTs with the stale ETag
+      assert.equal((await put).status(), 412, "the server refuses the stale write");
+      await expectHeading(page, "AFTER"); // savePage() reloads on 412
+      assert.equal(
+        (await fs.readFile(file, "utf-8")).includes("HAND EDIT"),
+        false,
+        "the hand edit never reaches disk — holding the reload would only have delayed this"
+      );
+    });
+  });
+
+  // Nothing is lost to a reload landing on a live draft: it is mirrored to
+  // sessionStorage on every keystroke and comes back with caret and focus.
   await t.test("a half-written chat draft survives the reload", async () => {
     await withPage(async (page) => {
       await page.evaluate(`${CHROME}.querySelector("#mp-chat-input").focus()`);
       await page.keyboard.type("half written mess");
       await writePage("AFTER");
-      assert.equal(await headingOf(page), "BEFORE", "no reload lands on a live keystroke");
       await expectHeading(page, "AFTER");
       await page.waitForFunction(`!!${CHROME}.querySelector("#mp-chat-input")`);
       const restored = await page.evaluate(`(() => {
@@ -154,6 +174,22 @@ test("a page edited on disk reaches the open tab", async (t) => {
         panelOpen: true,
         editMode: true,
       });
+    });
+  });
+
+  // The one exception, and it cannot outlast the composition: characters
+  // being composed by an IME are in neither the input's value nor the draft,
+  // so there is nothing for the reload to restore.
+  await t.test("an open IME composition waits, and only until it ends", async () => {
+    await withPage(async (page) => {
+      const input = `${CHROME}.querySelector("#mp-chat-input")`;
+      await page.evaluate(`${input}.focus()`);
+      await page.evaluate(`${input}.dispatchEvent(new CompositionEvent("compositionstart"))`);
+      await writePage("AFTER");
+      await new Promise((r) => setTimeout(r, SETTLE_MS));
+      assert.equal(await headingOf(page), "BEFORE", "no reload mid-composition");
+      await page.evaluate(`${input}.dispatchEvent(new CompositionEvent("compositionend"))`);
+      await expectHeading(page, "AFTER");
     });
   });
 });

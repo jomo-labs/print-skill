@@ -454,33 +454,42 @@ async function printThisPage() {
 // page"); this poll makes those edits appear in an already-open tab without a
 // manual refresh. Every 1.5s the shell HEADs its own URL and reloads when the
 // server's ETag (an mtime+size signature — see serveFile in server.mjs)
-// changes. Guards, in order:
+// changes.
+//
+// A CHANGED FILE ALWAYS RELOADS, IMMEDIATELY. Nothing about what the user is
+// doing — typing in the chat panel, holding an uncommitted double-click text
+// edit — postpones it. That reads harsh for the text edit, so it's worth
+// saying why it isn't: an uncommitted edit is already unsaveable the moment
+// the file changes underneath it. Committing PUTs it with the stale ETag, the
+// server answers 412, and savePage() reloads and drops it (see Save). Holding
+// the reload never rescued that edit; it only hid the newer page and let the
+// user pour more typing into something already lost. Reloading at once costs
+// the same edit and tells them straight away.
+//
+// What stays is not deferral:
 //   - file:// pages have no server to ask — skip entirely, same rule as
 //     printThisPage().
-//   - an in-progress double-click text edit is never yanked away: polling is
-//     deferred while a contentEditable element has focus, and while a save
-//     is in flight (the save's own write must update the baseline via the
-//     PUT response, not race the poll into a self-reload).
-//   - a half-typed chat message is deferred the same way, but only while the
-//     user is ACTUALLY typing (window.mpChatTyping — see chat.js). Focus is
-//     not typing: the chat input keeps focus after a message is sent, and
-//     the model's edit lands seconds later, so deferring on focus alone
-//     froze the preview for exactly the flow live edit exists for.
+//   - a save in flight, and the same re-check after the HEAD: the tab's OWN
+//     write moves the ETag too, and its new baseline arrives on the PUT
+//     response. Without this the tab reloads in reaction to itself.
 //   - non-ok responses and network errors are ignored, never reloaded on:
 //     a restarting server, or the deleted temp .render-*.html this same
 //     script polls from inside the headless PDF render, would otherwise
 //     wipe the page mid-print.
 //   - hosts that serve no ETag (a page uploaded somewhere static) get no
 //     auto-reload rather than spurious ones.
+//
+// The 1.5s cadence is also what keeps a multi-step model edit (write, then
+// correct it, then correct it again) from flashing through every intermediate
+// version — the ticks coalesce it into one reload of the finished page.
 function initAutoReload() {
   if (location.protocol === 'file:') return;
   const tick = async () => {
-    // Deferred while typing in the chat panel for the same reason as an
-    // in-progress text edit: a reload would land mid-keystroke. Both guards
-    // only postpone — the baseline is left untouched, so the very next
-    // unguarded tick still sees the change and reloads.
-    if (saving || document.activeElement?.isContentEditable ||
-        window.mpChatTyping?.()) return;
+    // The one hold, and it cannot last: an open IME composition is text the
+    // user has typed that exists nowhere yet — not in the input's value, so
+    // not in the draft the reload would restore. It ends when they commit the
+    // characters, a keystroke or two away.
+    if (saving || window.mpChatComposing?.()) return;
     try {
       const res = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return;
