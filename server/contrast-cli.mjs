@@ -55,89 +55,130 @@ try {
     const srgb = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
     const lum = ([r, g, b]) =>
       0.2126 * srgb(r / 255) + 0.7152 * srgb(g / 255) + 0.0722 * srgb(b / 255);
+
     // Chromium reports computed colors in whatever space the author wrote —
     // this skill's themes are all oklch() — so string-parsing rgb() misses
     // nearly everything. Let the browser's own color engine resolve it.
+    // An invalid value leaves fillStyle untouched, which would silently read
+    // as the previous color, so probe with two different sentinels: only a
+    // value the engine actually understood lands on the same result twice.
     const cv = document.createElement("canvas");
     cv.width = cv.height = 1;
     const ctx = cv.getContext("2d", { willReadFrequently: true });
     const parse = (css) => {
+      ctx.fillStyle = "#000000"; ctx.fillStyle = css; const a = ctx.fillStyle;
+      ctx.fillStyle = "#ffffff"; ctx.fillStyle = css; const b = ctx.fillStyle;
+      if (a !== b) return null;                      // not a color the engine knows
       ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = "#000";
-      ctx.fillStyle = css;           // invalid values leave the previous style
+      ctx.fillStyle = css;
       ctx.fillRect(0, 0, 1, 1);
       const d = ctx.getImageData(0, 0, 1, 1).data;
       return { rgb: [d[0], d[1], d[2]], a: d[3] / 255 };
     };
-    // Composite over ancestors until something opaque is found; the sheet is
-    // white, so an all-transparent chain resolves to paper.
+    const over = (fg, bg, a) => bg.map((c, i) => fg[i] * a + c * (1 - a));
+
+    // Composite every translucent layer down onto paper rather than skipping
+    // to the first opaque one — a 0.92-alpha ink panel is nearly black, not
+    // white, and treating it as white invents failures on inverted bands.
     const backdrop = (el) => {
+      const layers = [];
       for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
         const p = parse(getComputedStyle(n).backgroundColor);
-        if (p && p.a >= 0.999) return p.rgb;
+        if (!p || p.a === 0) continue;
+        layers.push(p);
+        if (p.a >= 0.999) break;
       }
-      return [255, 255, 255];
+      let out = [255, 255, 255];                     // the sheet is white paper
+      for (let i = layers.length - 1; i >= 0; i--) out = over(layers[i].rgb, out, layers[i].a);
+      return out;
+    };
+    // opacity multiplies down the ancestor chain, and dims text just as surely
+    // as a low-alpha color does.
+    const effOpacity = (el) => {
+      let o = 1;
+      for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+        const v = parseFloat(getComputedStyle(n).opacity);
+        if (!Number.isNaN(v)) o *= v;
+      }
+      return o;
     };
     const ratio = (fg, bg) => {
       const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
       return (a + 0.05) / (b + 0.05);
     };
 
-    const sheet = document.querySelector(".page");
-    if (!sheet) return null;
-    const walker = document.createTreeWalker(sheet, NodeFilter.SHOW_TEXT);
+    // Leaf sheets only. #page is itself the sheet on a single-sheet page but a
+    // container on a nested assembly, and the shell appends continuation
+    // sheets as siblings — all of which carry real text that must be checked.
+    const sheets = [...document.querySelectorAll(".page")]
+      .filter((el) => !el.querySelector(".page"));
+    if (!sheets.length) return null;
+
     const seen = new Map();
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      const text = n.textContent.trim();
-      if (!text) continue;
-      const el = n.parentElement;
-      if (!el || !el.getClientRects().length) continue;
-      const cs = getComputedStyle(el);
-      if (cs.visibility === "hidden" || cs.opacity === "0") continue;
-      const fg = parse(cs.color);
-      if (!fg) continue;
-      const size = parseFloat(cs.fontSize);
-      const weight = parseInt(cs.fontWeight, 10) || 400;
-      // WCAG "large": >=24px, or >=18.66px when bold.
-      const large = size >= 24 || (size >= 18.66 && weight >= 700);
-      const floor = large ? 3 : 4.5;
-      const r = ratio(fg.rgb, backdrop(el));
-      // One row per distinct style, not per text node — the same label style
-      // repeated twelve times is one finding, not twelve.
-      const key = `${cs.color}|${size}|${weight}|${el.tagName}`;
-      if (!seen.has(key)) {
-        seen.set(key, {
-          sample: text.slice(0, 42), tag: el.tagName.toLowerCase(),
-          cls: (el.className || "").split(" ")[0] || "",
-          color: cs.color, size, weight, large,
-          ratio: Math.round(r * 100) / 100, floor, pass: r >= floor, count: 1,
-        });
-      } else seen.get(key).count++;
+    for (const [sheetIndex, sheet] of sheets.entries()) {
+      const walker = document.createTreeWalker(sheet, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const text = n.textContent.trim();
+        if (!text) continue;
+        const el = n.parentElement;
+        if (!el || !el.getClientRects().length) continue;
+        const cs = getComputedStyle(el);
+        if (cs.visibility === "hidden") continue;
+        const raw = parse(cs.color);
+        const alpha = (raw ? raw.a : 1) * effOpacity(el);
+        if (alpha === 0) continue;                   // invisible, not low-contrast
+        const bg = backdrop(el);
+        // SVG elements expose className as SVGAnimatedString, which has no
+        // .split — and this skill tells the model to draw artwork inline in SVG.
+        const cls = (el.getAttribute("class") || "").split(" ")[0] || "";
+        const size = parseFloat(cs.fontSize);
+        const weight = parseInt(cs.fontWeight, 10) || 400;
+        const large = size >= 24 || (size >= 18.66 && weight >= 700);
+        const floor = large ? 3 : 4.5;
+        const r = raw ? ratio(over(raw.rgb, bg, alpha), bg) : null;
+        // Key on the backdrop too: the same color passes on paper and fails on
+        // an ink panel, and collapsing those hides the failure.
+        const key = `${cs.color}|${alpha}|${size}|${weight}|${el.tagName}|${bg.join()}`;
+        if (!seen.has(key)) {
+          seen.set(key, {
+            sample: text.slice(0, 42), tag: el.tagName.toLowerCase(), cls,
+            color: cs.color, size, weight, large, sheet: sheetIndex,
+            ratio: r === null ? null : Math.round(r * 100) / 100,
+            floor, pass: r !== null && r >= floor, unparsed: r === null, count: 1,
+          });
+        } else seen.get(key).count++;
+      }
     }
-    return [...seen.values()].sort((a, b) => a.ratio - b.ratio);
+    return [...seen.values()].sort((a, b) => (a.ratio ?? -1) - (b.ratio ?? -1));
   });
 
   if (!found) throw new Error("no .page element — is this a generated page?");
+  // An unparseable color is a finding, not a pass — it must not exit 0.
   const fails = found.filter((f) => !f.pass);
 
   if (asJson) {
     console.log(JSON.stringify({ ok: fails.length === 0, styles: found, failures: fails }));
   } else {
     const rows = showAll ? found : fails;
+    const multi = new Set(found.map((f) => f.sheet)).size > 1;
     for (const f of rows) {
-      const mark = f.pass ? "ok  " : "FAIL";
+      const mark = f.unparsed ? "????" : f.pass ? "ok  " : "FAIL";
       const where = f.cls ? `${f.tag}.${f.cls}` : f.tag;
+      const score = f.unparsed ? "  ????" : String(f.ratio).padStart(6);
       console.log(
-        `${mark} ${String(f.ratio).padStart(6)}:1  need ${f.floor}  ` +
+        `${mark} ${score}:1  need ${f.floor}  ` +
         `${String(Math.round(f.size)).padStart(3)}px/${String(f.weight).padStart(3)}  ` +
+        (multi ? `s${f.sheet} ` : "") +
         `${where.padEnd(16)} ${JSON.stringify(f.sample)}`);
     }
     if (fails.length === 0) {
       console.log(`contrast ok: ${found.length} text style${found.length === 1 ? "" : "s"} ` +
         `all clear their floor`);
     } else {
-      console.error(`\n${fails.length} of ${found.length} text styles fall below the ` +
-        `WCAG AA floor (4.5:1 body, 3:1 large/bold).`);
+      const bad = fails.filter((f) => f.unparsed).length;
+      console.error(`\n${fails.length} of ${found.length} text styles fail the ` +
+        `WCAG AA floor (4.5:1 body, 3:1 large/bold)` +
+        (bad ? `; ${bad} had a color this engine could not resolve (????)` : "") + ".");
       console.error("  Darken the token, or raise the size/weight so the 3:1 floor applies.");
     }
   }
@@ -146,6 +187,8 @@ try {
   console.error("contrast-cli:", e.message || e);
   process.exitCode = 1;
 } finally {
-  await browser.close();
+  // Close the server even if the browser teardown throws — startServer holds
+  // an open listener, and leaking it hangs the process instead of exiting.
+  try { await browser.close(); } catch { /* fall through to close the server */ }
   await close();
 }
