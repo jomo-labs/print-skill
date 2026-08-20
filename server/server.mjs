@@ -725,7 +725,7 @@ if (isMain) {
   // the agent is already looking, not left to a doc it may not re-read.
   console.log(
     `live edit: nothing is listening yet. Before you end this turn, connect:\n` +
-    `  node ${path.join(SERVER_DIR, "chat-cli.mjs")} wait --timeout 240 --url ${url}\n` +
+    `  node ${path.join(SERVER_DIR, "chat-cli.mjs")} wait --timeout 300 --url ${url}\n` +
     `  (No page argument — this watches every page this server serves, including\n` +
     `  ones made later. Run it in the background and end your turn; its completion\n` +
     `  wakes you, then arm the next one. This applies even if all you were asked to\n` +

@@ -172,6 +172,25 @@ means it does not, and says how:
   It hangs past the edge and **prints clipped**. Always fix this: split the
   block, shorten it, or give it its own sheet.
 
+Add `--sections` when it fails: it prints what each marked section costs, what
+the footer reserved, and the exact px to cut, instead of leaving you to guess
+and re-run. Remember the footer takes ~41px out of the content box on every
+sheet (design-rules.md, Platform invariants) — content that measures exactly
+the box height is already too tall.
+
+Then check that every piece of text clears its contrast floor:
+
+```
+node <skill-dir>/server/contrast-cli.mjs out/<file>.html
+```
+
+Exit 0 means every text style clears WCAG AA (4.5:1 body, 3:1 large or bold);
+exit 1 lists the ones that do not, with the size and weight that set each
+threshold. This is the one platform invariant the Part B self-check cannot
+verify by reading CSS — Part B greps for banned constructs, it never computes a
+ratio, so a theme accent that reads fine at 19px can ship at 9px unnoticed. Add
+`--all` to see every text style rather than only the failures.
+
 Needs Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in the
 report that the fit check could not run.
 
@@ -358,7 +377,7 @@ you are responding to, or the page you just wrote.
 3. Arm the listen loop at the **highest rung your harness supports**:
    - **(a) Stream/monitor** — run `wait --follow` under a tool that streams
      its output back to you; each NDJSON line is an event.
-   - **(b) Background + wake** — run `wait --timeout 240` as a background task
+   - **(b) Background + wake** — run `wait --timeout 300` as a background task
      and **end your turn**. The completion notification wakes you: handle
      whatever arrived, then arm the next one.
 

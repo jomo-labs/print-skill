@@ -44,7 +44,7 @@ listen loop in SKILL.md's "Live mode" section:
 - **(b) BACKGROUND+WAKE** — you can start a command in the background
   (`run_in_background`, `is_background`, `&`…). If your harness *notifies*
   you when a background command exits (Claude Code does), run one-shot
-  `wait --timeout 240` in the background and end your turn — the completion
+  `wait --timeout 300` in the background and end your turn — the completion
   notification is your wake; handle events and re-arm. If the
   harness only lets you *read* accumulated background output on your own
   turns, run `wait --follow` in the background and harvest new lines
@@ -88,7 +88,7 @@ the way they ask you to reconsider a harness you judged unsupported.
 
 | Harness | Live mode | Rung / notes |
 |---|---|---|
-| Claude Code (CLI / desktop) | **yes** | (b): run `wait --timeout 240` with `run_in_background` and end the turn — the task-completion notification wakes the session; re-arm per wake. (a) where a Monitor/stream tool exists. |
+| Claude Code (CLI / desktop) | **yes** | (b): run `wait --timeout 300` with `run_in_background` and end the turn — the task-completion notification wakes the session; re-arm per wake. (a) where a Monitor/stream tool exists. |
 | OpenCode | **yes** | (b): `run_in_background` + `bash_output`. |
 | Amp | **yes** | (b): background/tmux patterns + polling check-ins. |
 | Gemini CLI | **yes** | (b): `is_background`, plus output reads on your own turns. |

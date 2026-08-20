@@ -16,6 +16,12 @@ must not restate them and cannot opt out — it describes only what it changes.
 - **Sheet and margin.** The sheet is a fixed physical size and its padding
   (`--page-margin-*`, 4px base unit) IS the print margin, printed 1:1. A theme
   may retune it; the content box (rule 5) moves with it.
+- **The footer eats the last ~41px.** The shell's footer sits *inside* the
+  content box and costs 41px on every sheet (32px margin-top, 8px padding-top,
+  1px rule; its spans are empty, so it adds no text height). Content has to come
+  in **strictly under** box height − 41 or the shell paginates — landing exactly
+  on the box height is already too tall. The quoted content-box heights in rule 5
+  are the box; subtract 41 to get what content can actually use.
 - **Empty and overflow.** An empty block keeps its frame and label (Principle
   IV). Overflow drops the body type-scale one step, then shortens or splits —
   never truncate, never spill past the sheet edge.
@@ -101,9 +107,10 @@ must not restate them and cannot opt out — it describes only what it changes.
    Wide-grid content — monthly calendars, weekly meal grids, seating charts,
    multi-column schedules, scoreboards, timelines, award certificates — prints
    better LANDSCAPE: set `orientation` to `landscape` and design for a
-   1056px-wide × 816px-tall sheet (content box ~912px wide × ~680px tall),
+   1056px-wide × 816px-tall sheet (content box ~912px wide × ~680px tall, of
+   which ~639px is usable once the footer takes its 41px),
    filling the height. Tall, list-like content stays portrait (the default;
-   content box ~672px wide × ~920px tall). Never express orientation yourself
+   content box ~672px wide × ~920px tall, ~879px usable). Never express orientation yourself
    with `@page` or body sizing — the `orientation` channel is the only
    mechanism.
 
