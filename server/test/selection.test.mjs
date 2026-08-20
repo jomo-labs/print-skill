@@ -1,11 +1,16 @@
 // Selecting an element is how the page tells the model what the user means.
 //
-// It is the ONLY thing the page sends. There is no chat panel: the user asks
-// for changes in the model's own session, and the one thing that session
-// cannot know is which part of the sheet they are pointing at. So the
-// double-click has to carry it — at once, debounced and deduped, with the
-// deselect reported too, and surviving both the reload the model's own edit
-// causes and a restart of the server underneath it.
+// It is the ONLY thing the page sends, and it is STATE, not an event: the
+// server holds the latest selection per page, the page shows the user it is on
+// record, and the model reads it at the moment a request needs a target. There
+// is nothing to subscribe to, which is the point — the push version of this
+// bought an instant acknowledgment and cost a background listener, a
+// notification per click, and agents that grew six watchers re-arming each
+// other.
+//
+// So what is asserted here is that the record is always right: it survives a
+// hunt through several elements, the reload the model's own edit causes, and a
+// restart of the server underneath it — and it clears when the user lets go.
 //
 //   node --test server/test/          (needs `npm install` in server/)
 import test from "node:test";
@@ -14,12 +19,16 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
 
+const run = promisify(execFile);
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "chat-cli.mjs");
 const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets");
-const NOTICE_MS = 400; // chat.js SELECT_NOTICE_MS
-const SETTLE_MS = 3 * NOTICE_MS; // long enough that a notice would have gone out
+const NOTICE_MS = 400; // shell.js SELECT_NOTICE_MS
+const SETTLE_MS = 3 * NOTICE_MS; // long enough that the post would have gone out
 
 const CHROME = `document.getElementById("mp-chrome-root").shadowRoot`;
 
@@ -32,30 +41,31 @@ function assemble(template, documentCss, heading) {
     );
 }
 
-// Drain the way `chat-cli.mjs wait` does: as the model, from the server-held
-// cursor, without blocking — and server-wide, naming no page, which is how a
-// model actually listens.
-async function drain(serverUrl) {
-  const res = await fetch(`${serverUrl}/chat/messages?consumer=model&from=user&wait=0`);
-  assert.equal(res.ok, true, "draining the live log");
-  return (await res.json()).messages;
+// What the model does when a request needs a target: ask, once.
+async function selection(serverUrl, page) {
+  const args = [CLI, "selection", ...(page ? [page] : []), "--url", serverUrl];
+  return (await run("node", args)).stdout.trim();
 }
 
-const selections = (msgs) => msgs.filter((m) => m.kind === "selection");
+// The record itself, rather than the sentence built from it — for the
+// assertions that have to check the selector the model would act on.
+async function record(serverUrl, page) {
+  const body = await (await fetch(`${serverUrl}/chat/selection`)).json();
+  return body.selections.filter((s) => page === undefined || s.page === page);
+}
 
-// Drain repeatedly until a selection turns up or the deadline passes. Used
-// where the wait is for the page to NOTICE something (a restarted server)
-// rather than for its own debounce — a fixed sleep there is a flake waiting
-// to happen, since it has to cover a failed poll, a reconnect and a retry.
-async function waitForSelection(serverUrl, ms = 15000) {
+// Poll the read until it says what we are waiting for — used where the wait is
+// for the PAGE to notice something (a restarted server), not for its own
+// debounce, since that has to cover a failed poll, a reconnect and a retry.
+async function selectionBecomes(serverUrl, want, ms = 15000) {
   const deadline = Date.now() + ms;
-  const seen = [];
+  let last = "";
   while (Date.now() < deadline) {
-    seen.push(...selections(await drain(serverUrl)));
-    if (seen.length) return seen;
+    last = await selection(serverUrl);
+    if (last === want) return last;
     await new Promise((r) => setTimeout(r, 250));
   }
-  return seen;
+  return last;
 }
 
 async function openPage(page, url) {
@@ -65,11 +75,14 @@ async function openPage(page, url) {
   await page.waitForFunction(`!!${CHROME}.querySelector("#mp-page-setup")`);
 }
 
-// The selection's only on-screen trace, now that the chip is gone.
+// The selection's traces on screen: the outline, and the line the toolbar
+// shows the user so they know they need only ask.
 const outlined = (page) =>
   page.evaluate(`document.querySelector(".mp-selected")?.id ?? null`);
+const toolbarLine = (page) =>
+  page.evaluate(`${CHROME}.querySelector("#mp-live-status .mp-live-label")?.textContent ?? ""`);
 
-test("a selected element reaches the model, and stays the subject", async (t) => {
+test("what the user selects is on record, and the page says so", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-selection-"));
   const [template, documentCss] = await Promise.all([
     fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
@@ -95,108 +108,105 @@ test("a selected element reaches the model, and stays the subject", async (t) =>
     await page.route("**://fonts.g*/**", (route) => route.abort());
     try {
       await openPage(page, `${server.url}/page.html`);
-      await drain(server.url); // ignore anything the open itself posted
       await fn(page);
     } finally {
       await page.close();
     }
   };
 
-  // The point of the whole change: the model knows before a word is typed.
-  await t.test("double-clicking tells the model, unprompted", async () => {
+  // The whole contract in one case: click, and the model can find out what you
+  // meant without you describing it.
+  await t.test("double-clicking puts the element on record", async () => {
     await withPage(async (page) => {
+      assert.equal(await selection(server.url), "NO_SELECTION", "nothing yet");
+
       await page.dblclick("#probe");
       await page.waitForTimeout(SETTLE_MS);
 
-      const picked = selections(await drain(server.url));
-      assert.equal(picked.length, 1, "exactly one selection notice");
-      assert.equal(picked[0].from, "user");
-      assert.equal(picked[0].data.selector, "#probe", "the selector points at the heading");
-      assert.match(picked[0].data.snapshot, /BEFORE/, "the snapshot carries what it says");
-      assert.equal(picked[0].data.edited, false);
-      // A notice is not something the user said, so it must not be posted as
-      // one — the model has to be able to tell them apart.
-      assert.equal(picked[0].kind, "selection");
+      assert.equal(
+        await selection(server.url),
+        'Title was selected.  [/page.html #probe "BEFORE"]',
+        "the model reads a sentence, with page and selector to act on"
+      );
     });
   });
 
-  // Selecting is a hunt: the model should wake at the element the user landed
-  // on, not at every one they passed through.
-  await t.test("a burst of selections collapses to the last one", async () => {
+  // The user's half of the deal: they can see that pointing worked, so nobody
+  // has to tell them.
+  await t.test("and the page tells the user they need only ask", async () => {
+    await withPage(async (page) => {
+      assert.equal(await toolbarLine(page), "Ask your model for any changes",
+        "at rest, the standing invitation — not a claim about this element");
+
+      await page.dblclick("#probe");
+      await page.waitForTimeout(SETTLE_MS);
+
+      assert.equal(
+        await toolbarLine(page),
+        'Title ("BEFORE") selected & sent to model',
+        "named the way the user saw it on hover, with enough text to recognise"
+      );
+      assert.equal(await outlined(page), "probe");
+    });
+  });
+
+  // A read is not a queue: asking twice gives the same answer, because it is
+  // state. This is what lets the model look it up whenever it happens to need
+  // it, rather than catching it as it goes past.
+  await t.test("reading it does not consume it", async () => {
+    await withPage(async (page) => {
+      await page.dblclick("#probe");
+      await page.waitForTimeout(SETTLE_MS);
+      const first = await selection(server.url);
+      assert.match(first, /#probe/);
+      assert.equal(await selection(server.url), first, "still there, unchanged");
+      assert.equal(await selection(server.url), first);
+    });
+  });
+
+  // Selecting is a hunt. Only where they landed is on record.
+  await t.test("only the element they settled on is on record", async () => {
     await withPage(async (page) => {
       await page.dblclick("#probe");
       await page.dblclick("#other");
       await page.dblclick("#probe");
       await page.waitForTimeout(SETTLE_MS);
+      assert.match(await selection(server.url), /#probe/);
 
-      const picked = selections(await drain(server.url));
-      assert.equal(picked.length, 1, "the hunt is one notice, not three");
-      assert.equal(picked[0].data.selector, "#probe", "and it is where they settled");
-    });
-  });
-
-  await t.test("re-selecting the same element says nothing new", async () => {
-    await withPage(async (page) => {
-      await page.dblclick("#probe");
+      // ...and a deliberate switch, well after the debounce, replaces it.
+      await page.dblclick("#other");
       await page.waitForTimeout(SETTLE_MS);
-      assert.equal(selections(await drain(server.url)).length, 1);
-
-      await page.dblclick("#probe");
-      await page.waitForTimeout(SETTLE_MS);
-      assert.equal(
-        selections(await drain(server.url)).length,
-        0,
-        "the model already knew — nothing to report"
-      );
+      assert.match(await selection(server.url), /#other "Sweep the floor."/);
     });
   });
 
   // Without this the model keeps steering later requests at an element the
   // user has visibly let go of.
-  await t.test("leaving edit mode reports the deselect", async () => {
+  await t.test("leaving edit mode clears the record", async () => {
     await withPage(async (page) => {
       await page.dblclick("#probe");
       await page.waitForTimeout(SETTLE_MS);
-      await drain(server.url);
+      assert.match(await selection(server.url), /#probe/);
 
       await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`); // Done
       await page.waitForTimeout(SETTLE_MS);
 
-      const picked = selections(await drain(server.url));
-      assert.equal(picked.length, 1, "the deselect is reported");
-      assert.equal(picked[0].data.selector, null, "as an explicit null");
+      assert.equal(await selection(server.url), "NO_SELECTION");
       assert.equal(await outlined(page), null, "and the outline is gone");
-    });
-  });
-
-  // What makes a selection a running context rather than a one-shot tag: it
-  // simply stands. Nothing on the page consumes it, so every request the user
-  // makes in their session — one, then another — is still about this element.
-  await t.test("a selection stands until it is changed", async () => {
-    await withPage(async (page) => {
-      await page.dblclick("#probe");
-      await page.waitForTimeout(SETTLE_MS);
-      assert.equal(selections(await drain(server.url)).length, 1);
-
-      // Time passes, the user reads, types in their session, comes back.
-      await page.waitForTimeout(SETTLE_MS * 2);
-      assert.equal(await outlined(page), "probe", "still selected on the page");
-      assert.equal(
-        selections(await drain(server.url)).length,
-        0,
-        "and nothing was said again — the model's context still holds"
-      );
+      assert.equal(await toolbarLine(page), "Ask your model for any changes",
+        "and the page stops claiming it");
     });
   });
 
   // The reload the model's own edit causes lands mid-conversation about one
-  // element. Losing the chip there loses the context exactly when the user is
-  // iterating on it.
-  await t.test("the selection survives the model's edit reloading the tab", async () => {
+  // element. The user did not ask for it and should barely notice it: losing
+  // the record loses the context exactly when they are iterating, and losing
+  // EDIT MODE throws them out of the thing they were doing — cursor, controls
+  // and selection gone at once, for an edit they requested.
+  await t.test("edit mode and the record survive the model's edit", async () => {
     await withPage(async (page) => {
       await page.dblclick("#probe");
       await page.waitForTimeout(SETTLE_MS);
-      await drain(server.url);
 
       await writePage("AFTER");
       await page.waitForFunction(
@@ -204,42 +214,92 @@ test("a selected element reaches the model, and stays the subject", async (t) =>
         null,
         { timeout: 15000 }
       );
-      await page.waitForFunction(`!!document.querySelector(".mp-selected")`, null, {
-        timeout: 15000,
-      });
+      await page.waitForFunction(`!!document.querySelector(".mp-selected")`, null, { timeout: 15000 });
 
-      assert.equal(await outlined(page), "probe", "the element is outlined again");
-      await page.waitForTimeout(SETTLE_MS);
       assert.equal(
-        selections(await drain(server.url)).length,
-        0,
-        "restoring what the model already knows says nothing"
+        await page.evaluate(`document.body.classList.contains("edit-active")`),
+        true,
+        "still in edit mode — the reload was the model's doing, not the user's"
+      );
+      assert.equal(
+        await page.evaluate(`${CHROME}.querySelector("#mp-btn-edit-label")?.textContent`),
+        "Stop Editing",
+        "and the toolbar agrees, so the button still does what it says"
+      );
+      assert.equal(await outlined(page), "probe", "the element is outlined again");
+      assert.match(await selection(server.url), /#probe/, "and still on record");
+      assert.match(
+        await toolbarLine(page),
+        /^Title \("AFTER"\) selected & sent to model$/,
+        "and the page still says so, with the element's new text"
       );
     });
   });
 
-  // ...but if its edit took the element away, the model's context IS stale.
-  await t.test("an element the edit removed reports a deselect", async () => {
+  // A tab the user was NOT editing in must not be dragged into edit mode by
+  // an edit landing in it.
+  await t.test("a tab that was not editing stays that way", async () => {
+    await withPage(async (page) => {
+      await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`); // Done
+      await writePage("AFTER");
+      await page.waitForFunction(
+        () => document.getElementById("probe")?.textContent === "AFTER",
+        null,
+        { timeout: 15000 }
+      );
+      assert.equal(
+        await page.evaluate(`document.body.classList.contains("edit-active")`),
+        false
+      );
+    });
+  });
+
+  // ...but if that edit took the element away, the record is a lie.
+  await t.test("an element the edit removed drops off the record", async () => {
     await withPage(async (page) => {
       await page.dblclick("#other");
       await page.waitForTimeout(SETTLE_MS);
-      await drain(server.url);
+      assert.match(await selection(server.url), /#other/);
 
       await fs.writeFile(
         file,
-        assemble(template, documentCss, "AFTER").replace(
-          '<p id="other">Sweep the floor.</p>',
-          ""
-        )
+        assemble(template, documentCss, "AFTER").replace('<p id="other">Sweep the floor.</p>', "")
       );
-      await page.waitForFunction(() => !document.getElementById("other"), null, {
-        timeout: 15000,
-      });
-      await page.waitForTimeout(SETTLE_MS);
+      await page.waitForFunction(() => !document.getElementById("other"), null, { timeout: 15000 });
 
-      const picked = selections(await drain(server.url));
-      assert.equal(picked.length, 1, "the model is told its target is gone");
-      assert.equal(picked[0].data.selector, null);
+      assert.equal(await selectionBecomes(server.url, "NO_SELECTION"), "NO_SELECTION");
+      assert.equal(await outlined(page), null, "nothing is left outlined");
+      assert.equal(
+        await page.evaluate(`document.body.classList.contains("edit-active")`),
+        true,
+        "but they are still editing — only the selection was lost, not the mode"
+      );
+    });
+  });
+
+  // A selector like `#page > p:nth-of-type(2)` can still match after a rewrite
+  // while pointing at something else. Holding the wrong element is worse than
+  // holding none: the next "make it bigger" would land on a stranger.
+  await t.test("a selector that now matches a different kind of element lets go", async () => {
+    await withPage(async (page) => {
+      await page.dblclick("#other");            // the <p>
+      await page.waitForTimeout(SETTLE_MS);
+      assert.match(await selection(server.url), /#other/);
+
+      // Same id and position, different kind of element.
+      await fs.writeFile(
+        file,
+        assemble(template, documentCss, "AFTER")
+          .replace('<p id="other">Sweep the floor.</p>', '<h2 id="other">Sweep the floor.</h2>')
+      );
+      await page.waitForFunction(
+        () => document.getElementById("other")?.tagName === "H2",
+        null,
+        { timeout: 15000 }
+      );
+
+      assert.equal(await selectionBecomes(server.url, "NO_SELECTION"), "NO_SELECTION");
+      assert.equal(await outlined(page), null, "and it is not silently re-marked");
     });
   });
 });
@@ -250,7 +310,7 @@ test("a selected element reaches the model, and stays the subject", async (t) =>
 // never blurs that host, so the ancestor's edit session is one nothing ends:
 // it stays contentEditable, wearing the browser's focus ring, right beside the
 // child the user just picked. Two marked elements, and no way to tell which
-// one the model is looking at.
+// one the model would find on record.
 test("selecting a nested child releases its ancestor", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-nested-"));
   const [template, documentCss] = await Promise.all([
@@ -282,14 +342,13 @@ test("selecting a nested child releases its ancestor", async (t) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await page.route("**://fonts.g*/**", (route) => route.abort());
   await openPage(page, `${server.url}/page.html`);
-  await drain(server.url);
 
   // Double-click the ancestor's own padding, where the child is not.
   const box = await page.locator("#outer").boundingBox();
   await page.mouse.dblclick(box.x + 8, box.y + 8);
   await page.waitForTimeout(SETTLE_MS);
   assert.equal(await outlined(page), "outer", "the ancestor is the subject first");
-  assert.equal(selections(await drain(server.url)).length, 1, "and the model was told so");
+  assert.match(await selection(server.url), /#outer/, "and it is what the model would read");
 
   await page.dblclick("#inner");
   await page.waitForTimeout(SETTLE_MS);
@@ -308,18 +367,18 @@ test("selecting a nested child releases its ancestor", async (t) => {
     "typing goes to the child the user picked"
   );
 
-  const picked = selections(await drain(server.url));
-  assert.equal(picked.length, 1, "the move inward is its own notice");
-  assert.equal(picked[0].data.selector, "#inner", "naming the child, not the quote");
+  // One record, naming the child — not the quote, and not both.
+  const record = await selection(server.url);
+  assert.equal(record.split("\n").length, 1, "the move inward replaces, it does not add");
+  assert.match(record, /#inner/, "naming the child, not the quote");
   await page.close();
 });
 
-// The restart case, which is its own test because it needs a server it can
-// kill: the model restarts the server (after a crash, or in a later turn) and
-// the tab is still open with something selected in it. The new process has an
-// empty log and has never heard of that element — so the page has to say it
-// again, or the reconnecting model is blind to what the user is pointing at.
-test("a restarted server is told the selection again", async (t) => {
+// The restart case, which needs a server it can kill: the model restarts the
+// server and the tab is still open with something selected in it. The new
+// process holds no selection, so the page has to put it back on record — or
+// the next request that says "make this bigger" has nothing to aim at.
+test("a restarted server gets the selection back", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-restart-"));
   const [template, documentCss] = await Promise.all([
     fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
@@ -344,28 +403,24 @@ test("a restarted server is told the selection again", async (t) => {
   await openPage(page, `${server.url}/page.html`);
   await page.dblclick("#probe");
   await page.waitForTimeout(SETTLE_MS);
-  assert.equal(
-    selections(await drain(server.url)).length,
-    1,
-    "the first server was told — the premise of this case"
-  );
+  assert.match(await selection(server.url), /#probe/, "the first server knew — the premise");
 
   await server.close();
   server = await startServer({ dir, port }); // same port: the tab keeps its URL
+  assert.equal(await selection(server.url), "NO_SELECTION", "the new one starts blank");
 
-  // The tab has to fail a poll, reconnect, meet the new epoch and debounce
-  // its notice — so wait for the thing itself, not for a guess at how long.
-  const picked = await waitForSelection(server.url);
-  assert.equal(picked.length, 1, "the new server is told what is selected");
-  assert.equal(picked[0].data.selector, "#probe");
-  assert.equal(await outlined(page), "probe", "and the page never lost it");
+  assert.match(
+    await selectionBecomes(server.url, 'Title was selected.  [/page.html #probe "BEFORE"]'),
+    /#probe/,
+    "and the page puts it back without anyone asking"
+  );
+  assert.equal(await outlined(page), "probe", "the page never lost it");
   await page.close();
 });
 
-// A model connects to the SERVER, not to a page. This is what lets "start the
-// server" and "be reachable on it" be one act: there is no page to name, so a
-// turn whose only job was to start the server has no excuse to end unwatched.
-test("one listener sees every page, including ones made later", async (t) => {
+// A model asks the SERVER, not a document: it does not have to know which page
+// the user is looking at, or be told when they open another.
+test("the read covers every page, including ones made later", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-allpages-"));
   const [template, documentCss] = await Promise.all([
     fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
@@ -397,28 +452,111 @@ test("one listener sees every page, including ones made later", async (t) => {
 
   const a = await selectIn("alpha");
   const b = await selectIn("beta");
-  const first = selections(await drain(server.url));
   assert.deepEqual(
-    first.map((m) => m.page).sort(),
-    ["/alpha.html", "/beta.html"],
-    "one drain, both pages — and each says which it came from"
+    (await selection(server.url)).split("\n").sort(),
+    [
+      'Title was selected.  [/alpha.html #probe "Alpha"]',
+      'Title was selected.  [/beta.html #probe "Beta"]',
+    ],
+    "one read, both pages, each saying which it came from"
+  );
+  // Newest first, so a model taking the top line takes the one they touched last.
+  assert.match((await selection(server.url)).split("\n")[0], /beta/);
+  // And it can narrow, for a request that clearly means one page.
+  assert.equal(
+    await selection(server.url, "alpha.html"),
+    'Title was selected.  [/alpha.html #probe "Alpha"]'
   );
   await a.close();
   await b.close();
 
-  // The listener was already running when this page came into existence. A
-  // per-page subscription would need to be told about it; this one does not.
+  // This page did not exist when the first two were selected in. Nothing had
+  // to be re-subscribed, because nothing was subscribed.
   await write("gamma", "Gamma");
   const c = await selectIn("gamma");
-  const late = selections(await drain(server.url));
-  assert.equal(late.length, 1, "the new page is seen without re-subscribing");
-  assert.equal(late[0].page, "/gamma.html");
+  assert.match((await selection(server.url)).split("\n")[0], /gamma/);
   await c.close();
+});
 
-  // And presence is server-wide with it: a model watching the server shows as
-  // connected on every page, not just the one it happened to name.
-  const state = await (await fetch(`${server.url}/chat/alpha.html/messages?wait=0`)).json();
-  assert.equal(state.listening, true, "alpha's toolbar sees the model that was never told about alpha");
+// One of a kind is named by its kind; one of many needs to say which one. The
+// index counts the same siblings the selector's nth-of-type does, so the words
+// the user reads and the selector the model acts on can never disagree about
+// which item is meant.
+test("an element among repeats says which one it is", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-index-"));
+  const [template, documentCss] = await Promise.all([
+    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
+    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
+  ]);
+  await fs.writeFile(
+    path.join(dir, "page.html"),
+    template.replace("/* @@DOCUMENT_CSS@@ */", documentCss).replace(
+      "<!-- CONTENT -->",
+      `<h1 id="only">Beef Bulgogi</h1>
+       <ul><li>Divide beef into portions and season generously.</li>
+           <li>Toast the buns until golden at the edges.</li>
+           <li>Rest before serving.</li></ul>`
+    )
+  );
+
+  const server = await startServer({ dir, port: 0 });
+  const browser = await chromium.launch({
+    headless: true,
+    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
+  });
+  t.after(async () => {
+    await browser.close();
+    await server.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.route("**://fonts.g*/**", (route) => route.abort());
+  await openPage(page, `${server.url}/page.html`);
+
+  await page.dblclick("li >> nth=1");
+  await page.waitForTimeout(SETTLE_MS);
+  assert.equal(
+    await toolbarLine(page),
+    'List item #2 ("Toast the buns until…") selected & sent to model',
+    "which item, and enough of it to recognise — cut at a word, not mid-syllable"
+  );
+  // The model is told the same thing in the same words, and the selector it
+  // acts on points at that same item.
+  const record = await selection(server.url);
+  assert.match(record, /^List item #2 was selected\./);
+  assert.match(record, /li:nth-of-type\(2\)/);
+
+  // The line belongs to the outlined element, so it wears the element's own
+  // colour rather than a status colour of its own — and the name carries the
+  // weight, since that is the part worth finding at a glance.
+  const dressing = await page.evaluate(`(() => {
+    const root = document.getElementById("mp-chrome-root").shadowRoot;
+    const status = root.querySelector("#mp-live-status");
+    const outline = getComputedStyle(document.querySelector(".mp-selected")).outlineColor;
+    return {
+      lineInk: getComputedStyle(status).color,
+      outline,
+      lineWeight: getComputedStyle(status).fontWeight,
+      nameWeight: getComputedStyle(root.querySelector(".mp-live-name")).fontWeight,
+    };
+  })()`);
+  assert.equal(dressing.lineInk, dressing.outline, "the same blue as the outline on the page");
+  assert.ok(Number(dressing.nameWeight) >= 700, "the name is bold");
+  assert.ok(
+    Number(dressing.lineWeight) < Number(dressing.nameWeight),
+    "and the rest of the sentence is not"
+  );
+
+  // The only heading on the page is just "Title" — "#1" would be noise.
+  await page.dblclick("#only");
+  await page.waitForTimeout(SETTLE_MS);
+  assert.equal(
+    await toolbarLine(page),
+    'Title ("Beef Bulgogi") selected & sent to model',
+    "no index when there is nothing to disambiguate"
+  );
+  await page.close();
 });
 
 // Paper is finite, so any document worth printing eventually runs onto a
@@ -493,7 +631,6 @@ test("edit mode reaches every sheet, not just the first", async (t) => {
     await page.route("**://fonts.g*/**", (route) => route.abort());
     try {
       await openPage(page, `${server.url}/${name}.html`);
-      await drain(server.url);
       await fn(page);
     } finally {
       await page.close();
@@ -564,14 +701,14 @@ test("edit mode reaches every sheet, not just the first", async (t) => {
         i,
         "the paragraph is outlined"
       );
-      const picked = selections(await drain(server.url));
-      assert.equal(picked.length, 1, "and the model is told, unprompted");
+      const picked = await record(server.url, "/long.html");
+      assert.equal(picked.length, 1, "and the model can find out what they meant");
       assert.deepEqual(
-        (await inFile("long", picked[0].data.selector))?.i,
+        (await inFile("long", picked[0].selector))?.i,
         i,
-        `the selector ${picked[0].data.selector} finds that same paragraph in the file`
+        `the selector ${picked[0].selector} finds that same paragraph in the file`
       );
-      assert.match(picked[0].data.snapshot, new RegExp(`data-i="${i}"`), "the snapshot is of the element itself");
+      assert.match(picked[0].snapshot, new RegExp(`data-i="${i}"`), "the snapshot is of the element itself");
     });
   });
 
@@ -582,12 +719,12 @@ test("edit mode reaches every sheet, not just the first", async (t) => {
       await page.dblclick(`p[data-i="${i}"]`);
       await page.waitForTimeout(SETTLE_MS);
 
-      const picked = selections(await drain(server.url));
+      const picked = await record(server.url, "/nested.html");
       assert.equal(picked.length, 1);
-      const found = await inFile("nested", picked[0].data.selector);
+      const found = await inFile("nested", picked[0].selector);
       // The old selector resolved to nothing here — or, on a document with a
       // third authored sheet, to an element on it.
-      assert.deepEqual(found?.i, i, `${picked[0].data.selector} names the authored sheet, not the invented one`);
+      assert.deepEqual(found?.i, i, `${picked[0].selector} names the authored sheet, not the invented one`);
     });
   });
 
@@ -623,9 +760,9 @@ test("edit mode reaches every sheet, not just the first", async (t) => {
       await page.keyboard.press("Escape");
       await page.waitForTimeout(SETTLE_MS * 2);
 
-      const picked = selections(await drain(server.url));
+      const picked = await record(server.url, "/mega.html");
       assert.equal(picked.length, 1, "the shell is selectable like anything else");
-      assert.deepEqual((await inFile("mega", picked[0].data.selector))?.i, "mega",
+      assert.deepEqual((await inFile("mega", picked[0].selector))?.i, "mega",
         "and it is reported as the paragraph it is part of");
 
       const saved = await inFile("mega", 'p[data-i="mega"]');

@@ -14,21 +14,19 @@
 //   GET  /pdf/<page>.html  render a served page -> application/pdf (headless use)
 //   POST /render-pdf       { html, title } -> application/pdf
 //   PUT  /<page>.html      raw html body -> saved to the page's file
-//   POST /chat/<page>.html/messages   append a selection notice (the element
-//                          the user just double-clicked, or its deselect), a
-//                          fit report (the page no longer fits its sheets), or
-//                          a model status (working/done)
-//   GET  /chat/<page>.html/messages   read/long-poll one page's events + presence
-//   GET  /chat/messages    read/long-poll EVERY served page's events. This is
-//                          what a model watches: it connects to the server,
-//                          not to a page, so it sees whichever page the user
-//                          opens without being told about it.
+//   POST /chat/<page>.html/messages   the page recording what the user has
+//                          selected or that it no longer fits its sheets, or
+//                          the model posting working/done
+//   GET  /chat/<page>.html/messages   that page's own poll, for model status
+//   GET  /chat/selection   what is selected right now, on every served page
+//   GET  /chat/fit         which served pages no longer fit their sheets
 //
 // The /chat/ path is historical: there is no chat. The page has no panel and
-// the user talks to their model in the model's own session — what crosses
-// this endpoint is the page telling the model what is selected and when it has
-// stopped fitting its sheets, the model telling the page when it is mid-edit,
-// and presence for the toolbar's indicator.
+// the user talks to their model in the model's own session. What crosses these
+// endpoints is what one side observes and the other cannot: the page records
+// what the user pointed at and where the layout broke, and the model says when
+// it is mid-edit. Both of the page's halves are STATE, read on demand —
+// nothing subscribes and nothing is pushed.
 //
 // Static files also answer HEAD and carry an ETag derived from mtime+size —
 // the shell's auto-reload poll (see shell.js) HEADs its own URL and reloads
@@ -64,7 +62,10 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderPdf, closeBrowser } from "./render.mjs";
-import { createLiveLog, postMessage, awaitMessages, listening, closeAll } from "./chat-store.mjs";
+import {
+  createLiveLog, postMessage, awaitMessages,
+  setSelection, getSelections, setFit, getFits, closeAll,
+} from "./chat-store.mjs";
 
 const DEFAULT_PORT = 4949;
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -418,35 +419,43 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     res.end(JSON.stringify({ ok: true }));
   }
 
-  // The live channel (see chat-store.mjs), at two addresses:
+  // The live channel (see chat-store.mjs), at three addresses:
   //
-  //   /chat/messages              every page this server serves — what a model
-  //                               watches, so it never has to name a page or
-  //                               be told when the user opens another
-  //   /chat/<page>.html/messages  one page — what that page's own poll uses,
-  //                               and where POSTs about it go
+  //   GET  /chat/selection              what is selected right now, on every
+  //                                     page this server serves. What a model
+  //                                     reads, on demand, when a request needs
+  //                                     a target. Nothing subscribes.
+  //   POST /chat/<page>.html/messages   the page reporting its selection, or
+  //                                     the model posting working/done
+  //   GET  /chat/<page>.html/messages   that page's own poll, for status
   //
   // A page-scoped address exists only for pages PUT could reach: same path
-  // rule (top-level or one project dir deep), and the file must exist — an
-  // event stream never outlives (or predates) its page. The server-wide
-  // address has no such check; there is no page to check.
+  // rule (top-level or one project dir deep), and the file must exist. The
+  // selection read has no such check; there is no single page to check.
   async function handleChat(req, res, urlPath, query) {
     const fail = (status, error) => {
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error }));
     };
-    let pagePath;  // undefined = every page
-    if (urlPath !== "/chat/messages") {
-      const m = urlPath.match(/^\/chat(\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html)\/messages$/);
-      if (!m) return fail(404, "not a live-channel endpoint");
-      pagePath = m[1];
-      const filePath = safeJoin(ROOT, pagePath);
-      if (!filePath) return fail(404, "no such page");
-      try {
-        if (!(await fs.stat(filePath)).isFile()) return fail(404, "no such page");
-      } catch {
-        return fail(404, "no such page");
-      }
+
+    if (urlPath === "/chat/selection" || urlPath === "/chat/fit") {
+      if (req.method !== "GET") return fail(405, "method not allowed");
+      const body = urlPath === "/chat/fit"
+        ? { fits: getFits(live) }
+        : { selections: getSelections(live) };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: true, epoch: live.epoch, ...body }));
+    }
+
+    const m = urlPath.match(/^\/chat(\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html)\/messages$/);
+    if (!m) return fail(404, "not a live-channel endpoint");
+    const pagePath = m[1];
+    const filePath = safeJoin(ROOT, pagePath);
+    if (!filePath) return fail(404, "no such page");
+    try {
+      if (!(await fs.stat(filePath)).isFile()) return fail(404, "no such page");
+    } catch {
+      return fail(404, "no such page");
     }
 
     if (req.method === "POST") {
@@ -459,11 +468,12 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       const { from, kind, text, data } = payload || {};
       if (from !== "user" && from !== "model") return fail(400, "from must be user|model");
       // No "message" kind: the page has no chat to send one from, and the
-      // model has its own session to answer in. What the page CAN send is
+      // model has its own session to answer in. What the page CAN record is
       // what it alone observes: what the user pointed at ("selection"), and
       // that it no longer fits its sheets ("fit") — a real defect in the
       // model's own layout, which the user hands back for fixing by pressing
-      // FIX on the page's own notice.
+      // FIX on the page's own notice. Both are state: the latest one stands,
+      // and the page takes its fit report back when it fits again.
       if (!["status", "selection", "fit"].includes(kind)) {
         return fail(400, "kind must be status|selection|fit");
       }
@@ -471,46 +481,48 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       if (data !== undefined && (typeof data !== "object" || data === null)) {
         return fail(400, "data must be an object");
       }
-      // A selection is entirely its data — including the deselect, which is
-      // data.selector === null. Without data there is nothing to report.
-      if (kind === "selection" && (!data || !("selector" in data))) {
-        return fail(400, "selection needs data.selector (null when deselected)");
+
+      // A selection replaces what this page had selected — it is state, not an
+      // entry in a stream. Nothing is woken; the model reads it when it needs
+      // a target.
+      if (kind === "selection") {
+        if (!data || !("selector" in data)) {
+          return fail(400, "selection needs data.selector (null when deselected)");
+        }
+        setSelection(live, pagePath, data);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: true, epoch: live.epoch }));
       }
       // A fit report is a measurement — without the numbers there is nothing
       // for the model to act on, and no way to tell one problem from another.
-      if (kind === "fit" && (!data || typeof data.rendered !== "number" || typeof data.authored !== "number")) {
-        return fail(400, "fit needs data.authored and data.rendered");
+      // Like a selection it is state: the page's current verdict on itself,
+      // replaced when it re-measures and cleared when it fits again.
+      if (kind === "fit") {
+        if (!data || typeof data.rendered !== "number" || typeof data.authored !== "number") {
+          return fail(400, "fit needs data.authored and data.rendered");
+        }
+        setFit(live, pagePath, data.fits ? null : { ...data, text });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: true, epoch: live.epoch }));
       }
-      // A POST is always about one page — there is no such thing as a
-      // selection on "every page".
-      if (!pagePath) return fail(404, "post to /chat/<page>.html/messages");
-      const msg = postMessage(live, { page: pagePath, from, kind, text, data });
+
+      const msg = postMessage(live, { page: pagePath, kind, text, data });
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, id: msg.id, epoch: live.epoch, listening: listening(live) }));
+      return res.end(JSON.stringify({ ok: true, id: msg.id, epoch: live.epoch }));
     }
 
     if (req.method === "GET") {
-      const after = query.has("after") ? Math.max(0, Number(query.get("after")) || 0) : undefined;
-      // Bounded long-poll by contract. 300s ceiling: background/one-shot
-      // listeners (harness wakes the model when the command exits) want long
-      // quiet holds; the FOREGROUND bound that keeps strict harnesses happy
-      // is the CLI's default (20s), not this ceiling.
+      const after = query.has("after") ? Math.max(0, Number(query.get("after")) || 0) : 0;
       const waitMs = Math.min(Math.max(Number(query.get("wait")) || 0, 0), 300) * 1000;
-      const from = ["user", "model", "any"].includes(query.get("from")) ? query.get("from") : "any";
-      const consumer = query.get("consumer") || "";
-      const peek = query.get("peek") === "1";
       const messages = await awaitMessages(live, {
         after,
-        from,
-        page: pagePath,   // undefined at /chat/messages = every page
+        page: pagePath,
         waitMs,
-        consumer,
-        peek,
         onAbort: (drop) => req.on("close", drop),
       });
       if (res.writableEnded) return; // client went away mid-poll
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, epoch: live.epoch, listening: listening(live), messages }));
+      return res.end(JSON.stringify({ ok: true, epoch: live.epoch, messages }));
     }
 
     return fail(405, "method not allowed");
@@ -718,19 +730,13 @@ if (isMain) {
     autoPort: args.includes("--auto-port"),
   });
   console.log(`print-skill server: ${url}  (serving ${root})`);
-  // Addressed to the agent that just started this process. A served page is
-  // live-editable, but only if something is actually listening on it — and
-  // the moment that is most often missed is exactly this one, a restart in a
-  // turn that was about something else. So the next command is printed where
-  // the agent is already looking, not left to a doc it may not re-read.
+  // Addressed to the agent that just started this process. There is nothing
+  // to connect and nothing to arm — the one thing worth knowing is where the
+  // page's own state can be read from when a request needs a target.
   console.log(
-    `live edit: nothing is listening yet. Before you end this turn, connect:\n` +
-    `  node ${path.join(SERVER_DIR, "chat-cli.mjs")} wait --timeout 240 --url ${url}\n` +
-    `  (No page argument — this watches every page this server serves, including\n` +
-    `  ones made later. Run it in the background and end your turn; its completion\n` +
-    `  wakes you, then arm the next one. This applies even if all you were asked to\n` +
-    `  do was start the server. Skip only in a headless/pipeline run, where nobody\n` +
-    `  is at a browser.)`
+    `live edit: ready. Nothing to connect — when the user asks for a change\n` +
+    `without saying what it is about, read what they have selected:\n` +
+    `  node ${path.join(SERVER_DIR, "chat-cli.mjs")} selection --url ${url}`
   );
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, async () => {

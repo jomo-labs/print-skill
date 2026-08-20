@@ -207,8 +207,8 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
           fit: window.mpFit,
           attr: document.body.dataset.mpOverflow,
           badge: (() => {
-            const el = document.getElementById("mp-chrome-root").shadowRoot.getElementById("mp-fit-badge");
-            return { shown: getComputedStyle(el).display !== "none", text: el.textContent };
+            const el = document.getElementById("mp-chrome-root").shadowRoot.getElementById("mp-live-status");
+            return { shown: el.classList.contains("mp-live-error"), text: el.textContent };
           })(),
         }));
         assert.equal(fit.authored, 1, `${name}: authored sheets`);
@@ -229,8 +229,8 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
       const state = await page.evaluate(() => ({
         fit: window.mpFit,
         attr: document.body.dataset.mpOverflow,
-        shown: getComputedStyle(document.getElementById("mp-chrome-root")
-          .shadowRoot.getElementById("mp-fit-badge")).display !== "none",
+        shown: document.getElementById("mp-chrome-root")
+          .shadowRoot.getElementById("mp-live-status").classList.contains("mp-live-error"),
         saved: serializeForSave(),
       }));
       assert.deepEqual(state.fit, { authored: 1, rendered: 1, overflowing: 0 });
