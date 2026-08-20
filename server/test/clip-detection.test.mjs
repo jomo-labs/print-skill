@@ -62,6 +62,15 @@ const FITS = `
     <div class="tilt" style="border: 1.5px solid black; padding: 8px;"><p>Tilted box</p></div>
   </div>`;
 
+// The same overflow with padding at the top, so the container itself is
+// hittable where no child is — the fixture for the dress code: on a clipped
+// element the hover box and the error box are ONE box, in the error's red,
+// and a selection of it is that same red, solid.
+const HOVERABLE = `
+  <div data-mp-section="custom" style="height: 160px; padding: 24px 24px 0;">
+    ${`<p>A line of schedule copy that keeps going and going.</p>`.repeat(12)}
+  </div>`;
+
 async function fitRecord(serverUrl) {
   const res = await fetch(`${serverUrl}/chat/fit`);
   assert.equal(res.ok, true, "reading the fit record");
@@ -93,6 +102,7 @@ test("content cut off inside a container is detected and handed over", async (t)
   await write("clipped", CLIPPED);
   await write("wide", WIDE);
   await write("fits", FITS);
+  await write("hoverable", HOVERABLE);
 
   const server = await startServer({ dir, port: 0 });
   const browser = await chromium.launch({
@@ -200,6 +210,74 @@ test("content cut off inside a container is detected and handed over", async (t)
       assert.equal(reported[0].clipped, 1);
       assert.deepEqual(reported[0].clippedAt, ["#page > div"],
         "the model reads where without re-measuring anything");
+    });
+  });
+
+  // One element never wears two boxes, and an errored element is never dressed
+  // in the selection's blue: hovering a clipped container draws the ONE box in
+  // the error's red — dashed as every hover is, chip red to match, label
+  // naming the problem instead of offering the edit — while the element's own
+  // dashed outline steps aside. Selecting it keeps the selection's solid
+  // shape in that same red.
+  await t.test("hover and selection of a clipped element wear the error's red", async () => {
+    await withPage("hoverable", async (page) => {
+      await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
+      // The container's own top padding, where no child is.
+      const box = await page.locator("#page > div").boundingBox();
+      await page.mouse.move(box.x + 8, box.y + 8);
+      await page.waitForFunction(`!!${CHROME}.querySelector(".mp-hover-box")`);
+
+      const hovered = await page.evaluate(`(() => {
+        const hb = ${CHROME}.querySelector(".mp-hover-box");
+        const el = document.querySelector("[data-mp-clipped]");
+        return {
+          label: hb.querySelector(".mp-hover-label").textContent,
+          border: getComputedStyle(hb).borderTopColor,
+          dashed: getComputedStyle(hb).borderTopStyle,
+          chip: getComputedStyle(hb.querySelector(".mp-hover-label")).backgroundColor,
+          ownOutline: getComputedStyle(el).outlineStyle,
+        };
+      })()`);
+      assert.equal(hovered.label, "Block — overflowing",
+        "the label says what is wrong, not how to edit");
+      assert.equal(hovered.border, "rgba(220, 38, 38, 0.75)",
+        "the hover box IS the red error box");
+      assert.equal(hovered.dashed, "dashed", "dashed, as every hover box is");
+      assert.equal(hovered.chip, "rgba(220, 38, 38, 0.9)", "the chip goes red with it");
+      assert.equal(hovered.ownOutline, "none", "one box on one element, not a box on a box");
+
+      // Selecting it: solid, as every selection is, in the error's red.
+      await page.mouse.dblclick(box.x + 8, box.y + 8);
+      const picked = await page.evaluate(`(() => {
+        const el = document.querySelector("[data-mp-clipped]");
+        const cs = getComputedStyle(el);
+        return {
+          selected: el.classList.contains("mp-selected"),
+          style: cs.outlineStyle,
+          color: cs.outlineColor,
+        };
+      })()`);
+      assert.equal(picked.selected, true, "the double-click selected it as ever");
+      assert.equal(picked.style, "solid", "solid — the selection's shape");
+      assert.equal(picked.color, "rgba(220, 38, 38, 0.75)", "in the error's colour");
+
+      // ...and off the element, the hover box reverts to the offer, in blue.
+      const other = await page.locator("#page > div > p >> nth=0").boundingBox();
+      await page.mouse.move(other.x + 8, other.y + 8);
+      await page.waitForFunction(
+        `${CHROME}.querySelector(".mp-hover-label")?.textContent.includes("double-click to edit")`);
+      const plain = await page.evaluate(`(() => {
+        const hb = ${CHROME}.querySelector(".mp-hover-box");
+        return {
+          label: hb.querySelector(".mp-hover-label").textContent,
+          border: getComputedStyle(hb).borderTopColor,
+          clipOutline: getComputedStyle(document.querySelector("[data-mp-clipped]")).outlineStyle,
+        };
+      })()`);
+      assert.equal(plain.label, "Paragraph — double-click to edit");
+      assert.equal(plain.border, "rgba(59, 130, 246, 0.7)", "an unclipped element keeps the blue");
+      assert.equal(plain.clipOutline, "solid",
+        "and the clipped element gets its own outline back — still selected, so solid red");
     });
   });
 

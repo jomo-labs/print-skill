@@ -198,6 +198,31 @@ test("what the user selects is on record, and the page says so", async (t) => {
     });
   });
 
+  // Pointing ends when the hand moves away: a click anywhere off the element
+  // releases it — outline, toolbar line and record together. Without this the
+  // selection outlives the user's interest and sits on top of newer news,
+  // like the fit error their own edit just caused.
+  await t.test("clicking elsewhere lets the element go", async () => {
+    await withPage(async (page) => {
+      await page.dblclick("#probe");
+      await page.waitForTimeout(SETTLE_MS);
+      assert.match(await selection(server.url), /#probe/);
+
+      await page.click("#other");   // a single click — moving on, not selecting
+      await page.waitForTimeout(SETTLE_MS);
+
+      assert.equal(await selection(server.url), "NO_SELECTION");
+      assert.equal(await outlined(page), null, "the outline went with it");
+      assert.equal(await toolbarLine(page), "Ask your model for any changes",
+        "and the line is free for whatever is next");
+      assert.equal(
+        await page.evaluate(`document.body.classList.contains("edit-active")`),
+        true,
+        "letting go of the element is not leaving edit mode"
+      );
+    });
+  });
+
   // The reload the model's own edit causes lands mid-conversation about one
   // element. The user did not ask for it and should barely notice it: losing
   // the record loses the context exactly when they are iterating, and losing

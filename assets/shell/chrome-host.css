@@ -55,6 +55,22 @@
       outline-offset: 1px !important;
     }
 
+    /* One element never wears two boxes. Hovering a clipped element draws the
+       chrome's hover box over it in this same red (shell.js marks the moment
+       with data-mp-clip-hover), so the element's own outline steps aside
+       until the box leaves — the error keeps its red, the hover keeps being
+       one dashed rectangle. */
+    [data-mp-clipped][data-mp-clip-hover] { outline: none !important; }
+
+    /* ...and selecting a clipped element keeps the selection's shape in the
+       error's colour: solid, as every selection is, red, because what is
+       selected is the thing that is wrong. Last, so a selected element stays
+       outlined while the hover box passes over it. */
+    .mp-selected[data-mp-clipped] {
+      outline: 2px solid rgba(220, 38, 38, 0.75) !important;
+      outline-offset: 2px !important;
+    }
+
     /* Embedded (iframe) mode — the host page provides its own chrome. */
     body.mp-embedded { padding-top: 0 !important; }
     /* The embedding host sizes and scrolls the preview itself, so the canvas

@@ -396,6 +396,15 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       assert.equal(reported.length, 1, "the press reports it once");
       assert.ok(reported[0].rendered > 1, `rendered: ${reported[0].rendered}`);
 
+      // The press visibly lands, selection or no selection: the line now
+      // carries the hand-off instruction. It used to bounce back to the
+      // "selected" message the moment fitFixing was set — which read as the
+      // press doing nothing at all.
+      const handed = await waitForBadge(page, (b) => b.cmd === "/print fix");
+      assert.equal(handed.cmd, "/print fix", "the instruction the press leaves behind");
+      assert.equal(handed.selected, false, "not the old selection message");
+      assert.match(handed.text, /command copied\. Paste and send to your model\./, handed.text);
+
       // The typing reached the file too — the model is being sent to read a
       // page that already contains what they typed.
       const saved = await fs.readFile(path.join(dir, "fits.html"), "utf-8");
