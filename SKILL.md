@@ -89,6 +89,14 @@ real-time prices — with WebFetch/WebSearch. **Never fabricate live data.** For
 content you know well (riddles, recipes, activities, trivia, layouts), skip
 fetching and write it directly.
 
+If the page needs **line art derived from a photograph** (coloring page, image
+page, drawing prompt — and only those), produce it now: check for an image
+backend per `references/harness-support.md` Part 2, generate, then run the
+normalize pass and both checks from the **Image block** entry in
+`references/page-types.md`. With no backend available, hand-author the art as
+stroked SVG (design rule 1a) and say so in the report — the page still gets
+made either way.
+
 ### Step 3 — Author
 
 Read `references/design-rules.md` — its platform invariants (what every page
@@ -216,7 +224,7 @@ every page this project generates.
   the file automatically), then click **Print / Save PDF** for an exact PDF.
   For font or color changes, ask me to regenerate the page with new style
   instructions."
-- If you can run the listen loop (`references/harness-support.md`), add:
+- If you can run the listen loop (`references/harness-support.md` Part 1), add:
   "Press **Edit** to change text right on the page, or double-click anything
   and tell me here what to do with it — I'm connected to the page, so I'll
   know what you picked." If you can't, add: "Press **Edit** to change text
@@ -327,7 +335,7 @@ appear anyway. The page's job is to show them the printable and let them point
 at parts of it; yours is everything else.
 
 It is on by default: whenever the server is up and your harness can run the
-listen loop (`references/harness-support.md`), you connect. At the end of a
+listen loop (`references/harness-support.md` Part 1), you connect. At the end of a
 generation run, after restarting a crashed server, in any later turn that
 brings one up — **including a turn whose only job was to start the server.**
 "They only asked me to restart it" is not a reason to leave it unwatched:
@@ -343,7 +351,7 @@ you are responding to, or the page you just wrote.
 ### Connecting
 
 1. Ensure the server is up (Step 7 probe). No server, no live mode.
-2. Run the decision in `references/harness-support.md` — the reachability
+2. Run the decision in `references/harness-support.md` Part 1 — the reachability
    gate, then the ladder. It is a fact about your harness, not about the page.
    If it fails, say so once, plainly, and carry on: everything else about the
    page still works, and the user can still ask you for changes here.

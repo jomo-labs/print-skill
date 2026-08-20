@@ -100,6 +100,46 @@ Reusable pieces. A page type is a stack or grid of these inside the safe area.
   all three are already the base layer's `table` defaults.
 - **Image block** — a placed raster image sized to a region. Full-area for
   coloring pages, spot-sized for decoration. Minimum 300 DPI at the printed size.
+  Normalize any line-art raster — model-generated or user-supplied — before
+  embedding it:
+
+  ```bash
+  magick in.jpg -colorspace Gray -filter Lanczos -resize 2100x \
+                -threshold 80% -type bilevel -morphology Dilate Disk:1 out.png
+  ```
+
+  **Resize before thresholding, never after.** Thresholding at native
+  resolution shatters thin anti-aliased strokes into fragments; resizing
+  first and thresholding second yields clean closed lines. The naive order
+  looks reasonable and silently destroys the art. `Dilate Disk:1` restores
+  stroke weight — models emit hairlines and will not reliably obey a prompt
+  asking for bold ones. `Disk:2` is already too heavy: it clogs facial
+  features.
+
+  Tune `-threshold` by eye, not by faith — a good source has a wide plateau
+  (58–78% all worked on one test image); a source with no plateau is
+  marginal. Contact sheet:
+
+  ```bash
+  for T in 62 70 78 86; do magick in.jpg -colorspace Gray -resize 2100x \
+    -threshold ${T}% -crop 500x400+800+600 +repage t$T.png; done
+  magick t*.png +append sheet.png   # then look at it
+  ```
+
+  Two checks catch the failures nothing downstream can repair. Run both on
+  the **source**, before normalizing:
+
+  | check | command tail | fails when |
+  |---|---|---|
+  | corners white >98% | `-colorspace Gray -format "%[fx:100*p{40,40}]"` | the art is really a *photo of a printed page* — desk, page curl, shadow |
+  | min block luma >45% | `-colorspace Gray -scale 12x16! -format "%[fx:100*minima]"` | solid black masses that soak ink and can't be colored |
+
+  Total ink coverage is **not** a useful gate, though it is the obvious one to
+  reach for: a page with dense black fans can carry *less* total ink than a
+  good one while being far worse. Colour needs no gate either — greyscale
+  conversion destroys it, so a wrongly colored-in object normalizes to a clean
+  outline on its own. (Thresholds derived from three samples; widen them if a
+  real page trips one.)
 - **Footer** — the shell's structural `<footer>` at the bottom of the page;
   `--text-2xs` label-font text in `--color-dim`, already styled by the base
   layer. Optionally put context ("Grade 2 ·", a date, a week
@@ -454,8 +494,34 @@ Title + full-area **image block** of **pure black line art on white**.
 - Image resolution: ~**2100×2875px** (300 DPI across the 7.0 × 9.6 in portrait
   content box). Larger is fine; smaller prints soft.
 - A user-provided image file is embedded as a data URI (grayscale by default,
-  per the theme's `--image-filter`).
+  per the theme's `--image-filter`), after the **Image block** normalize pass.
+- Size the art by **height, not width**: this aspect sits close to the content
+  box's own, so `width:100%` overflows the sheet. Budget `max-height` =
+  920px − title − footer; ~815px at the default `--text-xl` title, ~830px if
+  you drop the title to `--text-lg` to buy the art more room.
 - For a prompt-driven page with no image, use **Drawing prompt page** below.
+
+*Turning a photograph into line art.* Needs an image backend
+(`harness-support.md` Part 2); with none, hand-author the art as stroked SVG
+per design rule 1a and say so. Keep the division of labour clear: the
+**model** supplies composition, perspective and likeness — things that cannot
+be hand-authored — while the **normalize pass** supplies resolution, 1-bit
+conversion and line weight. Do not spend prompt iterations on anything the
+normalize pass fixes deterministically; that is wasted effort.
+
+Three failure modes recur, and all three must be closed *in the prompt*
+because normalization cannot repair them. Ask for a **flat digital line-art
+image** — naming a "coloring book page" invites a rendered photograph of a
+physical book, complete with desk, page curl and a colored-in object. Forbid
+**solid black anywhere**, requiring every object be an outline with a white
+interior; call out dense radiating detail (fan pleats, ceiling planks)
+specifically and ask for open white hubs, or converging lines fill in as
+black masses. And require small signs and labels be **left blank**, or the
+model invents scribbled lettering.
+
+Expect these to trade against each other: closing one loophole commonly
+reopens another, so re-run both Image-block checks after every iteration
+rather than assuming a prompt that worked once still holds.
 
 *Default styling:* title display `--text-xl`, centered above the
 image; no frame around the art.
