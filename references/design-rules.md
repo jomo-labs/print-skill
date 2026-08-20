@@ -19,6 +19,19 @@ must not restate them and cannot opt out — it describes only what it changes.
 - **Empty and overflow.** An empty block keeps its frame and label (Principle
   IV). Overflow drops the body type-scale one step, then shortens or splits —
   never truncate, never spill past the sheet edge.
+- **Containers clip, they never overlap.** Structural containers (div,
+  section, li's list, table cells, …) carry `overflow: clip` from the document
+  stylesheet: on paper, content painted over a neighbouring block is never
+  right, so a fixed-size box cuts what outgrows it. The cut is an error state,
+  not a layout tool — the shell detects content past a clip edge, outlines the
+  container in red on screen, and fails the Step 6 fit check with the
+  container's selector — so never size a container smaller than its content on
+  purpose. Design content to fit its box (Principle VII); a container that
+  genuinely must bleed (rare — an intentional full-bleed motif) opts out with
+  `overflow: visible` and owns the overlap it allows. Text elements
+  (headings, p, span) are exempt so glyph ink is never sheared; a 6px
+  `overflow-clip-margin` gives tilted motifs and print-flat shadows room at a
+  flush edge.
 - **Contrast and type floors.** WCAG AA: 4.5:1 body, 3:1 large or bold accent.
   Body copy >=13.5px, 16px+ for kids'. Label-font metadata (dateline, table
   text, table headers, footer) runs 9-10.5px and is never body copy. A theme

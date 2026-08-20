@@ -43,6 +43,18 @@
       outline-offset: 2px !important;
     }
 
+    /* A container whose content exceeds its clip edge (marked by the shell's
+       clip detection each layout pass — see detectClipped in shell.js). The
+       same story as .mp-selected: the mark sits on a document node, so the
+       outline lives here, screen-only — on paper the cut itself is the point,
+       and the toolbar's red line carries the words. Dashed, where the
+       selection is solid: this outline traces the edge the content is being
+       cut at. */
+    [data-mp-clipped] {
+      outline: 2px dashed rgba(220, 38, 38, 0.75) !important;
+      outline-offset: 1px !important;
+    }
+
     /* Embedded (iframe) mode — the host page provides its own chrome. */
     body.mp-embedded { padding-top: 0 !important; }
     /* The embedding host sizes and scrolls the preview itself, so the canvas

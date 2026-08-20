@@ -233,7 +233,7 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
           .shadowRoot.getElementById("mp-live-status").classList.contains("mp-live-error"),
         saved: serializeForSave(),
       }));
-      assert.deepEqual(state.fit, { authored: 1, rendered: 1, overflowing: 0 });
+      assert.deepEqual(state.fit, { authored: 1, rendered: 1, overflowing: 0, clipped: 0 });
       assert.equal(state.attr, undefined, "a page that fits should carry no diagnostic");
       assert.equal(state.shown, false, "a page that fits should show no notice");
       assert.ok(!state.saved.includes("data-mp-overflow"), "diagnostic leaked into a clean file");
@@ -248,7 +248,7 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
         fit: window.mpFit,
         attr: document.body.dataset.mpOverflow,
       }));
-      assert.deepEqual(state.fit, { authored: 2, rendered: 2, overflowing: 0 },
+      assert.deepEqual(state.fit, { authored: 2, rendered: 2, overflowing: 0, clipped: 0 },
         "an authored two-sheet page should report as fitting");
       assert.equal(state.attr, undefined, "an authored two-sheet page is not an overflow");
     });

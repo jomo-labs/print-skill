@@ -40,6 +40,13 @@
 //                               fitting"). Read it after your own edits land.
 //                               A page that comes back into fit drops off the
 //                               list by itself.
+//                               `clipped N` in the detail means content is
+//                               cut off inside N containers (it does not
+//                               print); each cut's address follows on its own
+//                               line — a selector into the file's authored
+//                               flow:
+//                                 /menu.html content is cut off in 1 place  [authored 1, rendered 1, overflowing 0, clipped 1, letter portrait]
+//                                     clipped: #page > div:nth-of-type(2)
 
 //   status <page> <working|done|idle> [text]
 //                               Tell the open tab where you are. `working`
@@ -135,9 +142,15 @@ function forPage(entries, page) {
  * twice as long as it should be" without opening the page.
  */
 function formatFit(f) {
-  const detail = `authored ${f.authored}, rendered ${f.rendered}, overflowing ${f.overflowing}`;
+  const detail = `authored ${f.authored}, rendered ${f.rendered}, overflowing ${f.overflowing}` +
+    (f.clipped ? `, clipped ${f.clipped}` : "");
   const paper = [f.paper, f.orientation].filter(Boolean).join(" ");
-  return `${f.page} ${f.text || "does not fit"}  [${detail}${paper ? `, ${paper}` : ""}]`;
+  const line = `${f.page} ${f.text || "does not fit"}  [${detail}${paper ? `, ${paper}` : ""}]`;
+  // Where the cuts are, one address per line — selectors into the file's
+  // authored flow, measured by the page itself, so there is nothing to
+  // re-derive before editing.
+  const clipped = (f.clippedAt || []).map((sel) => `\n    clipped: ${sel}`).join("");
+  return line + clipped;
 }
 
 function formatSelection(sel) {
