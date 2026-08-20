@@ -261,11 +261,12 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       assert.match(handed.title, /\/print fix/, handed.title);
 
       // ...and the paste landing is what starts the dot: the model says
-      // working, the dot pulses, the line stays what it was.
+      // working, the dot pulses, and the slot follows it — mid-edit outranks
+      // everything, including the instruction the press left behind.
       await saysWorking(server.url, "overflow");
       const badge = await waitForBadge(page, (b) => b.pulsing);
       assert.equal(badge.pulsing, true, "the model's own word moves the dot");
-      assert.match(badge.text, /command copied/, badge.text);
+      assert.equal(badge.text, "Working…", badge.text);
       assert.equal(badge.fix.shown, false, "the button stays aside while the model has it");
     });
   });

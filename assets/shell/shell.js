@@ -1068,7 +1068,9 @@ function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return nul
 //   THE INDICATOR belongs to the model, and to nothing else: it pulses while
 //   the model says it is working (`status working`), and rests the moment it
 //   is idle. Nothing on this page — not a press, not a problem — can make it
-//   move, so a pulse always means exactly one thing.
+//   move, so a pulse always means exactly one thing. While it pulses the slot
+//   says "Working…" too — the model mid-edit outranks everything, because it
+//   is the one state where asking for more is premature.
 //
 //   THE MESSAGE is a slot, not a stack: whatever is most current replaces
 //   what was there. At rest it is a standing invitation — "Ask your model for
@@ -1089,11 +1091,12 @@ function renderLiveStatus() {
   const selected = !!selectedEl?.isConnected;
   const working = modelWorking();
 
-  // What the slot says, one of: the selection, the standing fit problem (with
-  // its button), the instruction a FIX press leaves behind, or the invitation.
-  const sel = selected && !(broken && brokenAt > selectedAt && !fitFixing);
-  const err = broken && !sel && !fitFixing;
-  const handed = broken && !sel && fitFixing;
+  // What the slot says, one of: the model mid-edit, the selection, the
+  // standing fit problem (with its button), the instruction a FIX press
+  // leaves behind, or the invitation.
+  const sel = !working && selected && !(broken && brokenAt > selectedAt && !fitFixing);
+  const err = !working && broken && !sel && !fitFixing;
+  const handed = !working && broken && !sel && fitFixing;
 
   el.classList.toggle('mp-live-busy', working);
   el.classList.toggle('mp-live-selected', sel);
@@ -1114,6 +1117,8 @@ function renderLiveStatus() {
   // The button stands beside a problem nobody has taken yet, and nowhere
   // else: not once it has been handed over, and never next to a selection,
   // where "Fix" would read as an offer to fix the element the user picked.
+  // ...and never beside "Working…": mid-edit, a press would race the very fix
+  // it asks for.
   const btn = mpq('#mp-fit-fix');
   if (btn) {
     btn.style.display = err ? 'inline-flex' : 'none';
@@ -1124,6 +1129,7 @@ function renderLiveStatus() {
   if (!label) return;
   label.textContent = '';
 
+  if (working) { label.textContent = 'Working…'; return; }
   if (sel) {
     // One voice, in the selection's own colour — the element's name carries
     // the weight. "Sent" is a small promise kept at the next turn: the model
