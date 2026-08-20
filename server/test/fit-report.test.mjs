@@ -1,19 +1,24 @@
 // A page that does not fit its sheets is the one error the shell can find on
 // its own — and the one the user cannot do anything about, because the layout
-// is the model's. So the shell says so in red, and puts a FIX button next to
-// the message: pressing it hands the problem to the model over the live
-// channel, and the line reads "… fixing" until the model's edit lands and the
-// page re-measures itself clean.
+// is the model's. So the shell says so in red, in the toolbar's one status
+// line, and puts a FIX button next to it: pressing it hands the problem to the
+// model over the live channel.
 //
 // The press is the whole contract. Nothing about the page's problem reaches
 // the model unasked — an edit to the user's document is not something the page
 // starts behind their back.
 //
+// What the press changes is the INDICATOR, not the words. The toolbar has one
+// dot, always present, and it pulses exactly while something is being done
+// about this page. It used to append "…handed over" and then "…fixing" to the
+// message instead, which was the toolbar narrating its own plumbing at the
+// person who had just pressed the button.
+//
 // Asserted here, in the order the user would meet it: the toolbar says it and
 // nothing goes out, the button hands it over on a press, the message clears
 // when the fix arrives, the button comes back for a problem that survived, a
-// page that fits says nothing at all — and a user's own browser edit that
-// outgrows a sheet takes exactly the same path.
+// page that fits says nothing at all, a selection takes the line back — and a
+// user's own browser edit that outgrows a sheet takes exactly the same path.
 //
 //   node --test server/test/          (needs `npm install` in server/)
 import test from "node:test";
@@ -67,8 +72,8 @@ async function waitForFits(serverUrl, ms = 15000) {
   return seen;
 }
 
-// "…fixing" is a claim about work in progress, and nothing can see a listener
-// any more — so it waits for the model to say it is working, in its own words.
+// The model announcing its own work. Nothing can see a listener any more, so
+// this is the only way a test can put the page in that state.
 const saysWorking = (serverUrl, name, state = "working") =>
   fetch(`${serverUrl}/chat/${name}.html/messages`, {
     method: "POST",
@@ -85,18 +90,27 @@ const badgeState = async (page) => {
   try {
     return await page.evaluate(`(() => {
       const root = document.getElementById("mp-chrome-root")?.shadowRoot;
-      const el = root?.getElementById("mp-fit-badge");
+      const el = root?.getElementById("mp-live-status");
       const btn = root?.getElementById("mp-fit-fix");
-      if (!el || !btn) return null;
+      const dot = root?.querySelector("#mp-live-status .mp-live-dot");
+      if (!el || !btn || !dot) return null;
       const cs = getComputedStyle(el);
       const bcs = getComputedStyle(btn);
+      const dcs = getComputedStyle(dot);
       return {
-        shown: cs.display !== "none",
+        shown: el.classList.contains("mp-live-error"),
+        selected: el.classList.contains("mp-live-selected"),
         color: cs.color,
-        text: el.querySelector(".mp-fit-label").textContent,
+        // No box any more: red words on the toolbar's own paper.
+        border: cs.borderTopWidth,
+        background: cs.backgroundColor,
+        text: el.querySelector(".mp-live-label").textContent,
         title: el.title,
-        fixing: el.hasAttribute("data-mp-fixing"),
-        dots: el.querySelectorAll(".mp-fit-dot").length,
+        // The indicator is one element, always in the DOM, and its pulse is
+        // the only thing that says work is happening.
+        dots: el.querySelectorAll(".mp-live-dot").length,
+        dotShown: dcs.display !== "none",
+        pulsing: dcs.animationName !== "none",
         fix: {
           shown: bcs.display !== "none",
           disabled: btn.disabled,
@@ -195,11 +209,16 @@ test("a page that stops fitting offers itself to the model", async (t) => {
   await t.test("the toolbar says it in red, with a FIX button beside it", async () => {
     await withPage("overflow", async (page) => {
       const badge = await waitForBadge(page, offered);
-      assert.equal(badge.dots, 1, "an indicator to flash");
-      assert.equal(badge.fixing, false, "nothing is fixing it yet");
+      assert.equal(badge.dots, 1, "one indicator, and it is the same one as ever");
+      assert.equal(badge.dotShown, true, "always present, whatever is being said");
+      assert.equal(badge.pulsing, false, "resting — nothing is being done about it yet");
       assert.match(badge.text, /^content runs onto \d+ sheets$/, badge.text);
       assert.match(badge.fix.label, /^fix$/i, badge.fix.label);
       assert.equal(offered(badge), true, "and the button is live");
+      // Red text on the toolbar's paper, not a bordered box floated on top of
+      // it: the problem is a sentence in the same line everything else uses.
+      assert.equal(badge.border, "0px", "no outer box");
+      assert.match(badge.background, /rgba\(0, 0, 0, 0\)|transparent/, badge.background);
       // Red, not the amber notice colour it used to wear: this is an error.
       // Chromium reports the token back in its authored oklch form.
       const [, chroma, hue] = badge.color.match(/oklch\([\d.]+ ([\d.]+) ([\d.]+)/) || [];
@@ -229,22 +248,24 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       // A read, not a queue: the model can ask again and still find it.
       assert.deepEqual(await fitReport(server.url), reported, "and it stays on the record");
 
-      // The toolbar stops asking. It does NOT yet claim anyone is fixing it:
-      // nothing is listening, so the press bought a place on the record and
-      // the model picks it up when it next works on the page. Saying "…fixing"
-      // for that gap would be inventing work nobody is doing.
+      // What the user sees the instant they press: the indicator starts
+      // pulsing and the button steps aside. The WORDS do not change — they
+      // pressed the button, so they know they pressed the button; what they
+      // could not otherwise see is whether anything is happening about it.
       const handed = await waitForBadge(page, (b) => !b.fix.shown);
-      assert.equal(handed.fixing, false, "nobody is fixing it yet");
-      assert.match(handed.text, /content runs onto \d+ sheets …handed over/, handed.text);
+      assert.equal(handed.pulsing, true, "the indicator picks it up on the press itself");
+      assert.match(handed.text, /^content runs onto \d+ sheets$/, handed.text);
+      assert.ok(!/handed|fixing|working/i.test(handed.text), handed.text);
       assert.match(handed.title, /Handed to your model/, handed.title);
 
-      // ...and when the model does start, the line says so in its own words.
+      // ...and the model actually starting work changes nothing on screen: the
+      // toolbar was already saying the one true thing there is to say.
       await saysWorking(server.url, "overflow");
-      const badge = await waitForBadge(page, (b) => b.fixing);
-      assert.equal(badge.fixing, true, "marked as being fixed");
-      assert.match(badge.text, /content runs onto \d+ sheets …fixing/, badge.text);
+      await page.waitForTimeout(SETTLE_MS);
+      const badge = await badgeState(page);
+      assert.equal(badge.pulsing, true, "still marked as being worked on");
+      assert.match(badge.text, /^content runs onto \d+ sheets$/, badge.text);
       assert.equal(badge.fix.shown, false, "the button stays aside while the model has it");
-      assert.match(badge.title, /is fixing it/, badge.title);
     });
   });
 
@@ -254,7 +275,7 @@ test("a page that stops fitting offers itself to the model", async (t) => {
     await withPage("overflow", async (page) => {
       await waitForBadge(page, offered);
       await pressFix(page);
-      await waitForBadge(page, (b) => b.fixing);
+      await waitForBadge(page, (b) => b.pulsing);
 
       await write("overflow", SHORT);
       await fetch(`${server.url}/chat/overflow.html/messages`, {
@@ -277,7 +298,7 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       await waitForBadge(page, offered);
       await pressFix(page);
       assert.equal((await waitForFit(server.url)).length, 1);
-      await waitForBadge(page, (b) => b.fixing);
+      await waitForBadge(page, (b) => b.pulsing);
 
       // The model's reply arrives with the page no better than before.
       await fetch(`${server.url}/chat/overflow.html/messages`, {
@@ -286,10 +307,10 @@ test("a page that stops fitting offers itself to the model", async (t) => {
         body: JSON.stringify({ from: "model", kind: "status", text: "", data: { state: "done" } }),
       });
 
-      const back = await waitForBadge(page, (b) => offered(b) && !b.fixing);
+      const back = await waitForBadge(page, (b) => offered(b) && !b.pulsing);
       assert.equal(back.shown, true, "the problem is still stated");
-      assert.equal(back.fixing, false, "and no longer pretends to be in progress");
-      assert.ok(!/fixing/.test(back.text), back.text);
+      assert.equal(back.pulsing, false, "and the indicator stops pulsing for nobody");
+      assert.match(back.text, /^content runs onto \d+ sheets$/, back.text);
       assert.equal(offered(back), true, "with the button back to press again");
 
       await pressFix(page);
@@ -308,6 +329,32 @@ test("a page that stops fitting offers itself to the model", async (t) => {
     });
   });
 
+  // One message slot, and the selection owns it. Both notices are true at once
+  // on this page, and showing them together asks the user to work out which of
+  // the two their double-click just produced — so the thing they did wins, and
+  // the fit problem is waiting again the moment they let go.
+  await t.test("selecting an element takes the line, and gives it back", async () => {
+    await withPage("overflow", async (page) => {
+      await waitForBadge(page, offered);
+      await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
+      await page.dblclick(`p[data-i="0"]`);
+
+      const picked = await waitForBadge(page, (b) => b.selected);
+      assert.equal(picked.selected, true, "the line is the selection's");
+      assert.equal(picked.shown, false, "and not the fit problem's as well");
+      assert.match(picked.text, /^Paragraph .*selected\./s, picked.text);
+      assert.equal(picked.fix.shown, false, "no FIX beside a selection to mistake it for");
+      assert.equal(picked.dots, 1, "the same one indicator, wherever it is");
+
+      // Done: the selection is gone, and the page's own problem is still the
+      // page's own problem.
+      await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
+      const back = await waitForBadge(page, offered);
+      assert.equal(back.selected, false);
+      assert.match(back.text, /^content runs onto \d+ sheets$/, back.text);
+    });
+  });
+
   // The other way a page stops fitting: the user types into it. Their text is
   // as capable of outgrowing a sheet as the model's was, and they can no more
   // fix the layout than before — so it takes the same path, button and all.
@@ -322,8 +369,13 @@ test("a page that stops fitting offers itself to the model", async (t) => {
         Array.from({ length: 300 }, (_, i) => `Sentence ${i} that the user typed into the page.`).join(" "));
       await page.keyboard.press("Escape");   // commits the edit
 
+      // ...and it takes the line back off their own selection. A selection
+      // normally outranks the fit message, but a page that BREAKS while they
+      // have something selected is the newer news of the two, and the one
+      // they cannot see for themselves.
       const badge = await waitForBadge(page, offered);
       assert.equal(badge.shown, true, "they see it straight away");
+      assert.equal(badge.selected, false, "even with the element still outlined");
       assert.match(badge.text, /content runs onto \d+ sheets/, badge.text);
       assert.deepEqual(
         (await fitReport(server.url)).filter((f) => f.page === "/fits.html"),

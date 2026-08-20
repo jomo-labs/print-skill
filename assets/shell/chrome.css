@@ -133,82 +133,6 @@ button, input, textarea, select {
 #mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--mp-rule); flex-shrink: 0; }
 
 /* Variant nav — shell.js flips it to flex once it finds multiple variants. */
-/* Fit status. The page not fitting its sheets is the one thing in this
-   toolbar that is actually WRONG — the breaks fell where the content ran out
-   of room rather than where they were designed — and the one thing the user
-   cannot fix themselves, since the layout is the model's. So it is red and it
-   is a status message (indicator + line + the FIX button that hands it over),
-   not a quiet outlined note: it states the problem, offers the one move that
-   answers it, then states that it is being fixed, then disappears when the
-   model's edit lands and the page fits. */
-#mp-fit-badge {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  /* No margin-left:auto: .mp-toolbar-spacer does the pushing. */
-  padding: 3px 4px 3px 9px;
-  border: 1px solid color-mix(in oklab, var(--mp-error) 35%, transparent);
-  border-radius: 3px;
-  background: color-mix(in oklab, var(--mp-error) 8%, transparent);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--mp-error);
-  white-space: nowrap;
-  letter-spacing: 0.02em;
-  cursor: default;
-}
-/* The same indicator as the connection status beside it, in the error colour
-   — one visual language for "here is where this page stands". */
-.mp-fit-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-/* Handed to the model and not answered yet ("… fixing"): the dot pulses, on
-   the same beat as the working indicator, because it means the same thing —
-   wait, something is happening. */
-#mp-fit-badge[data-mp-fixing] .mp-fit-dot { animation: mp-live-pulse 1.2s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  #mp-fit-badge[data-mp-fixing] .mp-fit-dot { animation: none; }
-}
-/* While the model has it the button is gone, so the line gets its padding
-   back and the badge stays a plain status message. */
-#mp-fit-badge[data-mp-fixing] { padding-right: 9px; }
-
-/* FIX. Nothing about this page's problem reaches the model until this is
-   pressed, so it is the one control in the toolbar that is asking to be —
-   solid in the error colour, against the Print button's ink and the outlined
-   quiet of everything else. Sized to the status line it sits in, not to the
-   toolbar's primary buttons, so it reads as part of the message. */
-#mp-toolbar #mp-fit-fix {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 9px;
-  background: var(--mp-error);
-  color: var(--mp-paper);
-  border: none;
-  border-radius: 2px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-/* Nobody is listening: the problem stands, but there is nowhere to send it.
-   pointer-events:none so the hover falls through to the badge, whose tooltip
-   is the one that says why (showFitBadge). */
-#mp-toolbar #mp-fit-fix:disabled {
-  opacity: 0.45;
-  cursor: default;
-  pointer-events: none;
-}
-#mp-toolbar #mp-fit-fix:focus-visible { outline: 2px solid var(--mp-error); outline-offset: 2px; }
-
 #mp-variant-nav { display: none; align-items: center; gap: 8px; }
 #mp-variant-label {
   font-size: 11px;
@@ -319,12 +243,14 @@ button, input, textarea, select {
   text-transform: uppercase;
 }
 
-/* ── Live line — the toolbar's right edge ──
-   Empty until there is something true to say: that an element is selected and
-   the model will read it, or that the model is mid-edit. It sits after the
-   spacer, so it holds the right edge as the controls to its left come and go
-   with edit mode. A sentence, so it is not shouted in caps like a label, and
-   it gives up width before the controls do. */
+/* ── Status region — the toolbar's right edge ──
+   Everything the chrome has to say about this page: an indicator that is
+   always there, one message slot, and the FIX button when there is something
+   to hand over. Only one message is ever shown, and a selection outranks the
+   rest — see renderLiveStatus. It sits after the spacer, so it holds the right
+   edge as the controls to its left come and go with edit mode. A sentence, so
+   it is not shouted in caps like a label, and it gives up width before the
+   controls do. */
 /* Pushes everything after it to the toolbar's right edge (see injectChrome). */
 .mp-toolbar-spacer { flex: 1 1 auto; }
 
@@ -350,6 +276,10 @@ button, input, textarea, select {
    whole of the emphasis, since the line already carries the selection's
    colour. */
 .mp-live-name { font-weight: 700; }
+/* The one indicator. Always present, always this element, never moved: it
+   takes the colour of whatever the message is saying and pulses when
+   something is being done about it. Nothing else in the toolbar moves to mean
+   something, which is what makes this readable at a glance. */
 .mp-live-dot {
   width: 6px;
   height: 6px;
@@ -358,20 +288,59 @@ button, input, textarea, select {
   flex-shrink: 0;
 }
 /* The whole line takes the selection's colour, so it reads as belonging to the
-   outlined element rather than as a separate notice. */
+   outlined element rather than as a separate notice. A selection outranks
+   every other message (renderLiveStatus), so this colour never competes. */
 #mp-live-status.mp-live-selected { color: var(--mp-select); }
-/* With nothing to say, the dot would be a bullet in front of nothing. */
-#mp-live-status:not(.mp-live-selected):not(.mp-live-working) .mp-live-dot { display: none; }
-/* Mid-edit: the model is rewriting the file under this tab, and the reload is
-   deliberately held until it says done. Amber says "wait" without the page
-   appearing broken. */
+/* The page does not fit its sheets — the one thing in this toolbar that is
+   actually WRONG, and the one thing the user cannot fix themselves, since the
+   layout is the model's. Red text on the toolbar's own paper, with no box: it
+   is a sentence in the same status line as everything else, and the FIX button
+   beside it is what makes it look like something to act on. */
+#mp-live-status.mp-live-error { color: var(--mp-error); font-weight: 600; }
+/* Mid-edit with nothing else to say: the model is rewriting the file under
+   this tab, and the reload is deliberately held until it says done. Amber says
+   "wait" without the page appearing broken. */
 #mp-live-status.mp-live-working { color: var(--mp-mid); }
 #mp-live-status.mp-live-working .mp-live-label { text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; font-weight: 600; }
-#mp-live-status.mp-live-working .mp-live-dot { animation: mp-live-pulse 1.2s ease-in-out infinite; }
+/* Something is being done to this page: the model mid-edit, or a fix just
+   handed over. The pulse is the only claim the toolbar makes about work in
+   progress — the words never change to say it. */
+#mp-live-status.mp-live-busy .mp-live-dot { animation: mp-live-pulse 1.2s ease-in-out infinite; }
 @keyframes mp-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) {
-  #mp-live-status.mp-live-working .mp-live-dot { animation: none; }
+  #mp-live-status.mp-live-busy .mp-live-dot { animation: none; }
 }
+
+/* FIX. Nothing about this page's problem reaches the model until this is
+   pressed, so it is the one control in the toolbar that is asking to be —
+   solid in the error colour, against the Print button's ink and the outlined
+   quiet of everything else. Sized to the status line it sits in, not to the
+   toolbar's primary buttons, so it reads as part of the message. Hidden by
+   renderLiveStatus the moment it has been pressed. */
+#mp-toolbar #mp-fit-fix {
+  align-items: center;
+  height: 20px;
+  padding: 0 9px;
+  background: var(--mp-error);
+  color: var(--mp-paper);
+  border: none;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+/* No server to hand it to: the problem stands, but there is nowhere to send
+   it. pointer-events:none so the hover falls through to the status region,
+   whose tooltip is the one that says why (renderLiveStatus). */
+#mp-toolbar #mp-fit-fix:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+#mp-toolbar #mp-fit-fix:focus-visible { outline: 2px solid var(--mp-error); outline-offset: 2px; }
 
 
 /* ── Print: chrome never prints ──

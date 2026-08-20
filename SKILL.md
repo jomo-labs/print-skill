@@ -376,8 +376,8 @@ EVERYTHING_FITS
 **A fit report only exists because the user pressed FIX.** Their toolbar
 states the problem in red and offers the button; nothing reaches the record
 until they press it. So an entry here is not a measurement you happened to
-find — it is them handing you their document to fix, and the line on their
-screen now reads `content runs onto 3 sheets …fixing`. Something has to happen
+find — it is them handing you their document to fix, and the indicator beside
+that red line has been pulsing since they pressed it. Something has to happen
 at the other end of that.
 
 **Check the record after your own edits land** — every time, as the last step

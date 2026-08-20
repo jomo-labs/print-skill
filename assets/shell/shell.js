@@ -193,7 +193,16 @@ function reportFit(p) {
     }
   }
   const fit = { authored: origins.length, rendered, overflowing };
+  const wasBroken = fitBroken(window.mpFit);
   window.mpFit = fit;
+  // When the page BECAME wrong, for the toolbar's one message slot: a problem
+  // that arrives while the user is looking at something else is news and takes
+  // the line; a problem the document simply arrived with is not, and yields to
+  // whatever the user is doing. 0 means the latter — so a first measurement
+  // never claims to be news, however the page turns out.
+  if (!fitBroken(fit)) brokenAt = 0;
+  else if (!wasBroken) brokenAt = fitMeasured ? Date.now() : 0;
+  fitMeasured = true;
   if (rendered > fit.authored || overflowing) document.body.dataset.mpOverflow = String(rendered);
   else delete document.body.dataset.mpOverflow;
   // Nothing wrong any more — whatever was handed over is finished with, and
@@ -212,7 +221,7 @@ function reportFit(p) {
     ssSet('mpFitHanded', '');
     if (handed) clearFitReport(fit);
   }
-  showFitBadge(fit);
+  renderLiveStatus();
   return fit;
 }
 
@@ -224,10 +233,16 @@ function reportFit(p) {
 // something the page starts behind their back, and they may be mid-thought,
 // mid-print, or about to change the content anyway. So the toolbar states the
 // problem in red and puts a FIX button next to it: press it and the problem
-// goes to the model over the live channel, the line turns to "… fixing" with
-// the indicator pulsing, and when the model's `status done` reloads the page
-// this pass re-measures a document that fits and the message goes away by
-// itself. Nothing else clears it.
+// goes to the model over the live channel, the indicator starts pulsing, and
+// when the model's `status done` reloads the page this pass re-measures a
+// document that fits and the message goes away by itself. Nothing else clears
+// it.
+//
+// The press changes the indicator, not the words. "…handed over" and
+// "…fixing" used to be appended here, and both were the toolbar narrating its
+// own plumbing at the user: they pressed the button, so they know they pressed
+// the button. What they cannot see is whether anything is happening about it,
+// and that is exactly what the pulse says.
 //
 // No dedupe, unlike the selection notice: nothing goes out unless a hand
 // presses the button, so there is no loop to break. A problem the model could
@@ -241,19 +256,14 @@ function refit() { applySize(currentPaper); }
 
 let fitFixing = false;  // handed to the model this page load, no answer yet
 let fitSending = false; // the press is in flight — don't send it twice
+let fitMeasured = false; // the first pass has run — see reportFit
+let brokenAt = 0;       // when the page became wrong, or 0 if it arrived so
 
 // The page is wrong: it needed sheets its author did not lay out, or content
 // hangs past the paper edge.
 function fitBroken(fit = window.mpFit) {
   return !!fit && (fit.rendered > fit.authored || fit.overflowing > 0);
 }
-
-// "…fixing" is a claim about someone else's work, so it is only made while
-// that work is actually happening: handed over on THIS page load, and the
-// model currently mid-edit (its own `status working`). Nothing subscribes any
-// more, so "a model exists somewhere" is not something the page can see, and
-// the claim waits for the model to say so itself.
-function fitPending() { return fitFixing && modelWorking(); }
 
 // The button needs a server to hand the problem to — and that is all it needs.
 // Whether a model is listening is no longer knowable here, and it no longer
@@ -273,7 +283,7 @@ async function sendFitReport() {
   const fit = window.mpFit;
   if (fitSending || fitFixing || !fitBroken(fit) || !fitFixable()) return;
   fitSending = true;
-  showFitBadge(fit);
+  renderLiveStatus();
   try {
     const res = await fetch(liveUrl(), {
       method: 'POST',
@@ -295,7 +305,7 @@ async function sendFitReport() {
     // repeated rather than silently swallowed.
   }
   fitSending = false;
-  showFitBadge(window.mpFit);
+  renderLiveStatus();
 }
 
 // Take back a report the page has outgrown. Best effort and deliberately
@@ -316,55 +326,16 @@ function clearFitReport(fit) {
   }).catch(() => {});
 }
 
-// The user's half of the same news: a status message, not a label — this is
-// the page telling them something is wrong with it, and offering the one
-// thing that can be done about it. Red, because unlike everything else in
-// this toolbar it reports a failure; hidden entirely while the page fits, so
-// the resting toolbar stays Print and Edit.
-function showFitBadge(fit = window.mpFit) {
-  const badge = mpq('#mp-fit-badge');
-  if (!badge || !fit) return;
-  const { authored, rendered, overflowing } = fit;
-  const spilled = rendered > authored;
-  badge.style.display = (spilled || overflowing) ? 'inline-flex' : 'none';
-  if (!spilled && !overflowing) return;
-  const fixing = fitPending();
-  const label = mpq('#mp-fit-badge .mp-fit-label');
-  // Three things the line can be saying, and they are different: nobody has
-  // done anything yet, the user has handed it over, or the model is actually
-  // working on it. The middle one exists because nothing is listening — the
-  // press puts the problem on the record, and the model finds it when it next
-  // acts, which may be a minute later. Claiming "…fixing" for that gap would
-  // be inventing work nobody is doing.
-  if (label) {
-    label.textContent = fitProblemText(fit) +
-      (fixing ? ' …fixing' : fitFixing ? ' …handed over' : '');
-  }
-  // Drives the indicator's pulse (chrome.css) — the message is the same
-  // message either way, so the state is an attribute, not a second element.
-  badge.toggleAttribute('data-mp-fixing', fixing);
-  badge.toggleAttribute('data-mp-handed', !fixing && fitFixing);
-  // The button goes away only while the model is actually working on it —
-  // otherwise it stands there to be pressed, or pressed again if a fix did not
-  // land. Disabled only where there is nowhere to hand it to at all.
-  const btn = mpq('#mp-fit-fix');
-  if (btn) {
-    btn.style.display = fitFixing ? 'none' : 'inline-flex';
-    btn.disabled = fitSending || !fitFixable();
-  }
-  const problem = overflowing
+// The user's half of the same news, in words: what is wrong with the page,
+// and — in fitProblem() — why, at length, on hover. The toolbar's one status
+// region draws it (renderLiveStatus); this is only the text.
+function fitProblem({ authored, rendered, overflowing }) {
+  return overflowing
     ? 'Some content is too tall for any sheet and hangs past the paper edge. ' +
       'It prints clipped — shorten it, or give it a sheet laid out for it.'
     : `This page was authored as ${authored} sheet${authored === 1 ? '' : 's'} and its ` +
       `content needs ${rendered}. Nothing is lost — the extra sheets print — but the ` +
       'breaks fall where the content ran out of room rather than where they were designed.';
-  badge.title = fixing
-    ? problem + ' The model is fixing it.'
-    : fitFixing
-      ? problem + ' Handed to your model — it picks this up when it next works on the page.'
-      : fitFixable()
-        ? problem + ' Press Fix to hand it to your model.'
-        : problem + ' Open this page through the local server to hand it over.';
 }
 
 function paginateSheet(origin, p) {
@@ -1065,33 +1036,88 @@ const liveUrl = () => `/chat/${location.pathname.replace(/^\//, '')}/messages`;
 function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch {} }
 function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
 
-// The toolbar's one line about the live channel. It says the only two things
-// the page can honestly say: that the model is mid-edit right now, or — the
-// point of selecting anything — that what the user just picked is on record
-// and they can simply ask for a change in words.
+// ── The toolbar's status region ─────────────────────────────────────────────
+// One indicator, one message, and — when there is something to hand over — one
+// button. Everything the chrome has to say about this page arrives here, and
+// the whole design is that only one thing is ever said at a time.
 //
-// It deliberately does NOT claim a model is "connected". Nothing subscribes
-// any more, so the page has no way to know whether one is listening, and the
-// old Live/Not-connected indicator was guessing. What it can promise is true
+//   THE INDICATOR is always present and is always this same element. It does
+//   not appear, disappear, or change places to mean something; it pulses while
+//   something is being done to the page, and rests otherwise. A user learning
+//   one moving part is a user who can read the toolbar at a glance.
+//
+//   THE MESSAGE is a slot, not a stack: whatever is most current replaces what
+//   was there. A selection normally wins it, because it is the one message
+//   that is a direct answer to something the user just did — stacking a red
+//   fit notice beside a blue selection line asks them to work out which of the
+//   two their double-click produced. What beats a selection is a page that
+//   breaks while they hold one, which is newer news and the half they cannot
+//   see for themselves.
+//
+// It deliberately does NOT claim a model is "connected". Nothing subscribes any
+// more, so the page has no way to know whether one is listening, and the old
+// Live/Not-connected indicator was guessing. What it can promise is true
 // whenever the server is up: the page's state is recorded, and the model reads
 // it when it acts.
 function renderLiveStatus() {
   const el = mpq('#mp-live-status');
   if (!el) return;
-  const working = modelWorking();
+  const fit = window.mpFit;
+  const broken = fitBroken(fit);
   const selected = !!selectedEl?.isConnected;
-  el.classList.toggle('mp-live-working', working);
-  el.classList.toggle('mp-live-selected', !working && selected);
-  el.title = working
-    ? (workingNote || 'The model is editing this page')
-    : selected
-      ? 'This element is recorded — your model reads it when you ask for a change'
-      : '';
+  const working = modelWorking();
+  // Pulsing means "wait, something is happening about this page", and the two
+  // things that qualify are the model saying it is mid-edit and a fix the user
+  // handed over that nobody has answered yet. The press is included on purpose:
+  // it is the moment the user most wants to see that their button did
+  // something, and it is well before any model gets round to saying so.
+  const busy = working || fitFixing;
+
+  // The slot holds the newer of the two things worth saying. A selection wins
+  // by default, because it is the direct answer to something the user just
+  // did — but a page that BREAKS while they have something selected is newer
+  // still, and they need to know, so the freshly broken fit takes the line
+  // back. "Working" is neither: the indicator already says it, so it only
+  // speaks when the slot would otherwise be empty.
+  const sel = selected && !(broken && brokenAt > selectedAt);
+  const err = broken && !sel;
+
+  el.classList.toggle('mp-live-busy', busy);
+  el.classList.toggle('mp-live-selected', sel);
+  el.classList.toggle('mp-live-error', err);
+  // Only when the message IS the word — the amber, uppercase treatment belongs
+  // to that one label, not to every state the indicator happens to be pulsing in.
+  el.classList.toggle('mp-live-working', !sel && !err && working);
+
+  el.title = sel
+    ? 'This element is recorded — your model reads it when you ask for a change'
+    : err
+      ? fitProblem(fit) + (fitFixing
+          ? ' Handed to your model — it picks this up when it next works on the page.'
+          : fitFixable()
+            ? ' Press Fix to hand it to your model.'
+            : ' Open this page through the local server to hand it over.')
+      : working
+        ? (workingNote || 'The model is editing this page')
+        : '';
+
+  // The button stands beside a problem nobody has taken yet, and nowhere else:
+  // not once it has been handed over, and never next to a selection, where
+  // "Fix" would read as an offer to fix the element the user just picked.
+  const btn = mpq('#mp-fit-fix');
+  if (btn) {
+    btn.style.display = (err && !fitFixing) ? 'inline-flex' : 'none';
+    btn.disabled = fitSending || !fitFixable();
+  }
+
   const label = mpq('#mp-live-status .mp-live-label');
   if (!label) return;
   label.textContent = '';
-  if (working) { label.textContent = 'Working'; return; }
-  if (!selected) return;
+  if (!sel) {
+    if (err) label.textContent = fitProblemText(fit);
+    else if (working) label.textContent = 'Working';
+    return;
+  }
 
   // One voice, in the selection's own colour — the element's name carries the
   // weight, and nothing else about it is decorated. The break is a real
@@ -1113,20 +1139,16 @@ function applyStatus(state, text, ts) {
     workingSince = ts || Date.now();
     workingNote = text || '';
     renderLiveStatus();
-    // "…fixing" is true exactly while the model says it is working, so the
-    // notice has to be redrawn at both ends of that window, not just the end.
-    showFitBadge();
     return;
   }
   workingSince = 0;
   workingNote = '';
-  renderLiveStatus();
   // The model has come back. Whatever it did, it is no longer fixing: either
   // the reload below re-measures a page that fits and the message goes with
-  // it, or the problem survived and the user should see it standing, not
-  // still pretending to be in progress.
+  // it, or the problem survived and the user should see the button back,
+  // rather than an indicator still pulsing for nobody.
   fitFixing = false;
-  showFitBadge();
+  renderLiveStatus();
   // `done` means the file has reached its final state — don't wait out a tick
   // to show it.
   if (state === 'done') reloadIfChanged?.();
@@ -1184,6 +1206,7 @@ function initLiveChannel() {
 
 let selectedEl = null;
 let selectedDesc = null;   // how to name it — see selectElement
+let selectedAt = 0;        // when they picked it — see renderLiveStatus
 let noticeTimer = null;
 let noticedSelector = null;
 
@@ -1206,6 +1229,7 @@ function selectElement(el) {
   // element means rewinding a clone of the document to its authored flow
   // (authoredPosition), far too much work to repeat on a 1.5s tick.
   selectedDesc = describeElement(authoredPosition(head).el);
+  selectedAt = Date.now();
   ssSet('mpSelected', buildSelector(head));
   ssSet('mpSelectedTag', head.tagName.toLowerCase());
   renderLiveStatus();
@@ -1219,6 +1243,7 @@ function clearSelection() {
   });
   selectedEl = null;
   selectedDesc = null;
+  selectedAt = 0;
   ssSet('mpSelected', '');
   ssSet('mpSelectedTag', '');
   renderLiveStatus();
@@ -1419,6 +1444,7 @@ function restoreSelection() {
   if (el) {
     selectedEl = el;
     selectedDesc = describeElement(authoredPosition(el).el);
+    selectedAt = Date.now();
     el.classList.add('mp-selected');
     noticedSelector = sel;  // already recorded on this server — nothing to do
     renderLiveStatus();
@@ -1612,42 +1638,28 @@ function injectChrome() {
   spacer.className = 'mp-toolbar-spacer';
   toolbar.appendChild(spacer);
 
-  // Connection state: the whole of the chrome's opinion about the model —
-  // whether one is listening. The conversation is elsewhere.
+  // The status region: indicator, message, and the FIX button that hands a fit
+  // problem over. One element for all of it — see renderLiveStatus. It is last
+  // in the toolbar, so the message growing and shrinking never moves a button
+  // out from under the user's cursor, and the button is built once and hidden
+  // rather than created on demand, so the indicator beside it never shifts.
   const live = document.createElement('div');
   live.id = 'mp-live-status';
   const dot = document.createElement('span');
   dot.className = 'mp-live-dot';
   const liveLabel = document.createElement('span');
   liveLabel.className = 'mp-live-label';
-  liveLabel.textContent = 'Not connected';
-  live.appendChild(dot);
-  live.appendChild(liveLabel);
-  toolbar.appendChild(live);
-
-  // Fit status — hidden while the page fits (showFitBadge). Last in the
-  // toolbar, so appearing and disappearing never moves the buttons under the
-  // user's cursor. Built like the connection status beside it (indicator plus
-  // label) because that is what it is: a live report on the page's state,
-  // with a dot that pulses while the model is fixing it — plus the FIX button
-  // that hands it over, which is the only reason the report ever moves.
-  const fit = document.createElement('span');
-  fit.id = 'mp-fit-badge';
-  fit.style.display = 'none';
-  const fitDot = document.createElement('span');
-  fitDot.className = 'mp-fit-dot';
-  const fitLabel = document.createElement('span');
-  fitLabel.className = 'mp-fit-label';
   const fitFix = document.createElement('button');
   fitFix.id = 'mp-fit-fix';
   fitFix.type = 'button';
   fitFix.textContent = 'Fix';
   fitFix.title = 'Hand this to the model to fix';
+  fitFix.style.display = 'none';
   fitFix.addEventListener('click', sendFitReport);
-  fit.appendChild(fitDot);
-  fit.appendChild(fitLabel);
-  fit.appendChild(fitFix);
-  toolbar.appendChild(fit);
+  live.appendChild(dot);
+  live.appendChild(liveLabel);
+  live.appendChild(fitFix);
+  toolbar.appendChild(live);
 
   const ov = document.createElement('div');
   ov.id = 'mp-overlay';
