@@ -58,7 +58,11 @@ must not restate them and cannot opt out — it describes only what it changes.
    backgrounds (radial/conic/linear gradients), pseudo-element fills, or inset
    box-shadows — every one of those is a fill in disguise and fails the same
    self-check as rule 1. Stroke-outline SVG also prints crisply and stays colorable
-   by hand, which fills never are.
+   by hand, which fills never are. This rule governs how a mark is built, not
+   whether it reads as its subject — for that, see "Drawing a mark that reads" in
+   `themes/README.md`. It matters most where the drawing IS the deliverable:
+   hand-authored line art on a coloring, image or drawing-prompt page when no
+   image backend is available.
 
 2. **No hardcoded colors** — NEVER use a literal color (`#hex`, `rgb()`, `rgba()`,
    `hsl()`, `oklch()`, or a named CSS color like `red`/`cornflowerblue`) directly

@@ -90,7 +90,10 @@ the default rhythm says so in one line.
   photos dither badly on home printers, so `none` is a deliberate choice), plus
   any substitute this theme uses for drawn icons (Comic's typographic sound
   effects) or the kind of mark a checkbox should be. State "no icon system" if
-  it has none.
+  it has none. When the theme *does* draw a subject, record each mark so a later
+  run reproduces it instead of redrawing from scratch: the subject, the
+  diagnostic features that make it read (see "Drawing a mark that reads" in
+  `README.md`), and the stroke weight and viewBox it was drawn at.
 
 ## 6. Components & Patterns
 
