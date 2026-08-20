@@ -207,8 +207,8 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
           fit: window.mpFit,
           attr: document.body.dataset.mpOverflow,
           badge: (() => {
-            const el = document.getElementById("mp-chrome-root").shadowRoot.getElementById("mp-fit-badge");
-            return { shown: getComputedStyle(el).display !== "none", text: el.textContent };
+            const el = document.getElementById("mp-chrome-root").shadowRoot.getElementById("mp-live-status");
+            return { shown: el.classList.contains("mp-live-error"), text: el.textContent };
           })(),
         }));
         assert.equal(fit.authored, 1, `${name}: authored sheets`);
@@ -229,11 +229,11 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
       const state = await page.evaluate(() => ({
         fit: window.mpFit,
         attr: document.body.dataset.mpOverflow,
-        shown: getComputedStyle(document.getElementById("mp-chrome-root")
-          .shadowRoot.getElementById("mp-fit-badge")).display !== "none",
+        shown: document.getElementById("mp-chrome-root")
+          .shadowRoot.getElementById("mp-live-status").classList.contains("mp-live-error"),
         saved: serializeForSave(),
       }));
-      assert.deepEqual(state.fit, { authored: 1, rendered: 1, overflowing: 0 });
+      assert.deepEqual(state.fit, { authored: 1, rendered: 1, overflowing: 0, clipped: 0 });
       assert.equal(state.attr, undefined, "a page that fits should carry no diagnostic");
       assert.equal(state.shown, false, "a page that fits should show no notice");
       assert.ok(!state.saved.includes("data-mp-overflow"), "diagnostic leaked into a clean file");
@@ -248,7 +248,7 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
         fit: window.mpFit,
         attr: document.body.dataset.mpOverflow,
       }));
-      assert.deepEqual(state.fit, { authored: 2, rendered: 2, overflowing: 0 },
+      assert.deepEqual(state.fit, { authored: 2, rendered: 2, overflowing: 0, clipped: 0 },
         "an authored two-sheet page should report as fitting");
       assert.equal(state.attr, undefined, "an authored two-sheet page is not an overflow");
     });

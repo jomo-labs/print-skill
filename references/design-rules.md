@@ -25,6 +25,19 @@ must not restate them and cannot opt out — it describes only what it changes.
 - **Empty and overflow.** An empty block keeps its frame and label (Principle
   IV). Overflow drops the body type-scale one step, then shortens or splits —
   never truncate, never spill past the sheet edge.
+- **Containers clip, they never overlap.** Structural containers (div,
+  section, li's list, table cells, …) carry `overflow: clip` from the document
+  stylesheet: on paper, content painted over a neighbouring block is never
+  right, so a fixed-size box cuts what outgrows it. The cut is an error state,
+  not a layout tool — the shell detects content past a clip edge, outlines the
+  container in red on screen, and fails the Step 6 fit check with the
+  container's selector — so never size a container smaller than its content on
+  purpose. Design content to fit its box (Principle VII); a container that
+  genuinely must bleed (rare — an intentional full-bleed motif) opts out with
+  `overflow: visible` and owns the overlap it allows. Text elements
+  (headings, p, span) are exempt so glyph ink is never sheared; a 6px
+  `overflow-clip-margin` gives tilted motifs and print-flat shadows room at a
+  flush edge.
 - **Contrast and type floors.** WCAG AA: 4.5:1 body, 3:1 large or bold accent.
   Body copy >=13.5px, 16px+ for kids'. Label-font metadata (dateline, table
   text, table headers, footer) runs 9-10.5px and is never body copy. A theme
@@ -64,7 +77,14 @@ must not restate them and cannot opt out — it describes only what it changes.
    backgrounds (radial/conic/linear gradients), pseudo-element fills, or inset
    box-shadows — every one of those is a fill in disguise and fails the same
    self-check as rule 1. Stroke-outline SVG also prints crisply and stays colorable
-   by hand, which fills never are.
+   by hand, which fills never are. This rule governs artwork you **draw**, not
+   artwork you **place**: a sourced SVG or a normalized raster spot may carry its
+   own fills, and rule 1's background allowlist still applies to both. For how to
+   end up with a mark that reads as its subject at all — sourcing it, judging it
+   at printed size, or drawing it — see "Getting a mark that reads" in
+   `themes/README.md`. That matters most where the art IS the deliverable:
+   hand-authored line art on a coloring, image or drawing-prompt page when no
+   image backend is available.
 
 2. **No hardcoded colors** — NEVER use a literal color (`#hex`, `rgb()`, `rgba()`,
    `hsl()`, `oklch()`, or a named CSS color like `red`/`cornflowerblue`) directly

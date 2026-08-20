@@ -20,14 +20,18 @@ edge. This skill packages print as a design discipline:
 - **Interactive output** — served pages get a **Print / Save PDF** button,
   double-click text editing, and paper-size switching, all injected by the
   local server at view time (generated files stay pure printable documents).
-  Double-click anything and your model — connected to the page, and shown as
-  such in the toolbar — knows what you picked, so you can just say "make this
-  bigger" in the session you're already in. And when a page stops fitting its
-  sheets — because the layout outgrew them, or because you typed too much into
-  it — the toolbar says so in red, with a FIX button that hands the problem to
-  your model; the message clears itself when the fix lands. That chrome renders
-  in its own shadow root, so however wildly a page is themed, the controls stay
-  put.
+  Double-click anything and the page records it — the toolbar names what you
+  picked — so you can just say "make this bigger" in the session you're
+  already in, and your model looks up what you meant. And when a page stops
+  fitting its sheets — because the layout outgrew them, or because you typed
+  too much into it — the toolbar says so in red, with a FIX button that hands
+  the problem to your model; the message clears itself when the fix lands.
+  Containers clip rather than overlap (overlap is never right on paper), and
+  content cut off inside one is caught the same way: a red dashed outline on
+  the container, the same red notice and FIX button, and the clipped
+  elements' addresses ride along so the model goes straight to them.
+  That chrome renders in its own shadow root, so however wildly a page is
+  themed, the controls stay put.
   Print is WYSIWYG: the on-screen sheet and the printed sheet are
   dimension-identical, 1:1.
 - **Deterministic PDFs** — a bundled local server (Node + headless Chromium)

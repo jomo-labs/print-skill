@@ -36,13 +36,6 @@ means you are also the design validator: the self-check in
 
 ### Step 0 — Input & server warm-up
 
-**Live-mode invocation short-circuits everything**: if the request is `live`
-(`/print live`) or an ask in words to go live / connect to the page,
-skip the generation workflow entirely and follow "Live mode" below. You
-normally connect on your own at the end of Step 8, so this is re-entry after
-you signed off, or a user asking you to reconsider a page you judged
-unsupported.
-
 First, warm up the PDF server in the background so the one-time Chromium
 download overlaps with authoring instead of stalling Step 7: if
 `<skill-dir>/server/node_modules` does not exist and Node is available, start
@@ -171,11 +164,17 @@ means it does not, and says how:
 - *content too tall to place on any sheet* — one block is taller than the paper.
   It hangs past the edge and **prints clipped**. Always fix this: split the
   block, shorten it, or give it its own sheet.
+- *content is cut off inside N containers* — content outgrew a fixed-size
+  container. Containers clip rather than overlap (the document stylesheet sets
+  `overflow: clip` on structural containers — on paper, overlap is never
+  right), so whatever is past the clip edge **does not print at all**. The
+  check lists each container's selector in the file's authored flow. Always
+  fix this: shorten the content, or size the container for it.
 
 Add `--sections` when it fails: it prints what each marked section costs, what
 the footer reserved, and the exact px to cut, instead of leaving you to guess
 and re-run. Remember the footer takes ~41px out of the content box on every
-sheet (design-rules.md, Platform invariants) — content that measures exactly
+sheet (`design-rules.md`, Platform invariants) — content that measures exactly
 the box height is already too tall.
 
 Then check that every piece of text clears its contrast floor:
@@ -191,8 +190,8 @@ verify by reading CSS — Part B greps for banned constructs, it never computes 
 ratio, so a theme accent that reads fine at 19px can ship at 9px unnoticed. Add
 `--all` to see every text style rather than only the failures.
 
-Needs Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in the
-report that the fit check could not run.
+Both need Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in
+the report that the fit and contrast checks could not run.
 
 ### Step 7 — Serve
 
@@ -219,11 +218,13 @@ every page this project generates.
    finish first; if it was skipped or failed, run
    `npm install --prefix <skill-dir>/server` now (its postinstall fetches the
    Chromium build).
-3. A running server is what live mode is: if you can run the listen loop,
-   you should be listening on it (see "Live mode"). That holds whether you
-   started the server just now or reused one that was already up. Arm the
-   loop at the end of the turn, after the Step 8 report — never here, or the
-   report never gets written.
+3. A running server is all live editing needs — there is nothing to connect
+   or arm (see "Live mode"). Whether you started it just now or reused one
+   that was already up, you are done. One exception, and it is about where
+   YOU are running rather than anything you did: if the user's browser cannot
+   reach your loopback (cloud sandboxes — see
+   `references/harness-support.md` Part 1), the URL is useless to them. Report the
+   file path instead, and say the page prints correctly opened directly.
 4. If Node is unavailable or the install fails, skip serving — the generated
    file still works opened directly in a browser as a **plain printable**
    (styled and print-exact via the browser dialog; no toolbar, editing, or
@@ -243,20 +244,13 @@ every page this project generates.
   the file automatically), then click **Print / Save PDF** for an exact PDF.
   For font or color changes, ask me to regenerate the page with new style
   instructions."
-- If you can run the listen loop (`references/harness-support.md` Part 1), add:
-  "Press **Edit** to change text right on the page, or double-click anything
-  and tell me here what to do with it — I'm connected to the page, so I'll
-  know what you picked." If you can't, add: "Press **Edit** to change text
-  right on the page, and tell me here what else you'd like changed." Don't
-  explain the mechanism either way.
+- Add: "Press **Edit** to change text right on the page, or double-click
+  anything and tell me here what to do with it — I'll know what you picked."
+  Don't explain the mechanism.
 - If the server couldn't run: give the file path, note the file is a plain
   printable (print via the browser dialog; no editing without the server),
   and mention Node 18+ enables the exact-PDF server and the full editing
   chrome.
-- **Then connect**, unless this is a headless/pipeline run: go straight into
-  "Live mode" below — announce presence, arm the listen loop, end your turn.
-  Not a question to ask the user; the page is served and you are the model
-  it is served for.
 
 ## Headless / pipeline use
 
@@ -288,9 +282,9 @@ changes — give the PDF path (plus the HTML path and title), skip the
 open-the-link reminder, and hand the PDF to whatever the request says comes
 next (save, upload, attach).
 
-**Never enter live mode here.** Connecting by default is for a person who is
-about to open the page; in a pipeline there is nobody at a browser, and a
-listen loop would keep waking a run that should have ended at the PDF.
+Nothing extra is needed to stand down: live editing has no session to leave
+and nothing running in the background, so a pipeline run simply ends at the
+PDF.
 
 ## Editing an existing page
 
@@ -337,166 +331,153 @@ the user's own edits).
 
 ## Live mode
 
-While the local server is running, you can be **connected to it**: you learn
-which element the user has just selected in whatever page they have open and
-when a page has stopped fitting its sheets, and their page learns when you are
-mid-edit so it doesn't flash a half-written file at them.
+While the local server is running, the page and you share a few small facts.
+**The page records what the user has selected** and **when it has stopped
+fitting its sheets**, and you read those when you need them. **You post
+`working`/`done` around an edit**, so their tab doesn't flash a half-written
+file at them. That is the whole of it.
 
-**You connect to the server, not to a page.** One listener covers every page
-it serves — the one you just generated, one from earlier in the conversation,
-one made after you started listening. Each event tells you which page it came
-from. So there is never a page to choose before connecting, and never a reason
-to wait until a particular page is "in play".
+There is nothing to connect to and nothing to keep running. No listener, no
+background task, no watcher to arm or re-arm — selecting is not an event you
+are woken for, it is state you look up at the moment it matters. That moment is
+always the same one: the user asks for a change and doesn't say what it is
+about.
 
-There is no chat in the page. The user asks you for changes **here, in this
-conversation** — where they already are, and where your answer was going to
-appear anyway. The page's job is to show them the printable and let them point
-at parts of it; yours is everything else.
-
-It is on by default: whenever the server is up and your harness can run the
-listen loop (`references/harness-support.md` Part 1), you connect. At the end of a
-generation run, after restarting a crashed server, in any later turn that
-brings one up — **including a turn whose only job was to start the server.**
-"They only asked me to restart it" is not a reason to leave it unwatched:
-starting the server and being reachable on it are one act, and a server nobody
-is listening to silently drops everything the user does in the browser.
+There is no chat in the page either. The user asks you for changes **here, in
+this conversation**, where they already are. The page's job is to show them the
+printable and let them point at parts of it; yours is everything else. They can
+see that pointing worked — the element is outlined, and the toolbar says their
+selection is on record — so you do not need to acknowledge it, and should not.
 
 All commands are `node <skill-dir>/server/chat-cli.mjs …` against the running
-server (Step 7), with `--url` pointing at its actual port. `wait` takes no
-page. The commands that do — `status`, `edits` — take the page's server path
-(`<file>.html` under the out/ layout), which is the `page` field of the event
-you are responding to, or the page you just wrote.
+server (Step 7), with `--url` pointing at its actual port.
 
-### Connecting
+### When a request doesn't name its target
 
-1. Ensure the server is up (Step 7 probe). No server, no live mode.
-2. Run the decision in `references/harness-support.md` Part 1 — the reachability
-   gate, then the ladder. It is a fact about your harness, not about the page.
-   If it fails, say so once, plainly, and carry on: everything else about the
-   page still works, and the user can still ask you for changes here.
-3. Arm the listen loop at the **highest rung your harness supports**:
-   - **(a) Stream/monitor** — run `wait --follow` under a tool that streams
-     its output back to you; each NDJSON line is an event.
-   - **(b) Background + wake** — run `wait --timeout 300` as a background task
-     and **end your turn**. The completion notification wakes you: handle
-     whatever arrived, then arm the next one.
+"Make it bigger." "Shorter." "Move this up." "Can that be bold?" — a request
+that points rather than names is about whatever they have selected in the
+browser. Read it:
 
-   No page argument in either. Never loop foreground `wait` commands; a
-   harness that can do nothing else does not support live mode at all.
-4. If you have just generated or edited a page, post `status <file>.html idle`
-   so that page's indicator goes live at once. Otherwise there is nothing to
-   post — a page shows itself as connected on its next poll either way.
+```
+node <skill-dir>/server/chat-cli.mjs selection --url http://127.0.0.1:<port>
+```
 
-### Staying quiet
+One line per page that has something selected, newest first:
 
-**Connecting is not news, and neither is waiting.** The user is looking at the
-page, not at this conversation.
+```
+Title was selected.  [/chart.html #probe "Weekly Chore Chart"]
+NO_SELECTION
+```
 
-- Say **nothing** when you arm or re-arm the loop. Not "Listening", not
-  "Still listening", not "Waiting for changes", not a note that you are going
-  to keep watching. An empty wake produces **no output at all** — re-arm and
-  end the turn silently.
-- Never count wakes, never announce a countdown, and never explain the
-  mechanism. There is no idle cap: quiet is the normal state of a page
-  someone is reading.
-- The one exception is the first connect in a generation run, where a single
-  clause in the Step 8 report ("I'm connected to the page") tells the user
-  the loop is running at all.
+The bracket is what you act on: the page, then the selector. Take the newest
+line unless the request clearly means another page.
 
-The only things worth writing here are: what a user selected (below), what you
-changed and why, and anything that blocked you.
+- **`NO_SELECTION`** means they haven't pointed at anything. Ask which element
+  rather than guessing.
+- **A named target always wins.** "The title", "every heading" — the selection
+  is a fallback for requests that don't say, not an override for ones that do.
+- **Don't read it when you don't need it.** A request that names its own target
+  doesn't need a lookup, and neither does a fresh generation.
+- **Don't announce the lookup**, and don't repeat what is selected back to
+  them. They are looking at the outline on the page; they know. Say what you
+  changed, once, after you change it.
 
-### A selection arrives
+### A page that stops fitting
 
-`wait` delivers `kind: "selection"` entries. Each carries the `page` it came
-from plus `data.selector`, `data.snapshot` and `data.edited` — or
-`data.selector: null` when the user cleared it. It means the user
-double-clicked something in that page. It is **never a request to edit**:
-don't touch the file, don't post a status.
+A page records it when it no longer fits the sheets it lays out — because the
+user's own browser edit outgrew a sheet, because they switched to smaller
+paper, or because it never fitted in the first place — and when content is cut
+off inside a clipping container (containers clip rather than overlap; what is
+past the clip edge does not print). Read it the same way you read a selection:
 
-Do two things:
+```
+node <skill-dir>/server/chat-cli.mjs fit --url http://127.0.0.1:<port>
+```
 
-1. **Say one short line in this conversation** naming the element the way the
-   user would — from `data.snapshot`, not from the selector: "Looking at the
-   subtitle." / "Got the Saturday row." That line is the whole point: it is
-   how they know you are looking where they are looking, and it belongs here,
-   in front of them, not on the page.
-2. **Hold it as the subject**, along with the page it is on. Their next
-   message will usually not name what it is about — "make it bigger",
-   "shorter", "move this up" — and it means that element, in that page. It
-   stays the subject until they select another or clear it, so a whole run of
-   requests can be about the same one.
+```
+/menu.html content runs onto 3 sheets  [authored 1, rendered 3, overflowing 0, letter portrait]
+/todo.html content is cut off in 1 place  [authored 1, rendered 1, overflowing 0, clipped 1, letter portrait]
+    clipped: #page > div:nth-of-type(2)
+EVERYTHING_FITS
+```
 
-Then go back to listening, silently.
+The `clipped:` lines are the page's own hints: each is the selector, in the
+file's authored flow, of a container whose content exceeds its clip edge (the
+same containers wear a red dashed outline in the browser). Go straight to
+those elements — shorten their content or size them for it — rather than
+re-deriving what the page already measured.
 
-- **Newest wins.** If a batch carries several (they hunted around while you
-  were busy), only the last counts.
-- **`selector: null`** means nothing is selected: drop the subject, and if a
-  later bare "make it bigger" arrives, ask which element.
-- **Don't re-acknowledge** the same element. You are told again only when the
-  selection actually changed.
-- **An explicitly named target always wins.** "the title", "every heading" —
-  the selection is a default, not a lock.
+**A fit report only exists because the user pressed FIX.** Their toolbar
+states the problem in red and offers the button; nothing reaches the record
+until they press it. The press also copies **`/print fix`** to their
+clipboard and tells them to paste it to you — that message is the button
+reaching you, since nothing else can. So treat `/print fix` (or any paste of
+it inside a longer message) as exactly this: **read the fit record now and
+fix every page on it**, without asking what is wrong — the record has the
+details. An entry you find by any other route is the same request that has
+not managed to reach you yet; fix it the same way.
 
-### A fit problem arrives
+**Check the record after your own edits land** — every time, as the last step
+of "Editing the page" below. Your edit is the likeliest thing to have broken
+the fit, and if it did, they will press the button and be waiting. Check it
+too at the start of any turn where a server is up: the press may have
+happened after your last turn ended, and the paste is only the loudest way
+the request travels, not the only one.
 
-When a page stops fitting the sheets it lays out — because the user's own
-browser edit outgrew a sheet, because they switched to smaller paper, or
-because it never fitted in the first place — their toolbar says so in red and
-puts a **FIX** button next to the message. `wait` delivers a `kind: "fit"`
-entry when they press it. `data` carries
-`{authored, rendered, overflowing, paper, orientation}`.
-
-Unlike a selection, **this one is a request to edit**, and an explicit one: the
-layout is yours, not theirs, so pressing that button is them handing it over.
-The line then reads `content runs onto 3 sheets … fixing` with the indicator
-pulsing. Something has to happen at the other end of that.
-
-So fix it, the moment it arrives, without waiting to be asked again:
+Unlike a selection, **this one is a request to edit.** So fix it, without
+waiting to be asked again:
 
 1. Follow "Editing the page" below — `status <page> working`, read the file,
-   fix, `status <page> done`. The `done` is what refreshes their tab, and the
-   refreshed page re-measures itself: fixed means the red line disappears on
-   its own. Nothing else clears it.
+   fix, `status <page> done`. The `done` refreshes their tab, and the refreshed
+   page re-measures itself: fixed means the red line disappears on its own and
+   the page takes its own report back. Nothing else clears it.
 2. Fix it the way the page type wants it fixed (`references/page-types.md`,
    `principles.md` VII): tighten the content back onto the sheet it was
    authored for, or lay the further sheets out **on purpose** — the problem is
    never the extra sheet itself, it is a break nobody designed. `overflowing`
    above 0 is the sharper one: that content is past the paper edge and prints
-   clipped.
-3. Say one line here about what you changed, as with any other edit.
+   clipped. `clipped` above 0 is just as sharp and comes with addresses: the
+   report's `clipped:` lines name each container whose content is cut off at
+   its clip edge — that content does not print — so edit those elements
+   directly.
+3. Say one line here about what you changed, as with any other edit. If you
+   could not fix it, say that instead — the user is looking at a red line, and
+   silence reads as nobody having noticed.
 
 A page that still doesn't fit after your edit puts the button back rather than
 re-sending itself, so say what stopped you — otherwise they are looking at a
 red line and a button that did nothing.
 
+**What this does not do is interrupt you.** Nothing pushes a fit report at you
+mid-turn: a press lands in the record and waits there until you look. That is
+the cost of having nothing running in the background, and the reason the fit
+check at the end of "Editing the page" is not optional — a user who pressed
+FIX while you were elsewhere is owed the check.
+
 ### Editing the page
 
-The request comes from the user, here. Apply it per "Editing an existing
-page", bracketed so the open tab doesn't show a half-written file:
+Apply the request per "Editing an existing page", bracketed so the open tab
+doesn't show a half-written file:
 
 1. `status <file>.html working` — **before you touch the file**. It holds the
    tab's auto-reload and lights its indicator. Re-post it with a short note
    (`status <file>.html working "restyling the header"`) to extend the hold on
    a long edit; the note becomes the indicator's tooltip.
-2. **Read the current file from disk** — never edit from memory. The user's
-   own browser edits and their `data-mp-edited` markers live in it, and the
-   selection's `data.selector` points into it. For a sweep of everything they
-   edited: `edits <file>.html`.
+2. **Read the current file from disk** — never edit from memory. The user's own
+   browser edits and their `data-mp-edited` markers live in it, and the
+   selector points into it. For a sweep of everything they edited:
+   `edits <file>.html`.
 3. Apply the change (same self-check rules for CSS, same Step 6 greps), and
-   strip the `data-mp-edited` markers you addressed — the marker means "not
-   yet seen by the model".
-4. `status <file>.html done` — always, and only once the file is final: that
-   is what refreshes the open tab. Leaving a working status open holds their
-   preview until it times out. Then confirm in one line here, and resume
-   listening.
+   strip the `data-mp-edited` markers you addressed — the marker means "not yet
+   seen by the model".
+4. `status <file>.html done` — always, and only once the file is final: that is
+   what refreshes the open tab. Leaving a working status open holds their
+   preview until it times out. Then say in one line what you changed.
+5. **Check the fit** (`fit`, above). Your edit is the likeliest thing to have
+   pushed the content off its sheets, and nothing will tell you if it did.
 
-### Disconnecting
-
-Live mode ends when the server dies (exit 2 from any `wait` — restart it and
-re-arm in the same turn), when the session ends, or when the user asks you to
-stop. Nothing else ends it, and none of those need a paragraph: a line when
-something actually broke, silence otherwise.
+If the server has stopped, `selection` and `status` will say so. Restart it
+(Step 7, same `--dir`) and carry on; there is no session to re-establish.
 
 ## Scope notes
 

@@ -192,14 +192,48 @@ function reportFit(p) {
       if (sheet.scrollHeight > p.h + 1) overflowing++;
     }
   }
-  const fit = { authored: origins.length, rendered, overflowing };
+  // The third failure this shell can find on its own: content cut off inside
+  // a clipping container (see Clip detection below). Counted into the same
+  // fit verdict, because it is the same problem wearing a different edge —
+  // the content and the box the model gave it disagree about its size.
+  const clippedEls = detectClipped();
+  const fit = { authored: origins.length, rendered, overflowing, clipped: clippedEls.length };
+  if (clippedEls.length) {
+    // Where, as addresses into the AUTHORED flow (the same selectors a
+    // selection reports), so the model can find each container in the file
+    // without re-deriving what the page already measured. The count above is
+    // always complete; only the address list is capped.
+    fit.clippedAt = clippedEls.slice(0, CLIP_REPORT_MAX).map((el) => buildSelector(el));
+  }
+  const wasBroken = fitBroken(window.mpFit);
   window.mpFit = fit;
+  // When the page BECAME wrong, for the toolbar's one message slot: a problem
+  // that arrives while the user is looking at something else is news and takes
+  // the line; a problem the document simply arrived with is not, and yields to
+  // whatever the user is doing. 0 means the latter — so a first measurement
+  // never claims to be news, however the page turns out.
+  if (!fitBroken(fit)) brokenAt = 0;
+  else if (!wasBroken) brokenAt = fitMeasured ? Date.now() : 0;
+  fitMeasured = true;
   if (rendered > fit.authored || overflowing) document.body.dataset.mpOverflow = String(rendered);
   else delete document.body.dataset.mpOverflow;
   // Nothing wrong any more — whatever was handed over is finished with, and
   // the next problem (if one ever comes back) is a fresh one to hand over.
-  if (!fitBroken(fit)) fitFixing = false;
-  showFitBadge(fit);
+  //
+  // The server is told too, because what it holds is STATE rather than a
+  // stream of reports: a page that comes back into fit has to take its own
+  // report back, or a model reading later goes looking for a problem this
+  // document no longer has. Whether there is anything to take back is a
+  // question about the SERVER, not about this page load — the fix arrives as
+  // a reload, so by the time the page fits, this load never saw the problem
+  // at all. The marker survives that reload; a variable would not.
+  if (!fitBroken(fit)) {
+    fitFixing = false;
+    const handed = !!ssGet('mpFitHanded');
+    ssSet('mpFitHanded', '');
+    if (handed) clearFitReport(fit);
+  }
+  renderLiveStatus();
   return fit;
 }
 
@@ -211,10 +245,18 @@ function reportFit(p) {
 // something the page starts behind their back, and they may be mid-thought,
 // mid-print, or about to change the content anyway. So the toolbar states the
 // problem in red and puts a FIX button next to it: press it and the problem
-// goes to the model over the live channel, the line turns to "… fixing" with
-// the indicator pulsing, and when the model's `status done` reloads the page
-// this pass re-measures a document that fits and the message goes away by
-// itself. Nothing else clears it.
+// goes to the model over the live channel, the indicator starts pulsing, and
+// when the model's `status done` reloads the page this pass re-measures a
+// document that fits and the message goes away by itself. Nothing else clears
+// it.
+//
+// The press does two things, and both are the user's to carry: it puts the
+// problem on the record (where the model reads the details), and it copies
+// `/print fix` to the clipboard — the ping itself, which travels the only
+// channel that still exists: the user's own next message to their model. The
+// toolbar then says exactly that, and nothing more. It does NOT start the
+// indicator pulsing: the pulse belongs to the model alone (`status working`),
+// so it never claims work that has not started.
 //
 // No dedupe, unlike the selection notice: nothing goes out unless a hand
 // presses the button, so there is no loop to break. A problem the model could
@@ -226,36 +268,139 @@ function reportFit(p) {
 // there through this.
 function refit() { applySize(currentPaper); }
 
+// ── Clip detection ──────────────────────────────────────────────────────────
+// document.css gives structural containers `overflow: clip`, so content that
+// outgrows a fixed-size box is cut at its edge instead of painted over its
+// neighbours — on paper, overlap is never right. But the cut is the lesser
+// evil, not a fix: whatever is past the clip edge is simply absent from the
+// printed sheet. So every fit pass hunts for it: each clipping container
+// whose content exceeds its clip edge is marked data-mp-clipped (a red dashed
+// outline on screen — chrome-host.css — and nothing in print; the marker is
+// runtime state, stripped by serializeForSave like the rest), and the count
+// rides the same fit verdict as sheets that spilled, with the same red line,
+// the same FIX button, and the same record for the model to read.
+//
+// Detection is geometric, not scrollHeight-based: getBoundingClientRect is
+// layout truth regardless of clipping (clipping is paint-only), it works
+// identically for `clip` and `hidden`, and it sidesteps engines that report
+// a clipped element's scroll size as its client size. Each clipping
+// container is judged against its OWN children — since nearly every
+// container clips now, every clip boundary gets its own local check.
+
+const CLIP_TOLERANCE = 1;    // px past the clip edge before it counts
+const CLIP_REPORT_MAX = 8;   // addresses reported; the count is always full
+
+// Every element inside the current sheets whose content exceeds its clip
+// edge, marked in place. Runs inside the fit pass — after pagination, before
+// scaleToFit — so every rect is in unscaled CSS px.
+function detectClipped() {
+  document.querySelectorAll('[data-mp-clipped]')
+    .forEach((el) => el.removeAttribute('data-mp-clipped'));
+  const clipped = [];
+  for (const origin of originSheets()) {
+    for (const sheet of sheetChain(origin)) {
+      for (const el of sheet.querySelectorAll('*')) {
+        // SVG viewports clip by UA design (that is what a viewBox is for) and
+        // their internals aren't flowed content — never an overlap hazard.
+        if (el.namespaceURI !== 'http://www.w3.org/1999/xhtml') continue;
+        if (isClipped(el)) clipped.push(el);
+      }
+    }
+  }
+  clipped.forEach((el) => el.setAttribute('data-mp-clipped', ''));
+  return clipped;
+}
+
+function isClipped(el) {
+  const cs = getComputedStyle(el);
+  const clipX = cs.overflowX === 'hidden' || cs.overflowX === 'clip';
+  const clipY = cs.overflowY === 'hidden' || cs.overflowY === 'clip';
+  if (!clipX && !clipY) return false;
+  const kids = laidOutChildren(el);
+  if (!kids.length) return false;
+  const r = el.getBoundingClientRect();
+  if (!(r.width || r.height)) return false;
+  // The clip edge is the padding box — the border box minus the borders —
+  // pushed out by overflow-clip-margin where the axis clips (hidden always
+  // cuts at the padding box exactly; engines without the property parse to 0).
+  const margin = parseFloat(cs.overflowClipMargin) || 0;
+  const mx = (cs.overflowX === 'clip' ? margin : 0) + CLIP_TOLERANCE;
+  const my = (cs.overflowY === 'clip' ? margin : 0) + CLIP_TOLERANCE;
+  const left   = r.left   + parseFloat(cs.borderLeftWidth)   - mx;
+  const right  = r.right  - parseFloat(cs.borderRightWidth)  + mx;
+  const top    = r.top    + parseFloat(cs.borderTopWidth)    - my;
+  const bottom = r.bottom - parseFloat(cs.borderBottomWidth) + my;
+  for (const { node, box } of kids) {
+    // A child's border box grows with its content vertically, but inline
+    // content that cannot wrap (a long unbroken string) paints PAST the
+    // child's own box. A non-clipping child's scroll size still counts that
+    // overflow, so extend the measured box by it — its paint reaches there,
+    // and paint is what the clip edge cuts.
+    let bRight = box.right, bBottom = box.bottom;
+    if (node.nodeType === 1) {
+      const ncs = getComputedStyle(node);
+      if (ncs.overflowX === 'visible') bRight += Math.max(0, node.scrollWidth - node.clientWidth);
+      if (ncs.overflowY === 'visible') bBottom += Math.max(0, node.scrollHeight - node.clientHeight);
+    }
+    if (clipX && (box.left < left || bRight > right)) return true;
+    if (clipY && (box.top < top || bBottom > bottom)) return true;
+  }
+  return false;
+}
+
+const FIX_COMMAND = '/print fix';   // what the press copies — the ping the user carries
 let fitFixing = false;  // handed to the model this page load, no answer yet
 let fitSending = false; // the press is in flight — don't send it twice
+let fitMeasured = false; // the first pass has run — see reportFit
+let brokenAt = 0;       // when the page became wrong, or 0 if it arrived so
 
-// The page is wrong: it needed sheets its author did not lay out, or content
-// hangs past the paper edge.
+// The page is wrong: it needed sheets its author did not lay out, content
+// hangs past the paper edge, or content is cut off inside a clipping
+// container.
 function fitBroken(fit = window.mpFit) {
-  return !!fit && (fit.rendered > fit.authored || fit.overflowing > 0);
+  return !!fit && (fit.rendered > fit.authored || fit.overflowing > 0 || fit.clipped > 0);
 }
 
-// True only while the model can actually be working on it: handed over on
-// THIS page load (a reload means it already came back), and someone is
-// listening.
-function fitPending() { return fitFixing && modelListening; }
+// The button needs a server to hand the problem to — and that is all it needs.
+// Whether a model is listening is no longer knowable here, and it no longer
+// matters: the problem is recorded, and the model reads the record when it
+// next acts. A file:// page has nowhere to put it.
+function fitFixable() { return location.protocol !== 'file:'; }
 
-// Somebody has to be on the other end for the button to mean anything.
-function fitFixable() { return location.protocol !== 'file:' && modelListening; }
-
-function fitProblemText({ authored, rendered, overflowing }) {
+function fitProblemText({ authored, rendered, overflowing, clipped }) {
   const spilled = rendered > authored;
-  return overflowing && !spilled
-    ? 'content overflows the sheet'
-    : `content runs onto ${rendered} sheets`;
+  if (overflowing && !spilled) return 'content overflows the sheet';
+  if (spilled) return `content runs onto ${rendered} sheets`;
+  return `content is cut off in ${clipped} place${clipped === 1 ? '' : 's'}`;
 }
 
-// The FIX button's whole job: hand this page's fit problem to the model.
+// Put FIX_COMMAND on the clipboard. Called inside a click either way, so the
+// gesture-scoped clipboard permission applies; the execCommand fallback
+// covers contexts where the async API is missing or refuses.
+function copyFixCommand() {
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = FIX_COMMAND;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch { /* out of options */ }
+    ta.remove();
+  };
+  try { navigator.clipboard.writeText(FIX_COMMAND).catch(fallback); }
+  catch { fallback(); }
+}
+
+// The FIX button's whole job: hand this page's fit problem to the model —
+// the details onto the record, the ping onto the clipboard.
 async function sendFitReport() {
   const fit = window.mpFit;
   if (fitSending || fitFixing || !fitBroken(fit) || !fitFixable()) return;
+  // First, inside the click gesture, before any await can outlive it.
+  copyFixCommand();
   fitSending = true;
-  showFitBadge(fit);
+  renderLiveStatus();
   try {
     const res = await fetch(liveUrl(), {
       method: 'POST',
@@ -269,52 +414,51 @@ async function sendFitReport() {
     });
     if (!res.ok) throw new Error(String(res.status));
     fitFixing = true;
+    // Remembered across the reload the fix will cause, so the page knows there
+    // is a report of its own to take back once it fits again.
+    ssSet('mpFitHanded', '1');
   } catch {
     // Unreachable or refused: the button stays as it was, so the press can be
     // repeated rather than silently swallowed.
   }
   fitSending = false;
-  showFitBadge(window.mpFit);
+  renderLiveStatus();
 }
 
-// The user's half of the same news: a status message, not a label — this is
-// the page telling them something is wrong with it, and offering the one
-// thing that can be done about it. Red, because unlike everything else in
-// this toolbar it reports a failure; hidden entirely while the page fits, so
-// the resting toolbar stays Print and Edit.
-function showFitBadge(fit = window.mpFit) {
-  const badge = mpq('#mp-fit-badge');
-  if (!badge || !fit) return;
-  const { authored, rendered, overflowing } = fit;
-  const spilled = rendered > authored;
-  badge.style.display = (spilled || overflowing) ? 'inline-flex' : 'none';
-  if (!spilled && !overflowing) return;
-  const fixing = fitPending();
-  const label = mpq('#mp-fit-badge .mp-fit-label');
-  if (label) label.textContent = fitProblemText(fit) + (fixing ? ' …fixing' : '');
-  // Drives the indicator's pulse (chrome.css) — the message is the same
-  // message either way, so the state is an attribute, not a second element.
-  badge.toggleAttribute('data-mp-fixing', fixing);
-  // The button goes away only while the model actually has the problem —
-  // otherwise it stands there, disabled when there is nobody to hand it to,
-  // because a message about something you cannot act on is what this used to
-  // be.
-  const btn = mpq('#mp-fit-fix');
-  if (btn) {
-    btn.style.display = fixing ? 'none' : 'inline-flex';
-    btn.disabled = fitSending || !fitFixable();
+// Take back a report the page has outgrown. Best effort and deliberately
+// quiet: if it does not land, the next pass over a page that still fits will
+// try again, and a model that reads a stale problem finds a document that
+// does not have it.
+function clearFitReport(fit) {
+  if (location.protocol === 'file:') return;
+  fetch(liveUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'user',
+      kind: 'fit',
+      text: 'fits',
+      data: { ...fit, fits: true, paper: currentPaper, orientation: currentOrientation },
+    }),
+  }).catch(() => {});
+}
+
+// The user's half of the same news, in words: what is wrong with the page,
+// and — in fitProblem() — why, at length, on hover. The toolbar's one status
+// region draws it (renderLiveStatus); this is only the text.
+function fitProblem({ authored, rendered, overflowing, clipped }) {
+  if (overflowing) {
+    return 'Some content is too tall for any sheet and hangs past the paper edge. ' +
+      'It prints clipped — shorten it, or give it a sheet laid out for it.';
   }
-  const problem = overflowing
-    ? 'Some content is too tall for any sheet and hangs past the paper edge. ' +
-      'It prints clipped — shorten it, or give it a sheet laid out for it.'
-    : `This page was authored as ${authored} sheet${authored === 1 ? '' : 's'} and its ` +
+  if (rendered > authored) {
+    return `This page was authored as ${authored} sheet${authored === 1 ? '' : 's'} and its ` +
       `content needs ${rendered}. Nothing is lost — the extra sheets print — but the ` +
       'breaks fall where the content ran out of room rather than where they were designed.';
-  badge.title = fixing
-    ? problem + ' The model has been told, and is fixing it.'
-    : fitFixable()
-      ? problem + ' Press Fix to hand it to the model.'
-      : problem + ' No model is listening — start one, then press Fix.';
+  }
+  return `Content inside ${clipped} container${clipped === 1 ? '' : 's'} — outlined in red ` +
+    'on the sheet — is bigger than the container and is cut off at its edge. What is past ' +
+    'the edge will not print: shorten the content, or size the container for it.';
 }
 
 function paginateSheet(origin, p) {
@@ -648,6 +792,10 @@ function editableTarget(node) {
 
 function enableEditMode() {
   editMode = true;
+  // Per tab, so the model's next edit — which reloads this tab out from under
+  // the user — puts them back where they were instead of throwing them out of
+  // edit mode mid-sentence. See restoreEditMode().
+  ssSet('mpEditMode', '1');
   mpq('#mp-btn-edit').classList.add('active');
   const label = mpq('#mp-btn-edit-label');
   if (label) label.textContent = 'Stop Editing';
@@ -675,8 +823,8 @@ function enableEditMode() {
     el.contentEditable = 'true';
     el.focus();
     // Double-click is also the selection gesture: it marks the element
-    // (screen-only outline; serializeForSave strips the class) and tells the
-    // model, which acknowledges it in the user's own session.
+    // (screen-only outline; serializeForSave strips the class) and records it
+    // on the server, where the model reads it when a request needs a target.
     selectElement(el);
     const commit = () => {
       if (finishEdit !== commit) return;   // this session already ended
@@ -744,6 +892,7 @@ function blurActiveEdit() {
 
 function disableEditMode() {
   editMode = false;
+  ssSet('mpEditMode', '');
   mpq('#mp-btn-edit').classList.remove('active');
   const label = mpq('#mp-btn-edit-label');
   if (label) label.textContent = 'Edit';
@@ -794,6 +943,9 @@ function serializeForSave() {
   root.querySelectorAll('[data-mp-chrome], #mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel')
       .forEach(el => el.remove());
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  // Re-derived on every layout pass — the file never records a verdict the
+  // next load will re-measure anyway (same rule as data-mp-overflow's absence).
+  root.querySelectorAll('[data-mp-clipped]').forEach(el => el.removeAttribute('data-mp-clipped'));
   root.querySelectorAll('.mp-selected').forEach(el => {
     el.classList.remove('mp-selected');
     if (!el.classList.length) el.removeAttribute('class');
@@ -992,7 +1144,6 @@ function initAutoReload() {
 const SELECT_NOTICE_MS = 400;   // settle time before a selection is reported
 const WORKING_HOLD_MS = 30000;  // cap on the model's hold — see Auto-reload
 
-let modelListening = false;
 let liveCursor = 0;
 // The epoch of the server that has been told what is selected here. It is
 // per-tab-persistent, not per-page-load, and that is the whole point: the
@@ -1011,33 +1162,105 @@ const liveUrl = () => `/chat/${location.pathname.replace(/^\//, '')}/messages`;
 function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch {} }
 function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
 
-function setListening(on) {
-  if (on === modelListening) return;
-  modelListening = on;
-  renderLiveStatus();
-  // "…fixing" claims someone is working on it — that claim is only true while
-  // a model is listening, so it comes and goes with the connection.
-  showFitBadge();
-}
-
-// The toolbar's one piece of connection state, pinned to the right. It answers
-// exactly one question — is anyone on the other end — because that is the only
-// one the page can answer; everything else is in the model's session.
+// ── The toolbar's status region ─────────────────────────────────────────────
+// One indicator, one message, and — when there is something to hand over — one
+// button. Everything the chrome has to say about this page arrives here, and
+// only one thing is ever said at a time.
+//
+//   THE INDICATOR belongs to the model, and to nothing else: it pulses while
+//   the model says it is working (`status working`), and rests the moment it
+//   is idle. Nothing on this page — not a press, not a problem — can make it
+//   move, so a pulse always means exactly one thing. While it pulses the slot
+//   says "Working…" too — the model mid-edit outranks everything, because it
+//   is the one state where asking for more is premature.
+//
+//   THE MESSAGE is a slot, not a stack: whatever is most current replaces
+//   what was there. At rest it is a standing invitation — "Ask your model for
+//   any changes" — because that is the one instruction this page always
+//   supports. A selection takes the slot; a page that BREAKS while the user
+//   holds a selection takes it back, being newer news and the half they
+//   cannot see for themselves.
+//
+// It deliberately does NOT claim a model is "connected". Nothing subscribes
+// any more, so the page has no way to know whether one is listening. What it
+// can promise is true whenever the server is up: the page's state is
+// recorded, and the model reads it when the user next asks it for anything.
 function renderLiveStatus() {
   const el = mpq('#mp-live-status');
   if (!el) return;
+  const fit = window.mpFit;
+  const broken = fitBroken(fit);
+  const selected = !!selectedEl?.isConnected;
   const working = modelWorking();
-  el.classList.toggle('mp-live-on', modelListening);
-  el.classList.toggle('mp-live-working', working);
-  el.title = working
-    ? (workingNote || 'The model is editing this page')
-    : modelListening
-      ? 'A model is listening — ask it for changes in its own session'
-      : 'No model is listening on this page';
-  const label = mpq('#mp-live-status .mp-live-label');
-  if (label) {
-    label.textContent = working ? 'Working' : modelListening ? 'Live' : 'Not connected';
+
+  // What the slot says, one of: the model mid-edit, the selection, the
+  // standing fit problem (with its button), the instruction a FIX press
+  // leaves behind, or the invitation.
+  const sel = !working && selected && !(broken && brokenAt > selectedAt && !fitFixing);
+  const err = !working && broken && !sel && !fitFixing;
+  const handed = !working && broken && !sel && fitFixing;
+
+  el.classList.toggle('mp-live-busy', working);
+  el.classList.toggle('mp-live-selected', sel);
+  el.classList.toggle('mp-live-error', err);
+
+  el.title = sel
+    ? 'This element is recorded — your model reads it when you ask for a change'
+    : err
+      ? fitProblem(fit) + (fitFixable()
+          ? ' Press Fix to hand it to your model.'
+          : ' Open this page through the local server to hand it over.')
+      : handed
+        ? fitProblem(fit) + ' Send /print fix to your model and it picks the problem up.'
+        : working
+          ? (workingNote || 'The model is editing this page')
+          : '';
+
+  // The button stands beside a problem nobody has taken yet, and nowhere
+  // else: not once it has been handed over, and never next to a selection,
+  // where "Fix" would read as an offer to fix the element the user picked.
+  // ...and never beside "Working…": mid-edit, a press would race the very fix
+  // it asks for.
+  const btn = mpq('#mp-fit-fix');
+  if (btn) {
+    btn.style.display = err ? 'inline-flex' : 'none';
+    btn.disabled = fitSending || !fitFixable();
   }
+
+  const label = mpq('#mp-live-status .mp-live-label');
+  if (!label) return;
+  label.textContent = '';
+
+  if (working) { label.textContent = 'Working…'; return; }
+  if (sel) {
+    // One voice, in the selection's own colour — the element's name carries
+    // the weight. "Sent" is a small promise kept at the next turn: the model
+    // reads the record the moment the user asks it for anything.
+    const name = document.createElement('span');
+    name.className = 'mp-live-name';
+    name.textContent = nameElement(selectedDesc);
+    label.appendChild(name);
+    label.appendChild(document.createTextNode(' selected & sent to model'));
+    return;
+  }
+  if (err) { label.textContent = fitProblemText(fit); return; }
+  if (handed) {
+    // The press copied the command; the command is the ping. Rendered as a
+    // command — mono, boxed — and pressable again, because a clipboard is
+    // easily overwritten between here and the model's session.
+    const cmd = document.createElement('button');
+    cmd.type = 'button';
+    cmd.className = 'mp-live-cmd';
+    cmd.textContent = FIX_COMMAND;
+    cmd.title = 'Copy again';
+    cmd.addEventListener('click', copyFixCommand);
+    label.appendChild(cmd);
+    label.appendChild(document.createTextNode(' command copied. Paste and send to your model.'));
+    return;
+  }
+  // At rest: the invitation. True whether or not a model is around right now,
+  // which is exactly as much as this page can honestly claim.
+  label.textContent = 'Ask your model for any changes';
 }
 
 function applyStatus(state, text, ts) {
@@ -1049,13 +1272,12 @@ function applyStatus(state, text, ts) {
   }
   workingSince = 0;
   workingNote = '';
-  renderLiveStatus();
-  // The model has come back. Whatever it did, it is no longer fixing: either
+  // The model has come back. Whatever it did, the hand-off is over: either
   // the reload below re-measures a page that fits and the message goes with
-  // it, or the problem survived and the user should see it standing, not
-  // still pretending to be in progress.
+  // it, or the problem survived and the user should see the button back,
+  // ready to press again.
   fitFixing = false;
-  showFitBadge();
+  renderLiveStatus();
   // `done` means the file has reached its final state — don't wait out a tick
   // to show it.
   if (state === 'done') reloadIfChanged?.();
@@ -1065,17 +1287,17 @@ function initLiveChannel() {
   if (location.protocol === 'file:') return;
   const tick = async () => {
     try {
-      // from=model: the page only needs what the model says. Its own
-      // selection notices coming back would be noise.
-      const res = await fetch(`${liveUrl()}?after=${liveCursor}&from=model`, { cache: 'no-store' });
+      // Only the model's status crosses this way now — selections go the
+      // other direction, and nothing comes back about them.
+      const res = await fetch(`${liveUrl()}?after=${liveCursor}`, { cache: 'no-store' });
       if (!res.ok) return;
       const body = await res.json();
       if (body.epoch !== toldEpoch) {
         // A server we have not spoken to: either the first poll of this tab's
-        // life, or one that restarted under us. Its message log is gone (so
-        // old ids would deadlock a cursor) and it knows nothing about the
-        // selection — say it again. Claim the epoch first, so this runs once
-        // per server and not once per tick.
+        // life, or one that restarted under us. Its ids restart (so an old
+        // cursor would deadlock) and it holds no selection — record ours
+        // again. Claim the epoch first, so this runs once per server and not
+        // once per tick.
         liveCursor = 0;
         toldEpoch = body.epoch;
         ssSet('mpToldEpoch', body.epoch);
@@ -1088,7 +1310,6 @@ function initLiveChannel() {
         liveCursor = Math.max(liveCursor, m.id);
         if (m.kind === 'status') applyStatus(m.data?.state, m.text, m.ts);
       }
-      setListening(body.listening);
       // The hold expires on its own if the model stops reporting (see
       // Auto-reload); the label has to expire with it, or a model that died
       // mid-edit would leave "Working" up for good.
@@ -1101,16 +1322,20 @@ function initLiveChannel() {
 }
 
 // ── Selection ───────────────────────────────────────────────────────────────
-// Double-clicking an element in edit mode selects it, and the model is told at
-// once — that is what lets it answer "make it bigger" in its own session
-// without the user having to describe which thing they mean.
+// Double-clicking an element in edit mode selects it, and the server records
+// it — that is what lets the model answer "make it bigger" without the user
+// having to describe which thing they mean. Nothing is pushed and nobody is
+// woken: the record sits there until the model reads it, which it does when a
+// request needs a target.
 //
 // Debounced, because selecting is a hunt: clicking through four paragraphs to
-// find the right one should reach the model once, at the one they settled on.
-// Deduped by selector, so a re-select (or a reload that restores it) says
-// nothing — the model already knows.
+// find the right one should write once, at the one they settled on. Deduped by
+// selector, so a re-select (or a reload that restores it) is not a write at
+// all — the server already holds it.
 
 let selectedEl = null;
+let selectedDesc = null;   // how to name it — see selectElement
+let selectedAt = 0;        // when they picked it — see renderLiveStatus
 let noticeTimer = null;
 let noticedSelector = null;
 
@@ -1129,7 +1354,14 @@ function selectElement(el) {
   });
   marked.forEach(s => s.classList.add('mp-selected'));
   selectedEl = head;
+  // Described once, here, rather than on every toolbar redraw: naming the
+  // element means rewinding a clone of the document to its authored flow
+  // (authoredPosition), far too much work to repeat on a 1.5s tick.
+  selectedDesc = describeElement(authoredPosition(head).el);
+  selectedAt = Date.now();
   ssSet('mpSelected', buildSelector(head));
+  ssSet('mpSelectedTag', head.tagName.toLowerCase());
+  renderLiveStatus();
   noticeSelection();
 }
 
@@ -1139,14 +1371,57 @@ function clearSelection() {
     if (!s.classList.length) s.removeAttribute('class');
   });
   selectedEl = null;
+  selectedDesc = null;
+  selectedAt = 0;
   ssSet('mpSelected', '');
+  ssSet('mpSelectedTag', '');
+  renderLiveStatus();
   noticeSelection();
 }
 
-// Captured fresh each time, so the snapshot carries whatever the user has
-// just typed into the element — minus the runtime-only state, and whole: an
-// element cut across two sheets is one element again here, because that is
-// how the model will find it.
+/**
+ * How to say which element this is, in the words the user already saw: the
+ * same label the hover chip uses, plus the two things that tell one of a kind
+ * from another.
+ *
+ * `index` is its place among its repeats — the third list item, the second
+ * block — and is 0 when there are no repeats to disambiguate, because "Title
+ * #1" is noise when there is only one title.
+ *
+ * MEASURE THIS ON THE AUTHORED ELEMENT (authoredPosition), never the live one.
+ * The index has to count the same siblings selectorWithin's nth-of-type
+ * counts, or the user reads "List item #3" while the model is handed
+ * `li:nth-of-type(2)` — and on a document the shell has split across sheets,
+ * those two are routinely different numbers.
+ */
+function describeElement(el) {
+  const tag = el.tagName.toLowerCase();
+  const sibs = Array.from(el.parentElement?.children || []).filter(c => c.tagName === el.tagName);
+  return {
+    label: ELEMENT_LABELS[tag] || tag,
+    index: sibs.length > 1 ? sibs.indexOf(el) + 1 : 0,
+    text: (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80),
+  };
+}
+
+/** `Block #2 ("Divide beef…")` — the element, named the way the user sees it. */
+function nameElement({ label, index, text }) {
+  return `${label}${index ? ` #${index}` : ''}${text ? ` ("${clip(text, 24)}")` : ''}`;
+}
+
+// Enough of the text to recognise the element, cut at a word so it reads as
+// words rather than as a truncated string.
+function clip(text, max) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return (space > max * 0.5 ? cut.slice(0, space) : cut).replace(/[.,;:]$/, '') + '…';
+}
+
+// Captured fresh each time, so the snapshot carries whatever the user has just
+// typed into the element — minus the runtime-only state, and whole: an element
+// cut across two sheets is one element again here, because that is how the
+// model will find it in the file.
 function captureElement(target) {
   const { el, pg } = authoredPosition(target);
   const clone = el.cloneNode(true);
@@ -1155,6 +1430,7 @@ function captureElement(target) {
   if (!clone.classList.length) clone.removeAttribute('class');
   return {
     selector: selectorWithin(el, pg),
+    ...describeElement(el),
     snapshot: clone.outerHTML.slice(0, 2048),
     edited: el.hasAttribute('data-mp-edited'),
   };
@@ -1261,6 +1537,21 @@ function selectorWithin(target, pg) {
   return parts.join(' > ');
 }
 
+// A reload here is almost always the model's edit landing, which the user did
+// not ask for and should barely notice. Leaving them outside edit mode is the
+// most jarring way to fail that: the cursor changes, the controls vanish, and
+// whatever they were pointing at stops being pointed at. So edit mode is a
+// per-tab fact that survives the reload, exactly as it survived every reload
+// before the chat panel (which used to carry this) was retired.
+//
+// Only the mode, not the editing session: an uncommitted text edit is already
+// gone by the time the file changed underneath it (see Auto-reload), and
+// re-opening an element for typing would steal focus the user did not ask to
+// move.
+function restoreEditMode() {
+  if (ssGet('mpEditMode') === '1' && !editMode) enableEditMode();
+}
+
 // The reload that lands here is almost always the model's own edit to the
 // element the user has selected — so re-resolve it and re-mark it, silently:
 // the model told us to reload, it has not forgotten what we were discussing.
@@ -1272,14 +1563,25 @@ function restoreSelection() {
   if (!sel) return;
   let el = null;
   try { el = document.querySelector(sel); } catch { /* no longer parses */ }
+  // A positional selector (`#page > p:nth-of-type(2)`) can still match after a
+  // big rewrite while pointing at something else entirely. The tag is the
+  // cheapest check that it is still the same KIND of thing — the text is not,
+  // since changing it is usually the whole point of the edit. A mismatch is
+  // treated as gone: better to let go than to hold the wrong element.
+  const tag = ssGet('mpSelectedTag');
+  if (el && tag && el.tagName.toLowerCase() !== tag) el = null;
   if (el) {
     selectedEl = el;
+    selectedDesc = describeElement(authoredPosition(el).el);
+    selectedAt = Date.now();
     el.classList.add('mp-selected');
-    noticedSelector = sel;  // already known to the model — say nothing
+    noticedSelector = sel;  // already recorded on this server — nothing to do
+    renderLiveStatus();
     return;
   }
   noticedSelector = sel;    // ...so the deselect below reads as a change
   ssSet('mpSelected', '');
+  ssSet('mpSelectedTag', '');
   noticeSelection();
 }
 
@@ -1465,42 +1767,28 @@ function injectChrome() {
   spacer.className = 'mp-toolbar-spacer';
   toolbar.appendChild(spacer);
 
-  // Connection state: the whole of the chrome's opinion about the model —
-  // whether one is listening. The conversation is elsewhere.
+  // The status region: indicator, message, and the FIX button that hands a fit
+  // problem over. One element for all of it — see renderLiveStatus. It is last
+  // in the toolbar, so the message growing and shrinking never moves a button
+  // out from under the user's cursor, and the button is built once and hidden
+  // rather than created on demand, so the indicator beside it never shifts.
   const live = document.createElement('div');
   live.id = 'mp-live-status';
   const dot = document.createElement('span');
   dot.className = 'mp-live-dot';
   const liveLabel = document.createElement('span');
   liveLabel.className = 'mp-live-label';
-  liveLabel.textContent = 'Not connected';
-  live.appendChild(dot);
-  live.appendChild(liveLabel);
-  toolbar.appendChild(live);
-
-  // Fit status — hidden while the page fits (showFitBadge). Last in the
-  // toolbar, so appearing and disappearing never moves the buttons under the
-  // user's cursor. Built like the connection status beside it (indicator plus
-  // label) because that is what it is: a live report on the page's state,
-  // with a dot that pulses while the model is fixing it — plus the FIX button
-  // that hands it over, which is the only reason the report ever moves.
-  const fit = document.createElement('span');
-  fit.id = 'mp-fit-badge';
-  fit.style.display = 'none';
-  const fitDot = document.createElement('span');
-  fitDot.className = 'mp-fit-dot';
-  const fitLabel = document.createElement('span');
-  fitLabel.className = 'mp-fit-label';
   const fitFix = document.createElement('button');
   fitFix.id = 'mp-fit-fix';
   fitFix.type = 'button';
   fitFix.textContent = 'Fix';
   fitFix.title = 'Hand this to the model to fix';
+  fitFix.style.display = 'none';
   fitFix.addEventListener('click', sendFitReport);
-  fit.appendChild(fitDot);
-  fit.appendChild(fitLabel);
-  fit.appendChild(fitFix);
-  toolbar.appendChild(fit);
+  live.appendChild(dot);
+  live.appendChild(liveLabel);
+  live.appendChild(fitFix);
+  toolbar.appendChild(live);
 
   const ov = document.createElement('div');
   ov.id = 'mp-overlay';
@@ -1537,7 +1825,8 @@ function injectChrome() {
   initAutoReload();
   // Before the live channel opens: its first poll reconciles the selection
   // against the server's epoch, so the restored selection has to be in place
-  // by then.
+  // by then. Edit mode comes back first, because the selection belongs to it.
+  restoreEditMode();
   restoreSelection();
   // Same reasoning as the auto-reload, one step further: the live channel is
   // what carries the model's `status done`, so it comes up before anything

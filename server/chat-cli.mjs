@@ -7,48 +7,47 @@
 // its sheets) and what you know and it doesn't (that you are mid-edit).
 // Everything you want to SAY, say in your session.
 //
-// Every command is one-shot and bounded so a listener can be re-armed after
-// every wake without losing anything: a server-held cursor delivers each
-// message exactly once across invocations, so the gap between one `wait`
-// exiting and the next starting is not a hole. Live mode runs on harnesses
-// that can stream or background a command; a foreground-only harness is not
-// supported (see references/harness-support.md).
+// Every command is one-shot: it asks, prints, and exits. Nothing here runs in
+// the background, watches, or has to be kept alive — which is why live editing
+// works on every harness that can run a shell command at all, with no
+// listener to arm and nothing to leak between turns.
 //
 // <page>, where a command takes one, is the server path of the page —
 // "<page>.html" under the default flat out/ layout ("<dir>/<page>.html" for
-// custom one-level layouts). `wait` is the one command that does not need it.
+// custom one-level layouts). `selection` takes one only to narrow its answer;
+// without it you get every page, which is normally what you want.
 //
-//   wait [<page>] [--timeout N] [--after ID] [--peek]
-//       Bounded poll for what the user does in the browser, and for what the
-//       page finds wrong with itself:
-//         kind:"selection"  which element they just double-clicked
-//                           (data.selector null = they cleared it). What they
-//                           want done with it they tell you directly, in your
-//                           session.
-//         kind:"fit"        the page no longer fits the sheets it lays out,
-//                           and the user pressed FIX on it — data carries
-//                           {authored, rendered, overflowing, paper,
-//                           orientation}. This one IS a request, and they made
-//                           it: the layout is yours, their toolbar now reads
-//                           red "… fixing", go and fix it (SKILL.md, "A fit
-//                           problem arrives").
-//
-//       WITH NO <page> THIS WATCHES EVERY PAGE THE SERVER SERVES, and that is
-//       how you should normally run it — you are connecting to the server, not
-//       to a document. Every entry carries the `page` it came from, so you
-//       always know which one the user is on, including pages made after you
-//       started listening. Name a page only to deliberately ignore the others.
-//       Prints exactly one of:
-//         {"epoch":"…","messages":[…]}    >=1 new message   (exit 0)
-//         NO_MESSAGE                       poll expired empty (exit 0)
-//       Exit 2 only for hard errors (server unreachable, unknown page).
-//       A server-held cursor means each run delivers only undelivered
-//       messages — safe to re-run forever. --after replays; --peek never
-//       advances the cursor.
-//   wait [<page>] --follow
-//       Never exits; prints one NDJSON line per batch. Only for
-//       harnesses that can stream or read a background command's output —
-//       never run this as a plain foreground command.
+//   selection [<page>]          What the user has selected in the browser
+//                               RIGHT NOW, one line per page that has
+//                               something selected, newest first:
+//                                 List item #3 was selected.  [/menu.html #page > ul > li:nth-of-type(3) "Divide beef into portions"]
+//                                 NO_SELECTION
+//                               The bracket is what you act on: page, then
+//                               selector. Read it when a request needs a
+//                               target and does not name one ("make this
+//                               bigger"). There is nothing to subscribe to and
+//                               nothing to keep running — ask when you need to
+//                               know, which is the moment you are about to
+//                               edit.
+//   fit [<page>]                Which served pages no longer fit the sheets
+//                               they lay out, newest first:
+//                                 /menu.html content runs onto 3 sheets  [authored 1, rendered 3, overflowing 0, letter portrait]
+//                                 EVERYTHING_FITS
+//                               An entry here means the user pressed FIX on
+//                               that page's red notice — the layout is yours,
+//                               and they have handed it over, so this IS a
+//                               request (SKILL.md, "A page that stops
+//                               fitting"). Read it after your own edits land.
+//                               A page that comes back into fit drops off the
+//                               list by itself.
+//                               `clipped N` in the detail means content is
+//                               cut off inside N containers (it does not
+//                               print); each cut's address follows on its own
+//                               line — a selector into the file's authored
+//                               flow:
+//                                 /menu.html content is cut off in 1 place  [authored 1, rendered 1, overflowing 0, clipped 1, letter portrait]
+//                                     clipped: #page > div:nth-of-type(2)
+
 //   status <page> <working|done|idle> [text]
 //                               Tell the open tab where you are. `working`
 //                               holds its auto-reload while the file is
@@ -84,13 +83,6 @@ function takeValue(name, fallback) {
 }
 
 const BASE = (takeValue("--url", process.env.PRINT_SKILL_URL || "http://127.0.0.1:4949")).replace(/\/+$/, "");
-const follow = takeFlag("--follow");
-const peek = takeFlag("--peek");
-// The 20s default is a safe floor for any listener; background one-shot
-// listeners (the harness wakes the model when the command exits) pass up to
-// 300 for long quiet holds between wakes.
-const timeout = Math.min(Math.max(Number(takeValue("--timeout", 20)) || 20, 5), 300);
-const after = takeValue("--after", undefined);
 const full = takeFlag("--full");
 
 const [command, page, ...rest] = argv;
@@ -132,33 +124,64 @@ function post(p, payload) {
   });
 }
 
-async function pollOnce(p) {
-  const params = new URLSearchParams({ consumer: "model", from: "user", wait: String(timeout) });
-  if (after !== undefined) params.set("after", String(Math.max(0, Number(after) || 0)));
-  if (peek) params.set("peek", "1");
-  // No page named: the server-wide address, which is the normal case.
-  const path = p ? `/chat/${pagePath(p)}/messages` : "/chat/messages";
-  return api(`${path}?${params}`);
+/**
+ * One selection, one line, written for a human first — the same sentence the
+ * page shows the user, so the two never disagree about what is selected.
+ * The machine half rides in the trailing bracket: the page, then the selector.
+ * Everything else about the element is in the file on disk, which is the
+ * authoritative read anyway.
+ */
+function forPage(entries, page) {
+  const all = entries || [];
+  return page ? all.filter((e) => e.page === `/${pagePath(page)}`) : all;
+}
+
+/**
+ * The measurement, in the words the page is showing the user, with the numbers
+ * behind it — enough to tell "one paragraph spills" from "the whole thing is
+ * twice as long as it should be" without opening the page.
+ */
+function formatFit(f) {
+  const detail = `authored ${f.authored}, rendered ${f.rendered}, overflowing ${f.overflowing}` +
+    (f.clipped ? `, clipped ${f.clipped}` : "");
+  const paper = [f.paper, f.orientation].filter(Boolean).join(" ");
+  const line = `${f.page} ${f.text || "does not fit"}  [${detail}${paper ? `, ${paper}` : ""}]`;
+  // Where the cuts are, one address per line — selectors into the file's
+  // authored flow, measured by the page itself, so there is nothing to
+  // re-derive before editing.
+  const clipped = (f.clippedAt || []).map((sel) => `\n    clipped: ${sel}`).join("");
+  return line + clipped;
+}
+
+function formatSelection(sel) {
+  // Named exactly as the page named it to the user — same label, same "#2"
+  // among repeats — so the two never describe one element two ways.
+  const label = sel.label || "Element";
+  const index = sel.index ? ` #${sel.index}` : "";
+  const text = sel.text ? ` ${JSON.stringify(sel.text)}` : "";
+  return `${label}${index} was selected.  [${sel.page} ${sel.selector}${text}]`;
 }
 
 switch (command) {
-  case "wait": {
-    if (follow) {
-      // Streaming mode for background/push harnesses: one NDJSON line per
-      // batch, forever. Hard errors still exit 2 (via die in api()).
-      for (;;) {
-        const body = await pollOnce(page);
-        if (body.messages.length) {
-          process.stdout.write(JSON.stringify({ epoch: body.epoch, messages: body.messages }) + "\n");
-        }
-      }
+  case "selection": {
+    const body = await api("/chat/selection");
+    const scoped = forPage(body.selections, page);
+    if (!scoped.length) {
+      console.log("NO_SELECTION");
+      break;
     }
-    const body = await pollOnce(page);
-    if (body.messages.length) {
-      console.log(JSON.stringify({ epoch: body.epoch, messages: body.messages }));
-    } else {
-      console.log("NO_MESSAGE");
+    for (const sel of scoped) console.log(formatSelection(sel));
+    break;
+  }
+
+  case "fit": {
+    const body = await api("/chat/fit");
+    const scoped = forPage(body.fits, page);
+    if (!scoped.length) {
+      console.log("EVERYTHING_FITS");
+      break;
     }
+    for (const f of scoped) console.log(formatFit(f));
     break;
   }
 
@@ -196,5 +219,5 @@ switch (command) {
   }
 
   default:
-    die("usage: chat-cli.mjs <wait [<page>.html]|status <page>.html|edits <page>.html> …  (see file header)");
+    die("usage: chat-cli.mjs <selection|fit [<page>.html]|status <page>.html|edits <page>.html> …  (see file header)");
 }
