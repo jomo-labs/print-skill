@@ -53,7 +53,7 @@ try {
   if (!fit) throw new Error("the page did not report a fit — is the shell loading?");
 
   const spilled = fit.rendered - fit.authored;
-  const ok = spilled <= 0 && fit.overflowing === 0;
+  const ok = spilled <= 0 && fit.overflowing === 0 && !(fit.clipped > 0);
   if (asJson) {
     console.log(JSON.stringify({ ...fit, ok }));
   } else if (ok) {
@@ -72,6 +72,16 @@ try {
       console.error(
         `${fit.overflowing} sheet${fit.overflowing === 1 ? " has" : "s have"} content too tall ` +
         "to place on any sheet; it hangs past the paper edge and PRINTS CLIPPED.");
+    }
+    if (fit.clipped > 0) {
+      console.error(
+        `content is cut off inside ${fit.clipped} container${fit.clipped === 1 ? "" : "s"}; ` +
+        "whatever is past the clip edge DOES NOT PRINT:");
+      for (const sel of fit.clippedAt || []) console.error(`    ${sel}`);
+      console.error(
+        "  Shorten the content, or size the container for it — the selectors above are");
+      console.error(
+        "  addresses in the file's authored flow.");
     }
   }
   process.exitCode = ok ? 0 : 1;

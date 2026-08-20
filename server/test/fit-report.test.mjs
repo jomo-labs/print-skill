@@ -292,7 +292,7 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       assert.equal(badge.shown, false, "a page that fits has no problem to state");
       assert.equal(badge.cmd, null, "and no command to hawk");
       assert.equal(badge.pulsing, false, "done rested the dot");
-      assert.deepEqual(await page.evaluate(() => window.mpFit), { authored: 1, rendered: 1, overflowing: 0 });
+      assert.deepEqual(await page.evaluate(() => window.mpFit), { authored: 1, rendered: 1, overflowing: 0, clipped: 0 });
     });
   });
 

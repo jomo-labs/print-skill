@@ -164,6 +164,12 @@ means it does not, and says how:
 - *content too tall to place on any sheet* — one block is taller than the paper.
   It hangs past the edge and **prints clipped**. Always fix this: split the
   block, shorten it, or give it its own sheet.
+- *content is cut off inside N containers* — content outgrew a fixed-size
+  container. Containers clip rather than overlap (the document stylesheet sets
+  `overflow: clip` on structural containers — on paper, overlap is never
+  right), so whatever is past the clip edge **does not print at all**. The
+  check lists each container's selector in the file's authored flow. Always
+  fix this: shorten the content, or size the container for it.
 
 Needs Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in the
 report that the fit check could not run.
@@ -361,8 +367,9 @@ line unless the request clearly means another page.
 
 A page records it when it no longer fits the sheets it lays out — because the
 user's own browser edit outgrew a sheet, because they switched to smaller
-paper, or because it never fitted in the first place. Read it the same way you
-read a selection:
+paper, or because it never fitted in the first place — and when content is cut
+off inside a clipping container (containers clip rather than overlap; what is
+past the clip edge does not print). Read it the same way you read a selection:
 
 ```
 node <skill-dir>/server/chat-cli.mjs fit --url http://127.0.0.1:<port>
@@ -370,8 +377,16 @@ node <skill-dir>/server/chat-cli.mjs fit --url http://127.0.0.1:<port>
 
 ```
 /menu.html content runs onto 3 sheets  [authored 1, rendered 3, overflowing 0, letter portrait]
+/todo.html content is cut off in 1 place  [authored 1, rendered 1, overflowing 0, clipped 1, letter portrait]
+    clipped: #page > div:nth-of-type(2)
 EVERYTHING_FITS
 ```
+
+The `clipped:` lines are the page's own hints: each is the selector, in the
+file's authored flow, of a container whose content exceeds its clip edge (the
+same containers wear a red dashed outline in the browser). Go straight to
+those elements — shorten their content or size them for it — rather than
+re-deriving what the page already measured.
 
 **A fit report only exists because the user pressed FIX.** Their toolbar
 states the problem in red and offers the button; nothing reaches the record
@@ -402,7 +417,10 @@ waiting to be asked again:
    authored for, or lay the further sheets out **on purpose** — the problem is
    never the extra sheet itself, it is a break nobody designed. `overflowing`
    above 0 is the sharper one: that content is past the paper edge and prints
-   clipped.
+   clipped. `clipped` above 0 is just as sharp and comes with addresses: the
+   report's `clipped:` lines name each container whose content is cut off at
+   its clip edge — that content does not print — so edit those elements
+   directly.
 3. Say one line here about what you changed, as with any other edit. If you
    could not fix it, say that instead — the user is looking at a red line, and
    silence reads as nobody having noticed.

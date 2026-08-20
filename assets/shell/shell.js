@@ -192,7 +192,19 @@ function reportFit(p) {
       if (sheet.scrollHeight > p.h + 1) overflowing++;
     }
   }
-  const fit = { authored: origins.length, rendered, overflowing };
+  // The third failure this shell can find on its own: content cut off inside
+  // a clipping container (see Clip detection below). Counted into the same
+  // fit verdict, because it is the same problem wearing a different edge —
+  // the content and the box the model gave it disagree about its size.
+  const clippedEls = detectClipped();
+  const fit = { authored: origins.length, rendered, overflowing, clipped: clippedEls.length };
+  if (clippedEls.length) {
+    // Where, as addresses into the AUTHORED flow (the same selectors a
+    // selection reports), so the model can find each container in the file
+    // without re-deriving what the page already measured. The count above is
+    // always complete; only the address list is capped.
+    fit.clippedAt = clippedEls.slice(0, CLIP_REPORT_MAX).map((el) => buildSelector(el));
+  }
   const wasBroken = fitBroken(window.mpFit);
   window.mpFit = fit;
   // When the page BECAME wrong, for the toolbar's one message slot: a problem
@@ -256,16 +268,97 @@ function reportFit(p) {
 // there through this.
 function refit() { applySize(currentPaper); }
 
+// ── Clip detection ──────────────────────────────────────────────────────────
+// document.css gives structural containers `overflow: clip`, so content that
+// outgrows a fixed-size box is cut at its edge instead of painted over its
+// neighbours — on paper, overlap is never right. But the cut is the lesser
+// evil, not a fix: whatever is past the clip edge is simply absent from the
+// printed sheet. So every fit pass hunts for it: each clipping container
+// whose content exceeds its clip edge is marked data-mp-clipped (a red dashed
+// outline on screen — chrome-host.css — and nothing in print; the marker is
+// runtime state, stripped by serializeForSave like the rest), and the count
+// rides the same fit verdict as sheets that spilled, with the same red line,
+// the same FIX button, and the same record for the model to read.
+//
+// Detection is geometric, not scrollHeight-based: getBoundingClientRect is
+// layout truth regardless of clipping (clipping is paint-only), it works
+// identically for `clip` and `hidden`, and it sidesteps engines that report
+// a clipped element's scroll size as its client size. Each clipping
+// container is judged against its OWN children — since nearly every
+// container clips now, every clip boundary gets its own local check.
+
+const CLIP_TOLERANCE = 1;    // px past the clip edge before it counts
+const CLIP_REPORT_MAX = 8;   // addresses reported; the count is always full
+
+// Every element inside the current sheets whose content exceeds its clip
+// edge, marked in place. Runs inside the fit pass — after pagination, before
+// scaleToFit — so every rect is in unscaled CSS px.
+function detectClipped() {
+  document.querySelectorAll('[data-mp-clipped]')
+    .forEach((el) => el.removeAttribute('data-mp-clipped'));
+  const clipped = [];
+  for (const origin of originSheets()) {
+    for (const sheet of sheetChain(origin)) {
+      for (const el of sheet.querySelectorAll('*')) {
+        // SVG viewports clip by UA design (that is what a viewBox is for) and
+        // their internals aren't flowed content — never an overlap hazard.
+        if (el.namespaceURI !== 'http://www.w3.org/1999/xhtml') continue;
+        if (isClipped(el)) clipped.push(el);
+      }
+    }
+  }
+  clipped.forEach((el) => el.setAttribute('data-mp-clipped', ''));
+  return clipped;
+}
+
+function isClipped(el) {
+  const cs = getComputedStyle(el);
+  const clipX = cs.overflowX === 'hidden' || cs.overflowX === 'clip';
+  const clipY = cs.overflowY === 'hidden' || cs.overflowY === 'clip';
+  if (!clipX && !clipY) return false;
+  const kids = laidOutChildren(el);
+  if (!kids.length) return false;
+  const r = el.getBoundingClientRect();
+  if (!(r.width || r.height)) return false;
+  // The clip edge is the padding box — the border box minus the borders —
+  // pushed out by overflow-clip-margin where the axis clips (hidden always
+  // cuts at the padding box exactly; engines without the property parse to 0).
+  const margin = parseFloat(cs.overflowClipMargin) || 0;
+  const mx = (cs.overflowX === 'clip' ? margin : 0) + CLIP_TOLERANCE;
+  const my = (cs.overflowY === 'clip' ? margin : 0) + CLIP_TOLERANCE;
+  const left   = r.left   + parseFloat(cs.borderLeftWidth)   - mx;
+  const right  = r.right  - parseFloat(cs.borderRightWidth)  + mx;
+  const top    = r.top    + parseFloat(cs.borderTopWidth)    - my;
+  const bottom = r.bottom - parseFloat(cs.borderBottomWidth) + my;
+  for (const { node, box } of kids) {
+    // A child's border box grows with its content vertically, but inline
+    // content that cannot wrap (a long unbroken string) paints PAST the
+    // child's own box. A non-clipping child's scroll size still counts that
+    // overflow, so extend the measured box by it — its paint reaches there,
+    // and paint is what the clip edge cuts.
+    let bRight = box.right, bBottom = box.bottom;
+    if (node.nodeType === 1) {
+      const ncs = getComputedStyle(node);
+      if (ncs.overflowX === 'visible') bRight += Math.max(0, node.scrollWidth - node.clientWidth);
+      if (ncs.overflowY === 'visible') bBottom += Math.max(0, node.scrollHeight - node.clientHeight);
+    }
+    if (clipX && (box.left < left || bRight > right)) return true;
+    if (clipY && (box.top < top || bBottom > bottom)) return true;
+  }
+  return false;
+}
+
 const FIX_COMMAND = '/print fix';   // what the press copies — the ping the user carries
 let fitFixing = false;  // handed to the model this page load, no answer yet
 let fitSending = false; // the press is in flight — don't send it twice
 let fitMeasured = false; // the first pass has run — see reportFit
 let brokenAt = 0;       // when the page became wrong, or 0 if it arrived so
 
-// The page is wrong: it needed sheets its author did not lay out, or content
-// hangs past the paper edge.
+// The page is wrong: it needed sheets its author did not lay out, content
+// hangs past the paper edge, or content is cut off inside a clipping
+// container.
 function fitBroken(fit = window.mpFit) {
-  return !!fit && (fit.rendered > fit.authored || fit.overflowing > 0);
+  return !!fit && (fit.rendered > fit.authored || fit.overflowing > 0 || fit.clipped > 0);
 }
 
 // The button needs a server to hand the problem to — and that is all it needs.
@@ -274,11 +367,11 @@ function fitBroken(fit = window.mpFit) {
 // next acts. A file:// page has nowhere to put it.
 function fitFixable() { return location.protocol !== 'file:'; }
 
-function fitProblemText({ authored, rendered, overflowing }) {
+function fitProblemText({ authored, rendered, overflowing, clipped }) {
   const spilled = rendered > authored;
-  return overflowing && !spilled
-    ? 'content overflows the sheet'
-    : `content runs onto ${rendered} sheets`;
+  if (overflowing && !spilled) return 'content overflows the sheet';
+  if (spilled) return `content runs onto ${rendered} sheets`;
+  return `content is cut off in ${clipped} place${clipped === 1 ? '' : 's'}`;
 }
 
 // Put FIX_COMMAND on the clipboard. Called inside a click either way, so the
@@ -353,13 +446,19 @@ function clearFitReport(fit) {
 // The user's half of the same news, in words: what is wrong with the page,
 // and — in fitProblem() — why, at length, on hover. The toolbar's one status
 // region draws it (renderLiveStatus); this is only the text.
-function fitProblem({ authored, rendered, overflowing }) {
-  return overflowing
-    ? 'Some content is too tall for any sheet and hangs past the paper edge. ' +
-      'It prints clipped — shorten it, or give it a sheet laid out for it.'
-    : `This page was authored as ${authored} sheet${authored === 1 ? '' : 's'} and its ` +
+function fitProblem({ authored, rendered, overflowing, clipped }) {
+  if (overflowing) {
+    return 'Some content is too tall for any sheet and hangs past the paper edge. ' +
+      'It prints clipped — shorten it, or give it a sheet laid out for it.';
+  }
+  if (rendered > authored) {
+    return `This page was authored as ${authored} sheet${authored === 1 ? '' : 's'} and its ` +
       `content needs ${rendered}. Nothing is lost — the extra sheets print — but the ` +
       'breaks fall where the content ran out of room rather than where they were designed.';
+  }
+  return `Content inside ${clipped} container${clipped === 1 ? '' : 's'} — outlined in red ` +
+    'on the sheet — is bigger than the container and is cut off at its edge. What is past ' +
+    'the edge will not print: shorten the content, or size the container for it.';
 }
 
 function paginateSheet(origin, p) {
@@ -844,6 +943,9 @@ function serializeForSave() {
   root.querySelectorAll('[data-mp-chrome], #mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel')
       .forEach(el => el.remove());
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  // Re-derived on every layout pass — the file never records a verdict the
+  // next load will re-measure anyway (same rule as data-mp-overflow's absence).
+  root.querySelectorAll('[data-mp-clipped]').forEach(el => el.removeAttribute('data-mp-clipped'));
   root.querySelectorAll('.mp-selected').forEach(el => {
     el.classList.remove('mp-selected');
     if (!el.classList.length) el.removeAttribute('class');

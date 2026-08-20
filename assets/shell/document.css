@@ -239,6 +239,42 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
 .page .invert * { color: inherit; }
 .page .tint   { background: var(--color-pull-bg) !important; }
 
+/* ── Overflow policy — containers clip, they never overlap ── */
+/* On paper, content that outgrows its container has nowhere honest to go:
+   painted over the neighbouring block it prints as garbage, so structural
+   containers cut it at their edge instead. `clip`, not `hidden`, and that is
+   load-bearing three ways: clip is paint-only (no new formatting context, so
+   margins collapse exactly as before and pagination measures the same boxes),
+   it creates no scroll container (find-in-page or a caret can never silently
+   scroll a fixed box's content out of the printed view), and it takes
+   overflow-clip-margin — the few px of slack that lets glyph ink from tight
+   display leading, tilted motifs, and print-flat shadows breathe at a flush
+   edge without permitting real overlap. 6px covers the worst honest case
+   (display type at tight --leading-display ink-overhangs ~0.075em, which is
+   6px at the 80px display step) while staying far under the one-line-height
+   quantum real overflow arrives in — and the shell's clip detector reads the
+   computed value back per element, so CSS and detector never disagree about
+   where the edge is.
+
+   The cut is the lesser evil, not a fix: the shell detects content past a
+   clip edge on every layout pass and reports it through the same FIX path as
+   a page that outgrows its sheets (see reportFit in shell.js), so a clipped
+   container is an error to resolve at generation time, never a crop to ship.
+
+   Deliberately NOT clipped: the sheets themselves (content too tall for any
+   sheet must stay visibly hanging past the paper edge — that spill IS the
+   error display), `li` (an outside list marker paints left of the li's own
+   box and would be eaten; the ul clips for the row instead — give lists real
+   padding-left, the global reset zeroed it), and text-level elements
+   (p/headings/span are auto-sized, so they never cause overlap themselves,
+   and clipping them would shear ascenders and italic overhang). A container
+   that intentionally bleeds (rare) may opt out with `overflow: visible`. */
+:is(.page, .variant-page) :is(div, section, aside, article, header, footer,
+    figure, ul, ol, dl, dt, dd, blockquote, td, th):not(.page):not(.variant-page) {
+  overflow: clip;
+  overflow-clip-margin: 6px;
+}
+
 /* ── Motif utilities ──
    Theme-neutral and opt-in: nothing applies these by default, and a theme
    that declares no motifs simply never uses them. Their geometry
