@@ -8,11 +8,12 @@
 // the model unasked — an edit to the user's document is not something the page
 // starts behind their back.
 //
-// What the press changes is the INDICATOR, not the words. The toolbar has one
-// dot, always present, and it pulses exactly while something is being done
-// about this page. It used to append "…handed over" and then "…fixing" to the
-// message instead, which was the toolbar narrating its own plumbing at the
-// person who had just pressed the button.
+// The press does two things: the problem goes on the record, and `/print fix`
+// goes on the clipboard — the ping itself, carried by the user's own next
+// message, which is the only channel there is. The toolbar's line then says
+// exactly that. The indicator is the MODEL's alone: it pulses on `status
+// working` and rests on done, and nothing this page does can move it — so a
+// pulse never claims work that has not started.
 //
 // Asserted here, in the order the user would meet it: the toolbar says it and
 // nothing goes out, the button hands it over on a press, the message clears
@@ -105,6 +106,7 @@ const badgeState = async (page) => {
         border: cs.borderTopWidth,
         background: cs.backgroundColor,
         text: el.querySelector(".mp-live-label").textContent,
+        cmd: el.querySelector(".mp-live-cmd")?.textContent ?? null,
         title: el.title,
         // The indicator is one element, always in the DOM, and its pulse is
         // the only thing that says work is happening.
@@ -248,23 +250,22 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       // A read, not a queue: the model can ask again and still find it.
       assert.deepEqual(await fitReport(server.url), reported, "and it stays on the record");
 
-      // What the user sees the instant they press: the indicator starts
-      // pulsing and the button steps aside. The WORDS do not change — they
-      // pressed the button, so they know they pressed the button; what they
-      // could not otherwise see is whether anything is happening about it.
+      // What the user sees the instant they press: the button steps aside and
+      // the line tells them what just happened and what to do with it — the
+      // command is on their clipboard, and they carry it. The indicator does
+      // NOT move: nothing is working yet, and the dot never says otherwise.
       const handed = await waitForBadge(page, (b) => !b.fix.shown);
-      assert.equal(handed.pulsing, true, "the indicator picks it up on the press itself");
-      assert.match(handed.text, /^content runs onto \d+ sheets$/, handed.text);
-      assert.ok(!/handed|fixing|working/i.test(handed.text), handed.text);
-      assert.match(handed.title, /Handed to your model/, handed.title);
+      assert.equal(handed.pulsing, false, "no pulse for work that has not started");
+      assert.match(handed.text, /\/print fix command copied\. Paste and send to your model\./, handed.text);
+      assert.equal(handed.cmd, "/print fix", "the command is right there, restyled as one");
+      assert.match(handed.title, /\/print fix/, handed.title);
 
-      // ...and the model actually starting work changes nothing on screen: the
-      // toolbar was already saying the one true thing there is to say.
+      // ...and the paste landing is what starts the dot: the model says
+      // working, the dot pulses, the line stays what it was.
       await saysWorking(server.url, "overflow");
-      await page.waitForTimeout(SETTLE_MS);
-      const badge = await badgeState(page);
-      assert.equal(badge.pulsing, true, "still marked as being worked on");
-      assert.match(badge.text, /^content runs onto \d+ sheets$/, badge.text);
+      const badge = await waitForBadge(page, (b) => b.pulsing);
+      assert.equal(badge.pulsing, true, "the model's own word moves the dot");
+      assert.match(badge.text, /command copied/, badge.text);
       assert.equal(badge.fix.shown, false, "the button stays aside while the model has it");
     });
   });
@@ -275,6 +276,8 @@ test("a page that stops fitting offers itself to the model", async (t) => {
     await withPage("overflow", async (page) => {
       await waitForBadge(page, offered);
       await pressFix(page);
+      await waitForBadge(page, (b) => !b.fix.shown);
+      await saysWorking(server.url, "overflow");
       await waitForBadge(page, (b) => b.pulsing);
 
       await write("overflow", SHORT);
@@ -284,8 +287,10 @@ test("a page that stops fitting offers itself to the model", async (t) => {
         body: JSON.stringify({ from: "model", kind: "status", text: "", data: { state: "done" } }),
       });
 
-      const badge = await waitForBadge(page, (b) => !b.shown);
-      assert.equal(badge.shown, false, "a page that fits says nothing");
+      const badge = await waitForBadge(page, (b) => /^Ask your model/.test(b.text));
+      assert.equal(badge.shown, false, "a page that fits has no problem to state");
+      assert.equal(badge.cmd, null, "and no command to hawk");
+      assert.equal(badge.pulsing, false, "done rested the dot");
       assert.deepEqual(await page.evaluate(() => window.mpFit), { authored: 1, rendered: 1, overflowing: 0 });
     });
   });
@@ -298,6 +303,8 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       await waitForBadge(page, offered);
       await pressFix(page);
       assert.equal((await waitForFit(server.url)).length, 1);
+      await waitForBadge(page, (b) => !b.fix.shown);
+      await saysWorking(server.url, "overflow");
       await waitForBadge(page, (b) => b.pulsing);
 
       // The model's reply arrives with the page no better than before.
@@ -342,7 +349,7 @@ test("a page that stops fitting offers itself to the model", async (t) => {
       const picked = await waitForBadge(page, (b) => b.selected);
       assert.equal(picked.selected, true, "the line is the selection's");
       assert.equal(picked.shown, false, "and not the fit problem's as well");
-      assert.match(picked.text, /^Paragraph .*selected\./s, picked.text);
+      assert.match(picked.text, /^Paragraph .*selected & sent to model$/s, picked.text);
       assert.equal(picked.fix.shown, false, "no FIX beside a selection to mistake it for");
       assert.equal(picked.dots, 1, "the same one indicator, wherever it is");
 

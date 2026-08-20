@@ -375,15 +375,20 @@ EVERYTHING_FITS
 
 **A fit report only exists because the user pressed FIX.** Their toolbar
 states the problem in red and offers the button; nothing reaches the record
-until they press it. So an entry here is not a measurement you happened to
-find — it is them handing you their document to fix, and the indicator beside
-that red line has been pulsing since they pressed it. Something has to happen
-at the other end of that.
+until they press it. The press also copies **`/print fix`** to their
+clipboard and tells them to paste it to you — that message is the button
+reaching you, since nothing else can. So treat `/print fix` (or any paste of
+it inside a longer message) as exactly this: **read the fit record now and
+fix every page on it**, without asking what is wrong — the record has the
+details. An entry you find by any other route is the same request that has
+not managed to reach you yet; fix it the same way.
 
 **Check the record after your own edits land** — every time, as the last step
 of "Editing the page" below. Your edit is the likeliest thing to have broken
-the fit, and if it did, they will press the button and be waiting. Check it too
-whenever they mention the page running long or a red line in the toolbar.
+the fit, and if it did, they will press the button and be waiting. Check it
+too at the start of any turn where a server is up: the press may have
+happened after your last turn ended, and the paste is only the loudest way
+the request travels, not the only one.
 
 Unlike a selection, **this one is a request to edit.** So fix it, without
 waiting to be asked again:

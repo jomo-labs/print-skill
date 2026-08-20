@@ -135,14 +135,15 @@ test("what the user selects is on record, and the page says so", async (t) => {
   // has to tell them.
   await t.test("and the page tells the user they need only ask", async () => {
     await withPage(async (page) => {
-      assert.equal(await toolbarLine(page), "", "nothing to say before they point");
+      assert.equal(await toolbarLine(page), "Ask your model for any changes",
+        "at rest, the standing invitation — not a claim about this element");
 
       await page.dblclick("#probe");
       await page.waitForTimeout(SETTLE_MS);
 
       assert.equal(
         await toolbarLine(page),
-        'Title ("BEFORE") selected.\nAsk your model for any changes.',
+        'Title ("BEFORE") selected & sent to model',
         "named the way the user saw it on hover, with enough text to recognise"
       );
       assert.equal(await outlined(page), "probe");
@@ -192,7 +193,8 @@ test("what the user selects is on record, and the page says so", async (t) => {
 
       assert.equal(await selection(server.url), "NO_SELECTION");
       assert.equal(await outlined(page), null, "and the outline is gone");
-      assert.equal(await toolbarLine(page), "", "and the page stops claiming it");
+      assert.equal(await toolbarLine(page), "Ask your model for any changes",
+        "and the page stops claiming it");
     });
   });
 
@@ -228,7 +230,7 @@ test("what the user selects is on record, and the page says so", async (t) => {
       assert.match(await selection(server.url), /#probe/, "and still on record");
       assert.match(
         await toolbarLine(page),
-        /^Title \("AFTER"\) selected\./,
+        /^Title \("AFTER"\) selected & sent to model$/,
         "and the page still says so, with the element's new text"
       );
     });
@@ -516,7 +518,7 @@ test("an element among repeats says which one it is", async (t) => {
   await page.waitForTimeout(SETTLE_MS);
   assert.equal(
     await toolbarLine(page),
-    'List item #2 ("Toast the buns until…") selected.\nAsk your model for any changes.',
+    'List item #2 ("Toast the buns until…") selected & sent to model',
     "which item, and enough of it to recognise — cut at a word, not mid-syllable"
   );
   // The model is told the same thing in the same words, and the selector it
@@ -535,25 +537,23 @@ test("an element among repeats says which one it is", async (t) => {
     return {
       lineInk: getComputedStyle(status).color,
       outline,
+      lineWeight: getComputedStyle(status).fontWeight,
       nameWeight: getComputedStyle(root.querySelector(".mp-live-name")).fontWeight,
-      restWeight: getComputedStyle(root.querySelector(".mp-live-rest")).fontWeight,
-      breaks: getComputedStyle(root.querySelector(".mp-live-rest")).whiteSpace,
     };
   })()`);
   assert.equal(dressing.lineInk, dressing.outline, "the same blue as the outline on the page");
   assert.ok(Number(dressing.nameWeight) >= 700, "the name is bold");
   assert.ok(
-    Number(dressing.restWeight) < Number(dressing.nameWeight),
-    "and the instruction beside it is not"
+    Number(dressing.lineWeight) < Number(dressing.nameWeight),
+    "and the rest of the sentence is not"
   );
-  assert.equal(dressing.breaks, "pre-line", "the instruction gets its own line");
 
   // The only heading on the page is just "Title" — "#1" would be noise.
   await page.dblclick("#only");
   await page.waitForTimeout(SETTLE_MS);
   assert.equal(
     await toolbarLine(page),
-    'Title ("Beef Bulgogi") selected.\nAsk your model for any changes.',
+    'Title ("Beef Bulgogi") selected & sent to model',
     "no index when there is nothing to disambiguate"
   );
   await page.close();

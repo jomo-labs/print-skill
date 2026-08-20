@@ -238,11 +238,13 @@ function reportFit(p) {
 // document that fits and the message goes away by itself. Nothing else clears
 // it.
 //
-// The press changes the indicator, not the words. "…handed over" and
-// "…fixing" used to be appended here, and both were the toolbar narrating its
-// own plumbing at the user: they pressed the button, so they know they pressed
-// the button. What they cannot see is whether anything is happening about it,
-// and that is exactly what the pulse says.
+// The press does two things, and both are the user's to carry: it puts the
+// problem on the record (where the model reads the details), and it copies
+// `/print fix` to the clipboard — the ping itself, which travels the only
+// channel that still exists: the user's own next message to their model. The
+// toolbar then says exactly that, and nothing more. It does NOT start the
+// indicator pulsing: the pulse belongs to the model alone (`status working`),
+// so it never claims work that has not started.
 //
 // No dedupe, unlike the selection notice: nothing goes out unless a hand
 // presses the button, so there is no loop to break. A problem the model could
@@ -254,6 +256,7 @@ function reportFit(p) {
 // there through this.
 function refit() { applySize(currentPaper); }
 
+const FIX_COMMAND = '/print fix';   // what the press copies — the ping the user carries
 let fitFixing = false;  // handed to the model this page load, no answer yet
 let fitSending = false; // the press is in flight — don't send it twice
 let fitMeasured = false; // the first pass has run — see reportFit
@@ -278,10 +281,31 @@ function fitProblemText({ authored, rendered, overflowing }) {
     : `content runs onto ${rendered} sheets`;
 }
 
-// The FIX button's whole job: hand this page's fit problem to the model.
+// Put FIX_COMMAND on the clipboard. Called inside a click either way, so the
+// gesture-scoped clipboard permission applies; the execCommand fallback
+// covers contexts where the async API is missing or refuses.
+function copyFixCommand() {
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = FIX_COMMAND;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch { /* out of options */ }
+    ta.remove();
+  };
+  try { navigator.clipboard.writeText(FIX_COMMAND).catch(fallback); }
+  catch { fallback(); }
+}
+
+// The FIX button's whole job: hand this page's fit problem to the model —
+// the details onto the record, the ping onto the clipboard.
 async function sendFitReport() {
   const fit = window.mpFit;
   if (fitSending || fitFixing || !fitBroken(fit) || !fitFixable()) return;
+  // First, inside the click gesture, before any await can outlive it.
+  copyFixCommand();
   fitSending = true;
   renderLiveStatus();
   try {
@@ -1039,26 +1063,24 @@ function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return nul
 // ── The toolbar's status region ─────────────────────────────────────────────
 // One indicator, one message, and — when there is something to hand over — one
 // button. Everything the chrome has to say about this page arrives here, and
-// the whole design is that only one thing is ever said at a time.
+// only one thing is ever said at a time.
 //
-//   THE INDICATOR is always present and is always this same element. It does
-//   not appear, disappear, or change places to mean something; it pulses while
-//   something is being done to the page, and rests otherwise. A user learning
-//   one moving part is a user who can read the toolbar at a glance.
+//   THE INDICATOR belongs to the model, and to nothing else: it pulses while
+//   the model says it is working (`status working`), and rests the moment it
+//   is idle. Nothing on this page — not a press, not a problem — can make it
+//   move, so a pulse always means exactly one thing.
 //
-//   THE MESSAGE is a slot, not a stack: whatever is most current replaces what
-//   was there. A selection normally wins it, because it is the one message
-//   that is a direct answer to something the user just did — stacking a red
-//   fit notice beside a blue selection line asks them to work out which of the
-//   two their double-click produced. What beats a selection is a page that
-//   breaks while they hold one, which is newer news and the half they cannot
-//   see for themselves.
+//   THE MESSAGE is a slot, not a stack: whatever is most current replaces
+//   what was there. At rest it is a standing invitation — "Ask your model for
+//   any changes" — because that is the one instruction this page always
+//   supports. A selection takes the slot; a page that BREAKS while the user
+//   holds a selection takes it back, being newer news and the half they
+//   cannot see for themselves.
 //
-// It deliberately does NOT claim a model is "connected". Nothing subscribes any
-// more, so the page has no way to know whether one is listening, and the old
-// Live/Not-connected indicator was guessing. What it can promise is true
-// whenever the server is up: the page's state is recorded, and the model reads
-// it when it acts.
+// It deliberately does NOT claim a model is "connected". Nothing subscribes
+// any more, so the page has no way to know whether one is listening. What it
+// can promise is true whenever the server is up: the page's state is
+// recorded, and the model reads it when the user next asks it for anything.
 function renderLiveStatus() {
   const el = mpq('#mp-live-status');
   if (!el) return;
@@ -1066,72 +1088,71 @@ function renderLiveStatus() {
   const broken = fitBroken(fit);
   const selected = !!selectedEl?.isConnected;
   const working = modelWorking();
-  // Pulsing means "wait, something is happening about this page", and the two
-  // things that qualify are the model saying it is mid-edit and a fix the user
-  // handed over that nobody has answered yet. The press is included on purpose:
-  // it is the moment the user most wants to see that their button did
-  // something, and it is well before any model gets round to saying so.
-  const busy = working || fitFixing;
 
-  // The slot holds the newer of the two things worth saying. A selection wins
-  // by default, because it is the direct answer to something the user just
-  // did — but a page that BREAKS while they have something selected is newer
-  // still, and they need to know, so the freshly broken fit takes the line
-  // back. "Working" is neither: the indicator already says it, so it only
-  // speaks when the slot would otherwise be empty.
-  const sel = selected && !(broken && brokenAt > selectedAt);
-  const err = broken && !sel;
+  // What the slot says, one of: the selection, the standing fit problem (with
+  // its button), the instruction a FIX press leaves behind, or the invitation.
+  const sel = selected && !(broken && brokenAt > selectedAt && !fitFixing);
+  const err = broken && !sel && !fitFixing;
+  const handed = broken && !sel && fitFixing;
 
-  el.classList.toggle('mp-live-busy', busy);
+  el.classList.toggle('mp-live-busy', working);
   el.classList.toggle('mp-live-selected', sel);
   el.classList.toggle('mp-live-error', err);
-  // Only when the message IS the word — the amber, uppercase treatment belongs
-  // to that one label, not to every state the indicator happens to be pulsing in.
-  el.classList.toggle('mp-live-working', !sel && !err && working);
 
   el.title = sel
     ? 'This element is recorded — your model reads it when you ask for a change'
     : err
-      ? fitProblem(fit) + (fitFixing
-          ? ' Handed to your model — it picks this up when it next works on the page.'
-          : fitFixable()
-            ? ' Press Fix to hand it to your model.'
-            : ' Open this page through the local server to hand it over.')
-      : working
-        ? (workingNote || 'The model is editing this page')
-        : '';
+      ? fitProblem(fit) + (fitFixable()
+          ? ' Press Fix to hand it to your model.'
+          : ' Open this page through the local server to hand it over.')
+      : handed
+        ? fitProblem(fit) + ' Send /print fix to your model and it picks the problem up.'
+        : working
+          ? (workingNote || 'The model is editing this page')
+          : '';
 
-  // The button stands beside a problem nobody has taken yet, and nowhere else:
-  // not once it has been handed over, and never next to a selection, where
-  // "Fix" would read as an offer to fix the element the user just picked.
+  // The button stands beside a problem nobody has taken yet, and nowhere
+  // else: not once it has been handed over, and never next to a selection,
+  // where "Fix" would read as an offer to fix the element the user picked.
   const btn = mpq('#mp-fit-fix');
   if (btn) {
-    btn.style.display = (err && !fitFixing) ? 'inline-flex' : 'none';
+    btn.style.display = err ? 'inline-flex' : 'none';
     btn.disabled = fitSending || !fitFixable();
   }
 
   const label = mpq('#mp-live-status .mp-live-label');
   if (!label) return;
   label.textContent = '';
-  if (!sel) {
-    if (err) label.textContent = fitProblemText(fit);
-    else if (working) label.textContent = 'Working';
+
+  if (sel) {
+    // One voice, in the selection's own colour — the element's name carries
+    // the weight. "Sent" is a small promise kept at the next turn: the model
+    // reads the record the moment the user asks it for anything.
+    const name = document.createElement('span');
+    name.className = 'mp-live-name';
+    name.textContent = nameElement(selectedDesc);
+    label.appendChild(name);
+    label.appendChild(document.createTextNode(' selected & sent to model'));
     return;
   }
-
-  // One voice, in the selection's own colour — the element's name carries the
-  // weight, and nothing else about it is decorated. The break is a real
-  // newline rather than a <br>: white-space: pre-line draws it, and it
-  // survives into textContent, so the line still reads as one sentence to
-  // anything reading it as text.
-  const name = document.createElement('span');
-  name.className = 'mp-live-name';
-  name.textContent = nameElement(selectedDesc);
-  label.appendChild(name);
-  const rest = document.createElement('span');
-  rest.className = 'mp-live-rest';
-  rest.textContent = ' selected.\nAsk your model for any changes.';
-  label.appendChild(rest);
+  if (err) { label.textContent = fitProblemText(fit); return; }
+  if (handed) {
+    // The press copied the command; the command is the ping. Rendered as a
+    // command — mono, boxed — and pressable again, because a clipboard is
+    // easily overwritten between here and the model's session.
+    const cmd = document.createElement('button');
+    cmd.type = 'button';
+    cmd.className = 'mp-live-cmd';
+    cmd.textContent = FIX_COMMAND;
+    cmd.title = 'Copy again';
+    cmd.addEventListener('click', copyFixCommand);
+    label.appendChild(cmd);
+    label.appendChild(document.createTextNode(' command copied. Paste and send to your model.'));
+    return;
+  }
+  // At rest: the invitation. True whether or not a model is around right now,
+  // which is exactly as much as this page can honestly claim.
+  label.textContent = 'Ask your model for any changes';
 }
 
 function applyStatus(state, text, ts) {
@@ -1143,10 +1164,10 @@ function applyStatus(state, text, ts) {
   }
   workingSince = 0;
   workingNote = '';
-  // The model has come back. Whatever it did, it is no longer fixing: either
+  // The model has come back. Whatever it did, the hand-off is over: either
   // the reload below re-measures a page that fits and the message goes with
   // it, or the problem survived and the user should see the button back,
-  // rather than an indicator still pulsing for nobody.
+  // ready to press again.
   fitFixing = false;
   renderLiveStatus();
   // `done` means the file has reached its final state — don't wait out a tick

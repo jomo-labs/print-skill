@@ -151,7 +151,7 @@ test("a page edited on disk reaches the open tab", async (t) => {
       let reloads = 0;
       page.on("framenavigated", () => reloads++);
       await postStatus(server.url, "working", "Rewriting the header");
-      await page.waitForFunction(`!!${CHROME}.querySelector("#mp-live-status.mp-live-working")`); // window open
+      await page.waitForFunction(`!!${CHROME}.querySelector("#mp-live-status.mp-live-busy")`); // window open
       await writePage("HALF-DONE");
       await new Promise((r) => setTimeout(r, SETTLE_MS));
       assert.equal(await headingOf(page), "BEFORE", "intermediate writes stay off screen");
@@ -168,7 +168,7 @@ test("a page edited on disk reaches the open tab", async (t) => {
   await t.test("a work window nobody closes expires on its own", async () => {
     await withPage(async (page) => {
       await postStatus(server.url, "working", "Rewriting the header");
-      await page.waitForFunction(`!!${CHROME}.querySelector("#mp-live-status.mp-live-working")`);
+      await page.waitForFunction(`!!${CHROME}.querySelector("#mp-live-status.mp-live-busy")`);
       await writePage("AFTER");
       await new Promise((r) => setTimeout(r, SETTLE_MS));
       assert.equal(await headingOf(page), "BEFORE", "held while the window is open");

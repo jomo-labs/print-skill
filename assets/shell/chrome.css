@@ -267,19 +267,35 @@ button, input, textarea, select {
   color: var(--mp-dim);
   overflow: hidden;
 }
-/* Two lines: what is selected, then what to do about it. The break is a real
-   newline in the text (see renderLiveStatus), so the sentence survives being
-   read as text; pre-line is what draws it. */
-.mp-live-label { min-width: 0; overflow: hidden; }
-.mp-live-rest { white-space: pre-line; }
+.mp-live-label { min-width: 0; overflow: hidden; white-space: nowrap; }
 /* The element's name is the part worth finding at a glance — weight is the
    whole of the emphasis, since the line already carries the selection's
    colour. */
 .mp-live-name { font-weight: 700; }
-/* The one indicator. Always present, always this element, never moved: it
-   takes the colour of whatever the message is saying and pulses when
-   something is being done about it. Nothing else in the toolbar moves to mean
-   something, which is what makes this readable at a glance. */
+/* The command a FIX press leaves on the clipboard, rendered as what it is —
+   a command: mono, in a small gray box, and pressable to copy it again. A
+   button, so it is reachable by keyboard like the FIX it replaced. */
+#mp-toolbar .mp-live-cmd {
+  font-family: var(--mp-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  /* A command is quoted verbatim: the toolbar's button voice (uppercase,
+     spaced, knocked-out) must not touch it. */
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--mp-ink);
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-rule);
+  border-radius: 3px;
+  padding: 1px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+#mp-toolbar .mp-live-cmd:hover { background: var(--mp-bg); }
+#mp-toolbar .mp-live-cmd:focus-visible { outline: 2px solid var(--mp-select); outline-offset: 1px; }
+/* The one indicator, and it is the MODEL's: it pulses while the model says it
+   is working, and rests otherwise. Always present, always this element, never
+   moved — a pulse can only ever mean one thing. */
 .mp-live-dot {
   width: 6px;
   height: 6px;
@@ -288,8 +304,7 @@ button, input, textarea, select {
   flex-shrink: 0;
 }
 /* The whole line takes the selection's colour, so it reads as belonging to the
-   outlined element rather than as a separate notice. A selection outranks
-   every other message (renderLiveStatus), so this colour never competes. */
+   outlined element rather than as a separate notice. */
 #mp-live-status.mp-live-selected { color: var(--mp-select); }
 /* The page does not fit its sheets — the one thing in this toolbar that is
    actually WRONG, and the one thing the user cannot fix themselves, since the
@@ -297,14 +312,8 @@ button, input, textarea, select {
    is a sentence in the same status line as everything else, and the FIX button
    beside it is what makes it look like something to act on. */
 #mp-live-status.mp-live-error { color: var(--mp-error); font-weight: 600; }
-/* Mid-edit with nothing else to say: the model is rewriting the file under
-   this tab, and the reload is deliberately held until it says done. Amber says
-   "wait" without the page appearing broken. */
-#mp-live-status.mp-live-working { color: var(--mp-mid); }
-#mp-live-status.mp-live-working .mp-live-label { text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; font-weight: 600; }
-/* Something is being done to this page: the model mid-edit, or a fix just
-   handed over. The pulse is the only claim the toolbar makes about work in
-   progress — the words never change to say it. */
+/* The model said `status working` and has not yet said done — the only thing
+   that ever moves this dot. */
 #mp-live-status.mp-live-busy .mp-live-dot { animation: mp-live-pulse 1.2s ease-in-out infinite; }
 @keyframes mp-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) {
