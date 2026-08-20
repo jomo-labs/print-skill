@@ -121,6 +121,13 @@ another one at runtime rather than being lost, but the shell breaks where the
 content ran out of room, not where the design wanted a break. Step 6 checks for
 exactly that, and a page that trips it is not finished.
 
+**Fill the sheet.** Fitting is half the job — unused paper prints anyway.
+Content that stops well short of the content box is not minimal, it is
+unfinished: make what is there roomier — larger type, wider spacing, bigger
+fillable areas — never filler (`references/design-rules.md`, "Empty,
+overflow, and underfill"). Space the user will fill in, by pen or on screen,
+counts as filled.
+
 ### Step 4 — Self-check
 
 Run the full Part B checklist in `references/design-rules.md` against your
@@ -176,6 +183,10 @@ the footer reserved, and the exact px to cut, instead of leaving you to guess
 and re-run. Remember the footer takes ~41px out of the content box on every
 sheet (`design-rules.md`, Platform invariants) — content that measures exactly
 the box height is already too tall.
+
+The fit gate checks only overflow — also glance at the served page for the
+mirror: content should reach down the content box, per Step 3's "Fill the
+sheet".
 
 Then check that every piece of text clears its contrast floor:
 
@@ -474,7 +485,9 @@ doesn't show a half-written file:
    what refreshes the open tab. Leaving a working status open holds their
    preview until it times out. Then say in one line what you changed.
 5. **Check the fit** (`fit`, above). Your edit is the likeliest thing to have
-   pushed the content off its sheets, and nothing will tell you if it did.
+   pushed the content off its sheets, and nothing will tell you if it did — or
+   hollowed it out: if the sheet is now well under-used, rebalance in the same
+   pass (Step 3, "Fill the sheet").
 
 If the server has stopped, `selection` and `status` will say so. Restart it
 (Step 7, same `--dir`) and carry on; there is no session to re-establish.

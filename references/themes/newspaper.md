@@ -153,7 +153,7 @@ Signature blocks:
   `--text-2xs` label font in `--color-dim`, two slots.
 - **Inverted band** (`.invert`) — ink surface, paper text; small bands only.
 
-Empty and overflow behavior: the baseline's, unchanged.
+Empty, overflow, and underfill behavior: the baseline's, unchanged.
 
 ## 7. Contrast evidence
 

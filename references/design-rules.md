@@ -22,9 +22,15 @@ must not restate them and cannot opt out — it describes only what it changes.
   in **strictly under** box height − 41 or the shell paginates — landing exactly
   on the box height is already too tall. The quoted content-box heights in rule 5
   are the box; subtract 41 to get what content can actually use.
-- **Empty and overflow.** An empty block keeps its frame and label (Principle
-  IV). Overflow drops the body type-scale one step, then shortens or splits —
-  never truncate, never spill past the sheet edge.
+- **Empty, overflow, and underfill.** An empty block keeps its frame and label
+  (Principle IV). Overflow drops the body type-scale one step, then shortens or
+  splits — never truncate, never spill past the sheet edge. Underfill is the
+  mirror: content filling well under the content box (rule 5) — roughly two
+  thirds of its height or less — reads as unfinished and wastes the paper.
+  Scale up rather than pad: body type a step larger, wider spacing, bigger
+  fillable areas (writing lines, drawing frames, cells), or a roomier layout —
+  never filler content. Space the user fills in by hand or on screen counts as
+  filled.
 - **Containers clip, they never overlap.** Structural containers (div,
   section, li's list, table cells, …) carry `overflow: clip` from the document
   stylesheet: on paper, content painted over a neighbouring block is never
