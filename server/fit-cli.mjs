@@ -13,7 +13,10 @@
 // server, same headless Chromium, same shell — and reports what the shell had
 // to do, without writing anything.
 //
-// Usage: node fit-cli.mjs <page.html> [--json]
+// Usage: node fit-cli.mjs <page.html> [--json] [--sections]
+//   --sections  per-sheet breakdown: what each marked section costs, what the
+//               shell footer reserves, and how much headroom is left. Answers
+//               "where did the height go?", which the pass/fail line cannot.
 // Exit:  0  the content fits the sheets the page lays out
 //        1  it does not (or the page could not be loaded)
 //        2  bad usage
@@ -24,9 +27,10 @@ import { startServer } from "./server.mjs";
 
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
+const wantSections = args.includes("--sections");
 const pageArg = args.find((a) => !a.startsWith("--"));
 if (!pageArg) {
-  console.error("usage: node fit-cli.mjs <page.html> [--json]");
+  console.error("usage: node fit-cli.mjs <page.html> [--json] [--sections]");
   process.exit(2);
 }
 const pagePath = path.resolve(pageArg);
@@ -52,10 +56,59 @@ try {
   const fit = await page.evaluate(() => window.mpFit);
   if (!fit) throw new Error("the page did not report a fit — is the shell loading?");
 
+  // Per-sheet breakdown: what each section costs, and what the footer reserves.
+  // "Does not fit" on its own says nothing about WHERE the height went; this does.
+  const sheets = !wantSections ? null : await page.evaluate(() => {
+    // Leaf sheets only. #page carries class="page" and IS the sheet on a
+    // single-sheet page, but on a nested assembly it is the container and the
+    // real sheets are inside it — counting both reports a phantom sheet whose
+    // "sections" are the other sheets.
+    const leaves = [...document.querySelectorAll(".page")]
+      .filter((el) => !el.querySelector(".page"));
+    return leaves.map((sheet, i) => {
+      const cs = getComputedStyle(sheet);
+      const avail = sheet.clientHeight
+        - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const kids = [...sheet.children];
+      const body = kids.filter((el) => el.tagName !== "FOOTER");
+      const foot = kids.filter((el) => el.tagName === "FOOTER");
+      const box = (el) => {
+        const m = getComputedStyle(el);
+        return el.getBoundingClientRect().height
+          + parseFloat(m.marginTop) + parseFloat(m.marginBottom);
+      };
+      // Adjacent block siblings collapse their margins to max(), so summing
+      // each child's box double-counts every gap. Measure the actual span
+      // instead, and keep per-child boxes only as the breakdown.
+      const span = (els) => {
+        if (!els.length) return 0;
+        const top = Math.min(...els.map((e) => e.getBoundingClientRect().top));
+        const bot = Math.max(...els.map((e) => e.getBoundingClientRect().bottom));
+        const first = getComputedStyle(els[0]);
+        const last = getComputedStyle(els[els.length - 1]);
+        return (bot - top) + parseFloat(first.marginTop) + parseFloat(last.marginBottom);
+      };
+      const content = span(body);
+      // span() already counts the footer's own margin-top, which IS the gap
+      // above it — adding the gap again double-counts it.
+      const footer = foot.length ? span(foot) : 0;
+      return {
+        sheet: i, avail: Math.round(avail),
+        content: Math.round(content), footer: Math.round(footer),
+        headroom: Math.round(avail - content - footer),
+        sections: body.map((el) => ({
+          section: el.dataset.mpSection || "(unmarked)",
+          cls: (el.getAttribute("class") || "").split(" ")[0] || "-",
+          height: Math.round(box(el)),
+        })),
+      };
+    });
+  });
+
   const spilled = fit.rendered - fit.authored;
   const ok = spilled <= 0 && fit.overflowing === 0 && !(fit.clipped > 0);
   if (asJson) {
-    console.log(JSON.stringify({ ...fit, ok }));
+    console.log(JSON.stringify({ ...fit, ok, ...(sheets ? { sheets } : {}) }));
   } else if (ok) {
     console.log(`fits: ${fit.authored} sheet${fit.authored === 1 ? "" : "s"}, as authored`);
   } else {
@@ -82,6 +135,33 @@ try {
         "  Shorten the content, or size the container for it — the selectors above are");
       console.error(
         "  addresses in the file's authored flow.");
+    }
+  }
+  if (sheets && !asJson) {
+    // With pagination already applied these are per-sheet; when the content was
+    // meant for one sheet, the number that matters is the combined shortfall.
+    if (sheets.length > fit.authored) {
+      const avail = sheets[0].avail;
+      const content = sheets.reduce((n, s) => n + s.content, 0);
+      // Each authored sheet carries its OWN footer, so capacity is
+      // (avail - footer) per sheet — not one footer against N sheets.
+      const footer = Math.max(...sheets.map((s) => s.footer));
+      const capacity = (avail - footer) * fit.authored;
+      const cut = content - capacity;
+      if (cut > 0) {
+        console.log(`\nas ${fit.authored} sheet${fit.authored === 1 ? "" : "s"}: ` +
+          `${content}px content vs ${capacity}px usable ` +
+          `(${avail}px box less ${footer}px footer, x${fit.authored}) — cut ${cut}px`);
+      }
+    }
+    for (const s of sheets) {
+      const sign = s.headroom < 0 ? "OVER by " + -s.headroom : s.headroom + " spare";
+      console.log(`\nsheet ${s.sheet}: ${s.avail}px available -> ${s.content}px content ` +
+                  `+ ${s.footer}px footer (${sign})`);
+      for (const sec of s.sections) {
+        console.log(`  ${String(sec.height).padStart(5)}px  ${sec.section}` +
+                    (sec.cls !== "-" ? `  .${sec.cls}` : ""));
+      }
     }
   }
   process.exitCode = ok ? 0 : 1;

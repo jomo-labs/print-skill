@@ -99,7 +99,7 @@ running content. Don't collapse them.
   48, 64, 80px. Newspaper uses the defaults unchanged.
 - Page margin: the default `--page-margin-top` 64px / `--page-margin-x` 72px /
   `--page-margin-bottom` 72px, i.e. a ~672x920px content box on letter
-  portrait.
+  portrait (~879px of height usable after the shell's footer).
 - Section rhythm: generous — sections are separated by a rule plus
   `--space-6`-`--space-10` of vertical space, never crowded.
 

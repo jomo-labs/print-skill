@@ -266,7 +266,8 @@ headers in `var(--font-label)` small caps; header row inverted ink-on-paper
 
 ### Meal planner
 Weekly meal grid + shopping list. **Landscape** — the 7-day grid needs the
-width; design for the ~912×680px content box and fill its height.
+width; design for the ~912×680px content box — ~639px of that height is
+usable once the footer takes its 41px — and fill it.
 
 *Functional requirements:*
 - Two-column grid, roughly 66% / 34%.
@@ -318,7 +319,8 @@ definition centered body `--text-body`; high contrast.
 ### Certificate / award
 **Landscape** — set `orientation` to `landscape`. The page prints on a letter
 sheet in landscape: 1056×816px, with a content box roughly **912px wide × 680px
-tall** (a small footer sits below it).
+tall**. The shell's footer sits *inside* that box and takes 41px, so content has
+~639px of height to work with.
 
 *Functional requirements:*
 - The outermost frame must FILL the content box — a certificate floating in

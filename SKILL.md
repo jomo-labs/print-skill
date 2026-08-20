@@ -171,8 +171,27 @@ means it does not, and says how:
   check lists each container's selector in the file's authored flow. Always
   fix this: shorten the content, or size the container for it.
 
-Needs Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in the
-report that the fit check could not run.
+Add `--sections` when it fails: it prints what each marked section costs, what
+the footer reserved, and the exact px to cut, instead of leaving you to guess
+and re-run. Remember the footer takes ~41px out of the content box on every
+sheet (`design-rules.md`, Platform invariants) — content that measures exactly
+the box height is already too tall.
+
+Then check that every piece of text clears its contrast floor:
+
+```
+node <skill-dir>/server/contrast-cli.mjs out/<file>.html
+```
+
+Exit 0 means every text style clears WCAG AA (4.5:1 body, 3:1 large or bold);
+exit 1 lists the ones that do not, with the size and weight that set each
+threshold. This is the one platform invariant the Part B self-check cannot
+verify by reading CSS — Part B greps for banned constructs, it never computes a
+ratio, so a theme accent that reads fine at 19px can ship at 9px unnoticed. Add
+`--all` to see every text style rather than only the failures.
+
+Both need Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in
+the report that the fit and contrast checks could not run.
 
 ### Step 7 — Serve
 
