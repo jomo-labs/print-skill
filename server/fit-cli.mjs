@@ -59,31 +59,48 @@ try {
   // Per-sheet breakdown: what each section costs, and what the footer reserves.
   // "Does not fit" on its own says nothing about WHERE the height went; this does.
   const sheets = !wantSections ? null : await page.evaluate(() => {
-    return [...document.querySelectorAll(".page")].map((sheet, i) => {
+    // Leaf sheets only. #page carries class="page" and IS the sheet on a
+    // single-sheet page, but on a nested assembly it is the container and the
+    // real sheets are inside it — counting both reports a phantom sheet whose
+    // "sections" are the other sheets.
+    const leaves = [...document.querySelectorAll(".page")]
+      .filter((el) => !el.querySelector(".page"));
+    return leaves.map((sheet, i) => {
       const cs = getComputedStyle(sheet);
       const avail = sheet.clientHeight
         - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const kids = [...sheet.children];
+      const body = kids.filter((el) => el.tagName !== "FOOTER");
+      const foot = kids.filter((el) => el.tagName === "FOOTER");
       const box = (el) => {
         const m = getComputedStyle(el);
         return el.getBoundingClientRect().height
           + parseFloat(m.marginTop) + parseFloat(m.marginBottom);
       };
-      let content = 0, footer = 0;
-      const sections = [];
-      for (const el of sheet.children) {
-        const h = box(el);
-        if (el.tagName === "FOOTER") { footer += h; continue; }
-        content += h;
-        sections.push({
-          section: el.dataset.mpSection || "(unmarked)",
-          cls: (el.className || "").split(" ")[0] || "-",
-          height: Math.round(h),
-        });
-      }
+      // Adjacent block siblings collapse their margins to max(), so summing
+      // each child's box double-counts every gap. Measure the actual span
+      // instead, and keep per-child boxes only as the breakdown.
+      const span = (els) => {
+        if (!els.length) return 0;
+        const top = Math.min(...els.map((e) => e.getBoundingClientRect().top));
+        const bot = Math.max(...els.map((e) => e.getBoundingClientRect().bottom));
+        const first = getComputedStyle(els[0]);
+        const last = getComputedStyle(els[els.length - 1]);
+        return (bot - top) + parseFloat(first.marginTop) + parseFloat(last.marginBottom);
+      };
+      const content = span(body);
+      // span() already counts the footer's own margin-top, which IS the gap
+      // above it — adding the gap again double-counts it.
+      const footer = foot.length ? span(foot) : 0;
       return {
         sheet: i, avail: Math.round(avail),
         content: Math.round(content), footer: Math.round(footer),
-        headroom: Math.round(avail - content - footer), sections,
+        headroom: Math.round(avail - content - footer),
+        sections: body.map((el) => ({
+          section: el.dataset.mpSection || "(unmarked)",
+          cls: (el.getAttribute("class") || "").split(" ")[0] || "-",
+          height: Math.round(box(el)),
+        })),
       };
     });
   });
@@ -126,10 +143,16 @@ try {
     if (sheets.length > fit.authored) {
       const avail = sheets[0].avail;
       const content = sheets.reduce((n, s) => n + s.content, 0);
+      // Each authored sheet carries its OWN footer, so capacity is
+      // (avail - footer) per sheet — not one footer against N sheets.
       const footer = Math.max(...sheets.map((s) => s.footer));
-      console.log(`\nas ${fit.authored} sheet${fit.authored === 1 ? "" : "s"}: ` +
-        `${content}px content + ${footer}px footer = ${content + footer}px ` +
-        `vs ${avail * fit.authored}px available — cut ${content + footer - avail * fit.authored}px`);
+      const capacity = (avail - footer) * fit.authored;
+      const cut = content - capacity;
+      if (cut > 0) {
+        console.log(`\nas ${fit.authored} sheet${fit.authored === 1 ? "" : "s"}: ` +
+          `${content}px content vs ${capacity}px usable ` +
+          `(${avail}px box less ${footer}px footer, x${fit.authored}) — cut ${cut}px`);
+      }
     }
     for (const s of sheets) {
       const sign = s.headroom < 0 ? "OVER by " + -s.headroom : s.headroom + " spare";
