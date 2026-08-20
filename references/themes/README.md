@@ -74,7 +74,7 @@ writing content, decide and then execute ALL of:
    stamped badge, tilted callouts, section headers with an accent stripe,
    in-world labels) and use them as the page's actual structure, reusing the
    shared utilities where they fit. When one of them draws a *subject* — an
-   animal, an object, a symbol — see "Drawing a mark that reads" below.
+   animal, an object, a symbol — see "Getting a mark that reads" below.
 4. **Voice** — write every headline, label, and body sentence in the theme's
    characteristic voice and vocabulary.
 5. **Check the accents:** each must clear 3:1 on white at the size and weight
@@ -85,13 +85,48 @@ writing content, decide and then execute ALL of:
    strong frame on white paper, plus `.invert` for a small band — never a dark
    page.
 
-### Drawing a mark that reads
+### Getting a mark that reads
 
 Design rule 1a says how to *build* a pictorial mark — inline SVG, `fill="none"`,
 stroked paths — and the Part B self-check enforces that mechanically. Neither
-says how to make the mark recognizable, and the two are independent: a mark can
-pass every check in `design-rules.md` and still read as the wrong animal. This
-is the craft half.
+says how to end up with a mark that is recognizable, and the two are
+independent: a mark can pass every check in `design-rules.md` and still read as
+the wrong animal.
+
+**Source before you draw.** A hand-drawn mark of a real, known subject — a
+character, a logo, a landmark, a species — reads as an approximation of it
+however carefully it is constructed. Draw when nothing usable exists, or when
+the subject is generic enough that drawing it IS the authentic version: a leaf,
+a key, a coffee cup. Otherwise, in order:
+
+1. **Vector.** Inline the SVG and set `fill="currentColor"` (or stroke a
+   `var(--color-*)` token) so the mark takes the theme's palette. A placed mark
+   is the one case where a filled path is right — rule 1a's `fill="none"`
+   governs shapes you draw, not artwork you place.
+2. **Raster.** Legitimate as an Image block spot (see `page-types.md`).
+   Normalize it, embed it as a base64 data URI — never a remote `src`, the page
+   must stay self-contained — and confirm 300 DPI at the printed size.
+3. **Trace the raster** when the mark has to recolor with the theme, or when it
+   prints small and fine detail matters. `potrace` turns a bilevel PNG into
+   paths. Trace the **original**, never the print-normalized copy: dilation and
+   speckle suppression fight each other and shred fine detail. Expect tracing to
+   cost *more* bytes than the raster it replaces — fine for a local printable,
+   but do not reach for it expecting a smaller file.
+
+**Judge every candidate at printed size, not at full size.** This decides
+between candidates more often than format does. A technically superior vector
+can lose to a raster — fine outlines, and eyes or holes drawn as outlines rather
+than solid shapes, collapse at an inch, while solid contrast masses survive. It
+cuts the other way too: placed vector rasterizes straight to its target size,
+while a large raster must be downsampled to get there, and that downsample is
+what breaks fine strokes up. Render the candidate at the size it will really
+print, and look at it.
+
+**Licensing.** Check the source's terms. Art licensed for personal use only is
+fine on a page someone prints for themselves; it must never be committed into
+this skill's own files or a theme spec, which redistributes it.
+
+When you do draw it:
 
 - **Diagnostic features first.** Name the 2-3 traits that make the subject
   identifiable, then draw those before any detail. A spider is jointed legs with

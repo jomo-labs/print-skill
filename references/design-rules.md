@@ -58,9 +58,12 @@ must not restate them and cannot opt out — it describes only what it changes.
    backgrounds (radial/conic/linear gradients), pseudo-element fills, or inset
    box-shadows — every one of those is a fill in disguise and fails the same
    self-check as rule 1. Stroke-outline SVG also prints crisply and stays colorable
-   by hand, which fills never are. This rule governs how a mark is built, not
-   whether it reads as its subject — for that, see "Drawing a mark that reads" in
-   `themes/README.md`. It matters most where the drawing IS the deliverable:
+   by hand, which fills never are. This rule governs artwork you **draw**, not
+   artwork you **place**: a sourced SVG or a normalized raster spot may carry its
+   own fills, and rule 1's background allowlist still applies to both. For how to
+   end up with a mark that reads as its subject at all — sourcing it, judging it
+   at printed size, or drawing it — see "Getting a mark that reads" in
+   `themes/README.md`. That matters most where the art IS the deliverable:
    hand-authored line art on a coloring, image or drawing-prompt page when no
    image backend is available.
 
