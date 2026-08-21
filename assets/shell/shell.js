@@ -642,6 +642,8 @@ function applySize(key, orientation) {
     // scaleToFit() puts both back at the end of applySize().
     el.style.transform = '';
     el.style.marginBottom = '';
+    el.style.marginLeft = '';
+    el.style.marginRight = '';
     if (nested && el.id === 'page') {
       // Two-sheet assemblies: #page is a transparent container around the
       // nested sheets, not a sheet itself — it must grow around them.
@@ -660,6 +662,8 @@ function applySize(key, orientation) {
     el.style.minHeight = '0';
     el.style.transform = '';
     el.style.marginBottom = '';
+    el.style.marginLeft = '';
+    el.style.marginRight = '';
   });
   paginate(p);
   reportFit(p);
@@ -672,23 +676,90 @@ function applySize(key, orientation) {
   scaleToFit(p.w);
 }
 
+// ── Zoom ────────────────────────────────────────────────────────────────────
+// Screen presentation only — the sheet's print geometry never moves, and every
+// fit/clip measurement runs with the transform cleared (see applySize). The
+// toolbar's controls (normal mode's occupants of the right edge — chrome.css
+// swaps them for the status region in edit mode) work like the Chrome PDF
+// viewer's: − and + step through a fixed ladder, the label states the level,
+// and Fit to page brings the whole sheet into view.
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
+// 'auto' — the default: the sheet's width fits the window, never above 100%.
+// 'fit'  — Fit to page: the whole sheet in view, above 100% if the window has
+//          the room (small paper on a big screen deserves it).
+// number — an explicit level, from the − / + controls.
+let zoom = 'auto';
+
+function currentScale(w) {
+  if (typeof zoom === 'number') return zoom;
+  const availW = window.innerWidth - 80;
+  if (zoom === 'fit') {
+    // The height the canvas actually shows: the window minus the toolbar,
+    // less a little breathing room so the sheet edge isn't flush against it.
+    const availH = window.innerHeight - 56 - 48;
+    const s = Math.min(availW / w, availH / paperDims().h);
+    return Math.min(Math.max(s, ZOOM_STEPS[0]), ZOOM_STEPS[ZOOM_STEPS.length - 1]);
+  }
+  return Math.min(availW / w, 1);
+}
+
+function setZoom(z) {
+  zoom = z;
+  // Per tab, like edit mode: the model's next edit reloads this tab out from
+  // under the user, and the view they chose has to survive it.
+  ssSet('mpZoom', String(z));
+  scaleToFit(paperDims().w);
+}
+
+function zoomStep(dir) {
+  const s = currentScale(paperDims().w);
+  // Stepping FROM an automatic level lands on the nearest rung past it, so
+  // the first press always visibly moves.
+  const next = dir > 0
+    ? ZOOM_STEPS.find(v => v > s + 0.001)
+    : ZOOM_STEPS.slice().reverse().find(v => v < s - 0.001);
+  if (next) setZoom(next);
+}
+
+function restoreZoom() {
+  const v = ssGet('mpZoom');
+  if (v === 'fit') zoom = 'fit';
+  else if (v && !isNaN(parseFloat(v))) zoom = parseFloat(v);
+}
+
+// The label always states the EFFECTIVE scale — in the automatic modes that
+// is whatever the window works out to, so what it says is always what the
+// screen shows.
+function updateZoomDisplay(s) {
+  const label = mpq('#mp-zoom-level');
+  if (!label) return;
+  label.textContent = Math.round(s * 100) + '%';
+  const out = mpq('#mp-btn-zoom-out'), inn = mpq('#mp-btn-zoom-in');
+  if (out) out.disabled = s <= ZOOM_STEPS[0] + 0.001;
+  if (inn) inn.disabled = s >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001;
+}
+
 function scaleToFit(w) {
-  // Only the screen-fit transform reacts to the viewport — sheet
+  // Only the screen transform reacts to the viewport and the zoom — sheet
   // width/min-height/padding (the WYSIWYG print geometry) never change.
-  const available = window.innerWidth - 80;
-  const s = Math.min(available / w, 1);
+  const s = currentScale(w);
+  updateZoomDisplay(s);
   const active = getActivePage();
   if (!active) return;
   for (const el of sheetChain(active)) {
-    el.style.transform = s < 1 ? `scale(${s})` : '';
+    el.style.transform = s !== 1 ? `scale(${s})` : '';
     el.style.transformOrigin = 'top center';
-    // A scaled sheet still takes its FULL height in the flow — the transform
-    // is paint, not layout. Pulling the surplus back off the bottom is what
-    // keeps the offset between stacked sheets (and the room below the last
-    // one) the distance the screen actually shows, at every zoom. Print
-    // resets the margin: the offset is screen presentation, and the sheets
-    // print at 1:1 anyway.
-    el.style.marginBottom = s < 1 ? -Math.round(el.offsetHeight * (1 - s)) + 'px' : '';
+    // A scaled sheet still takes its FULL untransformed footprint in the flow
+    // — the transform is paint, not layout. The margins reconcile the two:
+    // vertically so the offset between stacked sheets (and the room below the
+    // last one) is the distance the screen actually shows, horizontally so a
+    // zoomed-in sheet claims the width it paints and the canvas scrolls to
+    // its real edges (chrome-host.css aligns it `safe` for the same reason).
+    // Print resets all of it: the sheets print at 1:1 anyway.
+    el.style.marginBottom = s !== 1 ? Math.round(el.offsetHeight * (s - 1)) + 'px' : '';
+    const mx = s !== 1 ? Math.round(el.offsetWidth * (s - 1) / 2) + 'px' : '';
+    el.style.marginLeft = mx;
+    el.style.marginRight = mx;
   }
 }
 
@@ -1969,6 +2040,46 @@ function injectChrome() {
   spacer.className = 'mp-toolbar-spacer';
   toolbar.appendChild(spacer);
 
+  // The zoom controls: normal mode's occupant of the toolbar's right edge —
+  // edit mode swaps in the status region instead (chrome.css gates the two on
+  // data-mp-edit-active, so only one is ever shown).
+  const zoomBox = document.createElement('div');
+  zoomBox.id = 'mp-zoom';
+  const zoomOut = document.createElement('button');
+  zoomOut.id = 'mp-btn-zoom-out';
+  zoomOut.className = 'mp-nav-btn';
+  zoomOut.type = 'button';
+  zoomOut.title = 'Zoom out';
+  zoomOut.textContent = '−';
+  const zoomLevel = document.createElement('span');
+  zoomLevel.id = 'mp-zoom-level';
+  zoomLevel.textContent = '100%';
+  zoomLevel.title = 'Zoom level';
+  const zoomIn = document.createElement('button');
+  zoomIn.id = 'mp-btn-zoom-in';
+  zoomIn.className = 'mp-nav-btn';
+  zoomIn.type = 'button';
+  zoomIn.title = 'Zoom in';
+  zoomIn.textContent = '+';
+  const zoomFit = document.createElement('button');
+  zoomFit.id = 'mp-btn-zoom-fit';
+  zoomFit.className = 'mp-nav-btn';
+  zoomFit.type = 'button';
+  // Icon-only, like the viewer controls it mirrors — the title and aria-label
+  // carry the words.
+  zoomFit.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="5" y="3" width="14" height="18" rx="1.5"/>' +
+    '<path d="M13 6h3.5v3.5"/><path d="M16.5 6l-4.25 4.25"/>' +
+    '<path d="M11 18H7.5v-3.5"/><path d="M7.5 18l4.25-4.25"/></svg>';
+  zoomFit.title = 'Fit to page';
+  zoomFit.setAttribute('aria-label', 'Fit to page');
+  zoomBox.appendChild(zoomOut);
+  zoomBox.appendChild(zoomLevel);
+  zoomBox.appendChild(zoomIn);
+  zoomBox.appendChild(zoomFit);
+  toolbar.appendChild(zoomBox);
+
   // The status region: indicator, message, and the FIX button that hands a fit
   // problem over. One element for all of it — see renderLiveStatus. It is last
   // in the toolbar, so the message growing and shrinking never moves a button
@@ -2019,8 +2130,14 @@ function injectChrome() {
   // Toolbar buttons
   mpq('#mp-btn-print').addEventListener('click', printThisPage);
   mpq('#mp-btn-edit').addEventListener('click', toggleEditMode);
+  mpq('#mp-btn-zoom-out').addEventListener('click', () => zoomStep(-1));
+  mpq('#mp-btn-zoom-in').addEventListener('click', () => zoomStep(1));
+  mpq('#mp-btn-zoom-fit').addEventListener('click', () => setZoom('fit'));
   mpq('#mp-btn-undo').addEventListener('click', undoEdit);
   mpq('#mp-btn-redo').addEventListener('click', redoEdit);
+  // Before applySize below applies the transform: the zoom the user chose is
+  // per-tab presentation state, like edit mode, and comes back with the tab.
+  restoreZoom();
 
   // Before the page-shaped work below, which reads elements a malformed or
   // hand-written document may not have: whatever else this page breaks, the

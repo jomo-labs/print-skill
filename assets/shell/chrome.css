@@ -222,19 +222,45 @@ button, input, textarea, select {
 .mp-hover-box.mp-hover-clipped { border-color: var(--mp-clip); }
 .mp-hover-box.mp-hover-clipped .mp-hover-label { background: var(--mp-clip-chip); }
 
-/* ── Status region — the toolbar's right edge ──
+/* Pushes everything after it to the toolbar's right edge (see injectChrome). */
+.mp-toolbar-spacer { flex: 1 1 auto; }
+
+/* ── Zoom controls — the toolbar's right edge in normal mode ──
+   Chrome-PDF-viewer shaped: − and + around the current level, and Fit to
+   page beside them. They trade places with the status region on the edit
+   toggle — reading the page wants a view control, editing it wants the
+   chrome's one voice about selections and fit. */
+#mp-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+:host([data-mp-edit-active]) #mp-zoom { display: none; }
+#mp-zoom-level {
+  font-size: 11.5px;
+  color: var(--mp-mid);
+  min-width: 40px;
+  text-align: center;
+  white-space: nowrap;
+  /* Every digit the same width, so 90% → 100% doesn't nudge the buttons. */
+  font-variant-numeric: tabular-nums;
+}
+/* Fit to page wears the nav buttons' clothes (icon-only, .mp-nav-btn); a
+   little extra room sets it apart from the stepper as its own action. */
+#mp-toolbar #mp-btn-zoom-fit { margin-left: 6px; }
+
+/* ── Status region — the toolbar's right edge in edit mode ──
    Everything the chrome has to say about this page: an indicator that is
    always there, one message slot, and the FIX button when there is something
    to hand over. Only one message is ever shown, and a selection outranks the
    rest — see renderLiveStatus. It sits after the spacer, so it holds the right
    edge as the controls to its left come and go with edit mode. A sentence, so
    it is not shouted in caps like a label, and it gives up width before the
-   controls do. */
-/* Pushes everything after it to the toolbar's right edge (see injectChrome). */
-.mp-toolbar-spacer { flex: 1 1 auto; }
-
+   controls do. Shown only while editing — at rest the zoom controls above
+   hold this edge instead. */
 #mp-live-status {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -246,6 +272,7 @@ button, input, textarea, select {
   color: var(--mp-dim);
   overflow: hidden;
 }
+:host([data-mp-edit-active]) #mp-live-status { display: flex; }
 .mp-live-label { min-width: 0; overflow: hidden; white-space: nowrap; }
 /* The element's name is the part worth finding at a glance — weight is the
    whole of the emphasis, since the line already carries the selection's

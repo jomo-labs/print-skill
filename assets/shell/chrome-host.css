@@ -33,6 +33,12 @@
       height: calc(100vh - 56px) !important;
       overflow: auto !important;
       margin-left: 0 !important;
+      /* Zoomed past the window's width (the toolbar's + control), the sheet
+         must stay reachable: `safe` falls back to start-alignment when the
+         item overflows, so the left edge scrolls into view instead of being
+         lost beyond the scroll origin. Engines without `safe` keep the plain
+         center the document declares. */
+      align-items: safe center !important;
     }
 
     /* Element selected by double-click in edit mode. The outline sits on a
