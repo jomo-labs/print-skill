@@ -74,11 +74,8 @@ everything (the fallback shape in Part 3). Never stall because no tool
 exists.
 
 **Dialog 1 — page setup.** Ask immediately, before reading references — it
-needs no thinking, and the user can answer while you work. All three
-questions go in ONE tool call — never one call per question. A single call
-renders as one tabbed dialog the user can arrow through, accepting each
-pre-selected default with a keypress; separate calls turn that into three
-round trips. Defaults listed first and labeled "(Selected)" — they are
+needs no thinking, and the user can answer while you work. One call, up to
+three questions, defaults listed first and labeled "(Selected)" — they are
 guesses at what the user wants, not recommendations, and the label should
 read as "this is what you get if you just accept":
 
