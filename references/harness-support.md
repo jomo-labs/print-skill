@@ -1,10 +1,11 @@
 # Optional capabilities
 
-Two things this skill uses when the environment provides them and works
+Three things this skill uses when the environment provides them and works
 without when it does not: **live edit** (the served page, which records what
-the user selects for you to read) and an **image backend** (turning a
-photograph into line art). Both degrade rather than fail — decide each from
-this document, never assume.
+the user selects for you to read), an **image backend** (turning a
+photograph into line art), and a **structured question tool** (the Step 0.5
+interview). All degrade rather than fail — decide each from this document,
+never assume.
 
 ---
 
@@ -111,3 +112,43 @@ Generation uploads the source photograph to a third party, and these are
 often personal or family photos. Some providers train on free-tier
 submissions and not on paid. Surface this as a decision the user makes, not
 a default they discover afterwards.
+
+---
+
+# Part 3 — Structured questions (the Step 0.5 interview)
+
+The interview (SKILL.md Step 0.5) wants a tool that renders selectable
+options and blocks until the user answers. Whether one exists is a property
+of the **harness**, not of the model serving it.
+
+## The capability
+
+In Claude Code the tool is `AskUserQuestion`: up to 4 questions per call,
+each with **at most 4 options** (plus an automatic free-text "Other"),
+`multiSelect` for toggle-style questions, and a first-option default. Other
+harnesses may expose an equivalent; most expose none. Use whatever
+interactive question tool your harness offers if it fits that shape — the 4
+option cap is the constraint the interview's question design already
+respects, so a roomier tool needs no adjustment.
+
+## The fallback: plain chat
+
+No such tool means the interview happens **as an ordinary chat message** —
+never skip it just because the tool is missing, and never fail or stall
+looking for one.
+
+Chat round trips are expensive, so the fallback collapses both dialogs into
+ONE compact message — by the time you can send it you have already generated
+the topic options, so nothing is lost by combining. Bold the defaults, and
+let one word accept them all:
+
+> Before I generate — reply **go** to accept all of this, or correct any
+> line:
+> - Paper: **Letter** (or A4 / Legal / Half letter)
+> - Orientation: **portrait** (or landscape / my call)
+> - Max pages: **my call** (or give a number)
+> - I plan to include: greeting, WiFi, checkout, house rules, local tips,
+>   contact — anything to add or drop?
+
+Then proceed on the reply. A reply that only answers some lines keeps the
+bolded defaults for the rest.

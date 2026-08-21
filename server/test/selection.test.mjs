@@ -72,7 +72,7 @@ async function openPage(page, url) {
   await page.goto(url);
   await page.waitForFunction(`!!${CHROME}.getElementById("mp-btn-edit")`);
   await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
-  await page.waitForFunction(`!!${CHROME}.querySelector("#mp-page-setup")`);
+  await page.waitForFunction(`document.getElementById("mp-chrome-root").hasAttribute("data-mp-edit-active")`);
 }
 
 // The selection's traces on screen: the outline, and the line the toolbar
