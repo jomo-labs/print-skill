@@ -1051,11 +1051,13 @@ async function printThisPage() {
   try {
     const res = await fetch('/render-pdf', {
       method: 'POST',
-      // Accept: application/json asks for a short-lived URL to the rendered
-      // PDF instead of the bytes. Opening that URL (whose last segment is the
-      // slugified title, echoed in Content-Disposition) is what makes the
-      // browser's save dialog offer a semantic filename — a blob: URL here
-      // would surface its random UUID instead.
+      // Accept: application/json asks for the rendered PDF's URL instead of
+      // its bytes: the server saves the PDF next to this page in the served
+      // directory, under the page's own filename with .pdf swapped in, and
+      // answers with that file's path. Opening a URL that ends in the page's
+      // name is what makes the browser's save dialog offer it — a blob: URL
+      // here would surface its random UUID — and the printable stays on disk
+      // alongside its page.
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       // path lets the server stage the render temp next to this page, so
       // relative asset references resolve for nested build/<project>/ pages.
