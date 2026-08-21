@@ -367,7 +367,17 @@ button, input, textarea, select {
   overflow: hidden;
 }
 :host([data-mp-edit-active]) #mp-live-status { display: flex; }
-.mp-live-label { min-width: 0; overflow: hidden; white-space: nowrap; }
+/* A sentence is allowed its second line on a narrow window — clipping
+   mid-sentence loses the half that mattered. The clamp keeps a third line
+   from escaping the toolbar's fixed height (56px holds two of these). */
+.mp-live-label {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
 /* The element's name is the part worth finding at a glance — weight is the
    whole of the emphasis, since the line already carries the selection's
    colour. */
