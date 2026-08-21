@@ -1051,25 +1051,28 @@ async function printThisPage() {
   try {
     const res = await fetch('/render-pdf', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // Accept: application/json asks for a short-lived URL to the rendered
+      // PDF instead of the bytes. Opening that URL (whose last segment is the
+      // slugified title, echoed in Content-Disposition) is what makes the
+      // browser's save dialog offer a semantic filename — a blob: URL here
+      // would surface its random UUID instead.
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       // path lets the server stage the render temp next to this page, so
       // relative asset references resolve for nested build/<project>/ pages.
       body: JSON.stringify({ html, title: document.title, path: location.pathname }),
     });
     if (!res.ok) throw new Error(`server returned ${res.status}`);
-    const blob = await res.blob();
+    const { url } = await res.json();
+    if (!url) throw new Error('server returned no pdf url');
     if (tab) {
-      const url = URL.createObjectURL(blob);
       tab.location = url;
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } else {
-      // Popup blocked — hand the PDF over as a download instead.
+      // Popup blocked — hand the PDF over as a download instead. Same-origin
+      // href, so the download attribute names the file.
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = (document.title.replace(/[^a-zA-Z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '').toLowerCase() || 'printable') + '.pdf';
+      a.href = url;
+      a.download = decodeURIComponent(url.split('/').pop());
       a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     }
   } catch (e) {
     // Offline, or the endpoint isn't reachable from wherever this file is

@@ -12,7 +12,10 @@
 //   GET  /                 index of served pages
 //   GET  /healthz          liveness + identity probe
 //   GET  /pdf/<page>.html  render a served page -> application/pdf (headless use)
-//   POST /render-pdf       { html, title } -> application/pdf
+//   POST /render-pdf       { html, title } -> application/pdf, or with
+//                          Accept: application/json -> { ok, url } pointing at
+//                          a short-lived GET /render-pdf/<token>/<title>.pdf
+//                          whose last segment names the saved file
 //   PUT  /<page>.html      raw html body -> saved to the page's file
 //   POST /chat/<page>.html/messages   the page recording what the user has
 //                          selected or that it no longer fits its sheets, or
@@ -558,6 +561,41 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     );
   }
 
+  // Freshly rendered PDFs, held briefly so the shell can open them from a
+  // real URL. A blob: URL in the print tab leaves the browser's save dialog
+  // with the blob's random UUID as the filename; a server URL ending in the
+  // slugified title (plus the same name in Content-Disposition) saves under
+  // the page's actual name. The TTL outlives the tab's initial load because
+  // "Save as" in some PDF viewers re-fetches the URL.
+  const RENDERED_PDF_TTL_MS = 5 * 60 * 1000;
+  const renderedPdfs = new Map(); // token -> { pdf, slug, expires }
+
+  function stashRenderedPdf(pdf, slug) {
+    const now = Date.now();
+    for (const [t, entry] of renderedPdfs) {
+      if (entry.expires <= now) renderedPdfs.delete(t);
+    }
+    const token = crypto.randomBytes(12).toString("hex");
+    renderedPdfs.set(token, { pdf, slug, expires: now + RENDERED_PDF_TTL_MS });
+    return token;
+  }
+
+  function handleRenderedPdf(res, urlPath) {
+    // /render-pdf/<token>/<slug>.pdf — the slug is only there so the URL's
+    // last segment is the filename; the token alone identifies the entry.
+    const m = urlPath.match(/^\/render-pdf\/([0-9a-f]+)\/[^/]+\.pdf$/);
+    const entry = m && renderedPdfs.get(m[1]);
+    if (!entry || entry.expires <= Date.now()) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: false, error: "rendered pdf expired" }));
+    }
+    res.writeHead(200, {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${entry.slug}.pdf"`,
+    });
+    res.end(entry.pdf);
+  }
+
   async function handleRenderPdf(req, res) {
     let payload;
     try {
@@ -587,9 +625,18 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       await fs.writeFile(tempPath, payload.html);
       const encodedDir = stageDirUrl.split("/").filter(Boolean).map(encodeURIComponent).join("/");
       const pdf = await renderPdf(`${baseUrl}/${encodedDir ? encodedDir + "/" : ""}${temp}`);
+      const slug = slugify(payload.title);
+      if ((req.headers.accept || "").includes("application/json")) {
+        // The shell asks for a URL rather than bytes: opening the PDF from a
+        // server URL (not a blob: URL) is what lets the save dialog show the
+        // semantic filename. See stashRenderedPdf.
+        const token = stashRenderedPdf(pdf, slug);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: true, url: `/render-pdf/${token}/${slug}.pdf` }));
+      }
       res.writeHead(200, {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${slugify(payload.title)}.pdf"`,
+        "Content-Disposition": `inline; filename="${slug}.pdf"`,
       });
       res.end(pdf);
     } catch (e) {
@@ -641,6 +688,9 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       }
       if (req.method === "POST" && url.pathname === "/render-pdf") {
         return await handleRenderPdf(req, res);
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/render-pdf/")) {
+        return handleRenderedPdf(res, url.pathname);
       }
       if (url.pathname.startsWith("/chat/")) {
         return await handleChat(req, res, decodeURIComponent(url.pathname), url.searchParams);
