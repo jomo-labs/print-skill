@@ -18,7 +18,8 @@ edge. This skill packages print as a design discipline:
 - **Built for paper** — ink-friendly, grayscale-safe, inside the margins real
   printers can reach.
 - **Interactive output** — served pages get a **Print / Save PDF** button
-  and double-click text editing, all injected by the
+  and double-click text editing, with undo/redo over your own edits, all
+  injected by the
   local server at view time (generated files stay pure printable documents).
   Double-click anything and the page records it — the toolbar names what you
   picked — so you can just say "make this bigger" in the session you're
