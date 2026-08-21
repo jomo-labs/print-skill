@@ -1507,9 +1507,12 @@ function renderLiveStatus() {
     label.appendChild(document.createTextNode(' command copied. Paste and send to your model.'));
     return;
   }
-  // At rest: the invitation. True whether or not a model is around right now,
+  // At rest: the invitation — both ways this page takes changes: the model,
+  // or pointing at an element right here. (The line only shows in edit mode —
+  // chrome.css gates it — so the offer to select is never made where the
+  // gesture wouldn't work.) True whether or not a model is around right now,
   // which is exactly as much as this page can honestly claim.
-  label.textContent = 'Ask your model for any changes';
+  label.textContent = 'Ask your model for any changes, or select a specific element here to edit.';
 }
 
 function applyStatus(state, text, ts) {
@@ -1985,14 +1988,14 @@ function injectChrome() {
   history.id = 'mp-history';
   const undoBtn = document.createElement('button');
   undoBtn.id = 'mp-btn-undo';
-  undoBtn.className = 'mp-nav-btn';
+  undoBtn.className = 'mp-btn-secondary';
   undoBtn.title = 'Undo (Ctrl+Z)';
   undoBtn.disabled = true;
   undoBtn.innerHTML =
     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
   const redoBtn = document.createElement('button');
   redoBtn.id = 'mp-btn-redo';
-  redoBtn.className = 'mp-nav-btn';
+  redoBtn.className = 'mp-btn-secondary';
   redoBtn.title = 'Redo (Ctrl+Shift+Z)';
   redoBtn.disabled = true;
   redoBtn.innerHTML =
@@ -2047,7 +2050,7 @@ function injectChrome() {
   zoomBox.id = 'mp-zoom';
   const zoomOut = document.createElement('button');
   zoomOut.id = 'mp-btn-zoom-out';
-  zoomOut.className = 'mp-nav-btn';
+  zoomOut.className = 'mp-btn-secondary';
   zoomOut.type = 'button';
   zoomOut.title = 'Zoom out';
   zoomOut.textContent = '−';
@@ -2057,13 +2060,13 @@ function injectChrome() {
   zoomLevel.title = 'Zoom level';
   const zoomIn = document.createElement('button');
   zoomIn.id = 'mp-btn-zoom-in';
-  zoomIn.className = 'mp-nav-btn';
+  zoomIn.className = 'mp-btn-secondary';
   zoomIn.type = 'button';
   zoomIn.title = 'Zoom in';
   zoomIn.textContent = '+';
   const zoomFit = document.createElement('button');
   zoomFit.id = 'mp-btn-zoom-fit';
-  zoomFit.className = 'mp-nav-btn';
+  zoomFit.className = 'mp-btn-secondary';
   zoomFit.type = 'button';
   // Icon-only, like the viewer controls it mirrors — the title and aria-label
   // carry the words.

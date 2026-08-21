@@ -168,6 +168,39 @@ button, input, textarea, select {
   color: var(--mp-ink);
 }
 
+/* ── Secondary buttons — quiet, circular icon controls ──
+   For toolbar actions that support the document rather than act on it:
+   no border, no box at rest — just the icon in the toolbar's muted ink,
+   with a circular target that appears under the pointer. Hover and press
+   DARKEN the icon (mid → ink, with the circle behind it deepening a step on
+   press); the shared button:hover fade above is overridden, because these
+   respond by gaining weight, not by dimming. */
+#mp-toolbar .mp-btn-secondary {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--mp-mid);
+  font-size: 14px;   /* glyph buttons (− +); SVG icons size themselves */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+#mp-toolbar .mp-btn-secondary:hover {
+  opacity: 1;
+  background: var(--mp-bg);
+  color: var(--mp-ink);
+}
+#mp-toolbar .mp-btn-secondary:active {
+  background: var(--mp-rule);
+  color: var(--mp-ink);
+}
+
 /* ── Undo / redo — history over the user's own committed changes ──
    Edit-mode controls: outside edit mode there is nothing they could act on
    (every entry is an edit-mode gesture), so they appear and vanish with the
@@ -175,7 +208,7 @@ button, input, textarea, select {
    :disabled rule above quiets them. */
 #mp-history-sep, #mp-history { display: none; }
 :host([data-mp-edit-active]) #mp-history-sep { display: block; }
-:host([data-mp-edit-active]) #mp-history { display: flex; align-items: center; gap: 8px; }
+:host([data-mp-edit-active]) #mp-history { display: flex; align-items: center; gap: 2px; }
 
 /* ── Embedded (iframe) mode — strip chrome that the host page provides ──
    Screen-only: the printed artifact keeps its themed chrome (borders) even
@@ -233,7 +266,7 @@ button, input, textarea, select {
 #mp-zoom {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;   /* the circular targets carry their own breathing room */
   flex-shrink: 0;
 }
 :host([data-mp-edit-active]) #mp-zoom { display: none; }
@@ -246,8 +279,8 @@ button, input, textarea, select {
   /* Every digit the same width, so 90% → 100% doesn't nudge the buttons. */
   font-variant-numeric: tabular-nums;
 }
-/* Fit to page wears the nav buttons' clothes (icon-only, .mp-nav-btn); a
-   little extra room sets it apart from the stepper as its own action. */
+/* Fit to page is a secondary button like the stepper's − and +; a little
+   extra room sets it apart from the stepper as its own action. */
 #mp-toolbar #mp-btn-zoom-fit { margin-left: 6px; }
 
 /* ── Status region — the toolbar's right edge in edit mode ──
