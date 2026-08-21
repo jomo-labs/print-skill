@@ -954,8 +954,19 @@ function enableEditMode() {
   };
   const onScroll = () => { clearHover(); };
   const onKey = (e) => {
-    // Escape commits an in-progress text edit — see blurActiveEdit.
-    if (e.key === 'Escape') { blurActiveEdit(); clearHover(); return; }
+    // Escape peels back one layer at a time, innermost first: an open text
+    // session commits (blurActiveEdit) and edit mode stays — ending the
+    // typing is not leaving the mode the typing happened in — and a press
+    // with nothing open leaves edit mode itself.
+    if (e.key === 'Escape') {
+      if (editingEl || document.activeElement?.isContentEditable) {
+        blurActiveEdit();
+        clearHover();
+      } else {
+        disableEditMode();
+      }
+      return;
+    }
     // Ctrl/Cmd+Z undoes the last committed change; +Shift (or Ctrl+Y) redoes
     // it. Never from inside a text-editing session, where the browser's own
     // undo owns the keys — the page's history takes over only once the
