@@ -883,7 +883,18 @@ function enableEditMode() {
   const onScroll = () => { clearHover(); };
   const onKey = (e) => {
     // Escape commits an in-progress text edit — see blurActiveEdit.
-    if (e.key === 'Escape') { blurActiveEdit(); clearHover(); }
+    if (e.key === 'Escape') { blurActiveEdit(); clearHover(); return; }
+    // Delete (or Backspace — the key a Mac labels Delete) removes the
+    // selected element — see deleteSelected. Never from inside a text-editing
+    // session, where the same keys are how words come out: the element there
+    // is a text field first, an object only after Escape ends the session.
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (editingEl || document.activeElement?.isContentEditable) return;
+      if (e.target === chromeHost) return;   // focus is on a toolbar control
+      if (!selectedEl?.isConnected) return;
+      e.preventDefault();
+      deleteSelected();
+    }
   };
   // Selecting is pointing, and pointing ends when the hand moves away: a
   // click that lands off the selected element lets it go. Without this the
@@ -1435,6 +1446,31 @@ function clearSelection() {
   ssSet('mpSelectedTag', '');
   renderLiveStatus();
   noticeSelection();
+}
+
+// Pressing Delete with an element selected takes it off the page — asked
+// first, in the element's own name, because one keypress is a small gesture
+// for removing something permanently. Only the keydown path (edit mode's
+// onKey) gets here, and only outside a text-editing session.
+function deleteSelected() {
+  const el = selectedEl;
+  if (!el?.isConnected) return;
+  // The sheet is the paper everything stands on, not an element standing on
+  // it — there is no document left on the other side of deleting it.
+  if (el.id === 'page' || el.classList.contains('page') || el.classList.contains('variant-page')) return;
+  if (!window.confirm(`Delete ${nameElement(selectedDesc)} from the page?`)) return;
+  // Every piece the split left goes together: what is selected is the head
+  // (selectElement), and any tail shells on later sheets are pieces of the
+  // same element — left behind, the next unpaginate() would merge their
+  // content back into a flow the element is no longer part of.
+  const gid = el.getAttribute('data-mp-split-src');
+  if (gid) document.querySelectorAll(`[data-mp-split="${gid}"]`).forEach(s => s.remove());
+  el.remove();
+  clearHover();
+  clearSelection();
+  // Same commit path as a text edit: persist first, then re-measure — the
+  // freed room can pull content back off a continuation sheet.
+  savePage().finally(refit);
 }
 
 /**
