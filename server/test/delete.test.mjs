@@ -197,6 +197,24 @@ test("Delete removes the selected element, with the user's say-so", async (t) =>
     });
   });
 
+  // Escape is layered, innermost first: inside a text session it ends the
+  // session and edit mode stays (the state Delete acts in — selectOnly above
+  // depends on it); with nothing open it leaves edit mode itself.
+  await t.test("Escape ends the session first, then edit mode", async () => {
+    await withPage("accept", async (page) => {
+      await page.dblclick("#other");         // selected AND editing
+      await page.keyboard.press("Escape");   // ends the session…
+      await page.waitForTimeout(SETTLE_MS);
+      assert.equal(
+        await page.evaluate(`document.body.classList.contains("edit-active")`),
+        true,
+        "…and edit mode survives it"
+      );
+      await page.keyboard.press("Escape");   // nothing left open
+      await page.waitForFunction(`!document.body.classList.contains("edit-active")`);
+    });
+  });
+
   // The sheet is the paper everything stands on. It is selectable (it is how
   // "the whole page" gets pointed at), but Delete does not offer to remove it.
   await t.test("the sheet itself is not deletable", async () => {

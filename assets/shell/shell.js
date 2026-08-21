@@ -673,6 +673,7 @@ function applySize(key, orientation) {
   // safe-margin control can layer on top of this later by reserving space
   // INSIDE the sheet, never by changing the page box.)
   document.getElementById('dynamic-page-css').textContent = `@page { size: ${p.css}; margin: 0; }`;
+  updatePaperLabel();
   scaleToFit(p.w);
 }
 
@@ -737,6 +738,21 @@ function updateZoomDisplay(s) {
   const out = mpq('#mp-btn-zoom-out'), inn = mpq('#mp-btn-zoom-in');
   if (out) out.disabled = s <= ZOOM_STEPS[0] + 0.001;
   if (inn) inn.disabled = s >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001;
+}
+
+// How the toolbar names each paper — the user-facing names, beside the CSS
+// keywords PAPERS carries.
+const PAPER_NAMES = { letter: 'US Letter', a4: 'A4', legal: 'US Legal', half: 'Half Letter' };
+
+// The page's fixed geometry, stated in the toolbar (normal mode, beside the
+// zoom controls). Paper and orientation are generation-time facts with no
+// runtime picker, so the toolbar NAMES them rather than offering them —
+// changing them means asking the model to regenerate.
+function updatePaperLabel() {
+  const el = mpq('#mp-paper-label');
+  if (!el) return;
+  el.textContent = (PAPER_NAMES[currentPaper] || currentPaper) + ', ' +
+    (currentOrientation === 'landscape' ? 'Landscape' : 'Portrait');
 }
 
 function scaleToFit(w) {
@@ -938,8 +954,19 @@ function enableEditMode() {
   };
   const onScroll = () => { clearHover(); };
   const onKey = (e) => {
-    // Escape commits an in-progress text edit — see blurActiveEdit.
-    if (e.key === 'Escape') { blurActiveEdit(); clearHover(); return; }
+    // Escape peels back one layer at a time, innermost first: an open text
+    // session commits (blurActiveEdit) and edit mode stays — ending the
+    // typing is not leaving the mode the typing happened in — and a press
+    // with nothing open leaves edit mode itself.
+    if (e.key === 'Escape') {
+      if (editingEl || document.activeElement?.isContentEditable) {
+        blurActiveEdit();
+        clearHover();
+      } else {
+        disableEditMode();
+      }
+      return;
+    }
     // Ctrl/Cmd+Z undoes the last committed change; +Shift (or Ctrl+Y) redoes
     // it. Never from inside a text-editing session, where the browser's own
     // undo owns the keys — the page's history takes over only once the
@@ -1507,9 +1534,12 @@ function renderLiveStatus() {
     label.appendChild(document.createTextNode(' command copied. Paste and send to your model.'));
     return;
   }
-  // At rest: the invitation. True whether or not a model is around right now,
+  // At rest: the invitation — both ways this page takes changes: the model,
+  // or pointing at an element right here. (The line only shows in edit mode —
+  // chrome.css gates it — so the offer to select is never made where the
+  // gesture wouldn't work.) True whether or not a model is around right now,
   // which is exactly as much as this page can honestly claim.
-  label.textContent = 'Ask your model for any changes';
+  label.textContent = 'Ask your model for any changes, or select a specific element here to edit.';
 }
 
 function applyStatus(state, text, ts) {
@@ -1953,6 +1983,16 @@ function injectChrome() {
     s.className = 'mp-sep';
     return s;
   };
+  // Icon-only controls name themselves with the chrome's own tooltip chip
+  // (chrome.css draws [data-mp-tip] on hover and focus) rather than a native
+  // title: the chip is prompt, styled like the rest of the chrome, and —
+  // unlike a title, which pointer-events:none swallows — still appears over
+  // a disabled button, so a grayed Undo can still say what it would do.
+  // aria-label carries the same words for screen readers.
+  const tip = (btn, text) => {
+    btn.setAttribute('data-mp-tip', text);
+    btn.setAttribute('aria-label', text);
+  };
 
   // Print is the toolbar's first control and never moves: it is the one
   // action every page has in every mode, and anchoring it at the left edge
@@ -1985,15 +2025,15 @@ function injectChrome() {
   history.id = 'mp-history';
   const undoBtn = document.createElement('button');
   undoBtn.id = 'mp-btn-undo';
-  undoBtn.className = 'mp-nav-btn';
-  undoBtn.title = 'Undo (Ctrl+Z)';
+  undoBtn.className = 'mp-btn-secondary';
+  tip(undoBtn, 'Undo (Ctrl+Z)');
   undoBtn.disabled = true;
   undoBtn.innerHTML =
     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
   const redoBtn = document.createElement('button');
   redoBtn.id = 'mp-btn-redo';
-  redoBtn.className = 'mp-nav-btn';
-  redoBtn.title = 'Redo (Ctrl+Shift+Z)';
+  redoBtn.className = 'mp-btn-secondary';
+  tip(redoBtn, 'Redo (Ctrl+Shift+Z)');
   redoBtn.disabled = true;
   redoBtn.innerHTML =
     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>';
@@ -2015,7 +2055,7 @@ function injectChrome() {
   const prev = document.createElement('button');
   prev.id = 'mp-btn-prev';
   prev.className = 'mp-nav-btn';
-  prev.title = 'Previous variant';
+  tip(prev, 'Previous variant');
   prev.innerHTML = '&#8592;';
   const label = document.createElement('span');
   label.id = 'mp-variant-label';
@@ -2023,7 +2063,7 @@ function injectChrome() {
   const next = document.createElement('button');
   next.id = 'mp-btn-next';
   next.className = 'mp-nav-btn';
-  next.title = 'Next variant';
+  tip(next, 'Next variant');
   next.innerHTML = '&#8594;';
   nav.appendChild(prev);
   nav.appendChild(label);
@@ -2040,6 +2080,16 @@ function injectChrome() {
   spacer.className = 'mp-toolbar-spacer';
   toolbar.appendChild(spacer);
 
+  // The page's paper, named before the view controls that look at it —
+  // "US Letter, Portrait" — and gated with them (chrome.css hides it in edit
+  // mode with #mp-zoom). applySize keeps the text current (updatePaperLabel).
+  const paperLabel = document.createElement('span');
+  paperLabel.id = 'mp-paper-label';
+  toolbar.appendChild(paperLabel);
+  const psep = sep();
+  psep.id = 'mp-paper-sep';
+  toolbar.appendChild(psep);
+
   // The zoom controls: normal mode's occupant of the toolbar's right edge —
   // edit mode swaps in the status region instead (chrome.css gates the two on
   // data-mp-edit-active, so only one is ever shown).
@@ -2047,9 +2097,9 @@ function injectChrome() {
   zoomBox.id = 'mp-zoom';
   const zoomOut = document.createElement('button');
   zoomOut.id = 'mp-btn-zoom-out';
-  zoomOut.className = 'mp-nav-btn';
+  zoomOut.className = 'mp-btn-secondary';
   zoomOut.type = 'button';
-  zoomOut.title = 'Zoom out';
+  tip(zoomOut, 'Zoom out');
   zoomOut.textContent = '−';
   const zoomLevel = document.createElement('span');
   zoomLevel.id = 'mp-zoom-level';
@@ -2057,23 +2107,21 @@ function injectChrome() {
   zoomLevel.title = 'Zoom level';
   const zoomIn = document.createElement('button');
   zoomIn.id = 'mp-btn-zoom-in';
-  zoomIn.className = 'mp-nav-btn';
+  zoomIn.className = 'mp-btn-secondary';
   zoomIn.type = 'button';
-  zoomIn.title = 'Zoom in';
+  tip(zoomIn, 'Zoom in');
   zoomIn.textContent = '+';
   const zoomFit = document.createElement('button');
   zoomFit.id = 'mp-btn-zoom-fit';
-  zoomFit.className = 'mp-nav-btn';
+  zoomFit.className = 'mp-btn-secondary';
   zoomFit.type = 'button';
-  // Icon-only, like the viewer controls it mirrors — the title and aria-label
-  // carry the words.
+  // Icon-only, like the viewer controls it mirrors — the tip carries the words.
   zoomFit.innerHTML =
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<rect x="5" y="3" width="14" height="18" rx="1.5"/>' +
     '<path d="M13 6h3.5v3.5"/><path d="M16.5 6l-4.25 4.25"/>' +
     '<path d="M11 18H7.5v-3.5"/><path d="M7.5 18l4.25-4.25"/></svg>';
-  zoomFit.title = 'Fit to page';
-  zoomFit.setAttribute('aria-label', 'Fit to page');
+  tip(zoomFit, 'Fit to page');
   zoomBox.appendChild(zoomOut);
   zoomBox.appendChild(zoomLevel);
   zoomBox.appendChild(zoomIn);

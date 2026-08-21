@@ -32,6 +32,7 @@
   --mp-mid:     oklch(44% 0.008 78);
   --mp-dim:     oklch(67% 0.006 78);
   --mp-rule:    oklch(83% 0.005 78);
+  --mp-faint:   oklch(78% 0.006 78);  /* disabled icon ink — see .mp-btn-secondary */
   --mp-surface: oklch(94% 0.009 78);
   --mp-live:    oklch(52% 0.14 150);          /* recorded — a state, not a theme accent */
   --mp-notice:  oklch(52% 0.13 65);           /* a decision is owed — not an error        */
@@ -168,6 +169,85 @@ button, input, textarea, select {
   color: var(--mp-ink);
 }
 
+/* ── Secondary buttons — quiet, circular icon controls ──
+   For toolbar actions that support the document rather than act on it:
+   no border, no box at rest — just the icon in the toolbar's muted ink,
+   with a circular target that appears under the pointer. Hover and press
+   DARKEN the icon (mid → ink, with the circle behind it deepening a step on
+   press); the shared button:hover fade above is overridden, because these
+   respond by gaining weight, not by dimming. */
+#mp-toolbar .mp-btn-secondary {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--mp-mid);
+  font-size: 14px;   /* glyph buttons (− +); SVG icons size themselves */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+#mp-toolbar .mp-btn-secondary:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--mp-bg);
+  color: var(--mp-ink);
+}
+#mp-toolbar .mp-btn-secondary:active:not(:disabled) {
+  background: var(--mp-rule);
+  color: var(--mp-ink);
+}
+/* Fainter than the shared :disabled fade above: these icons are already the
+   toolbar's muted ink, so at 0.6 a spent Undo reads as merely resting. The
+   faintness is a lighter INK, never opacity — the tooltip chip renders
+   inside the button, and an opacity fade would take the hint down with the
+   icon. Pointer events stay on for the same chip: a disabled button fires
+   nothing anyway, and the hover is what lets it still say what it would do. */
+#mp-toolbar .mp-btn-secondary:disabled {
+  opacity: 1;
+  color: var(--mp-faint);
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* ── Tooltip chips — [data-mp-tip] names icon-only controls ──
+   The chrome's own hint, in place of the native title: a small ink chip
+   below the control, after a beat of hover (or on keyboard focus), gone the
+   moment the pointer leaves. Sentence case on purpose — the toolbar's
+   uppercase is its button voice, and a hint is said quietly. */
+#mp-toolbar [data-mp-tip] { position: relative; }
+#mp-toolbar [data-mp-tip]::after {
+  content: attr(data-mp-tip);
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--mp-ink);
+  color: var(--mp-paper);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 10;
+}
+#mp-toolbar [data-mp-tip]:hover::after,
+#mp-toolbar [data-mp-tip]:focus-visible::after {
+  opacity: 1;
+  /* The beat: a hint answers lingering, never flashes on a pass-through. */
+  transition-delay: 450ms;
+}
+
 /* ── Undo / redo — history over the user's own committed changes ──
    Edit-mode controls: outside edit mode there is nothing they could act on
    (every entry is an edit-mode gesture), so they appear and vanish with the
@@ -175,7 +255,7 @@ button, input, textarea, select {
    :disabled rule above quiets them. */
 #mp-history-sep, #mp-history { display: none; }
 :host([data-mp-edit-active]) #mp-history-sep { display: block; }
-:host([data-mp-edit-active]) #mp-history { display: flex; align-items: center; gap: 8px; }
+:host([data-mp-edit-active]) #mp-history { display: flex; align-items: center; gap: 2px; }
 
 /* ── Embedded (iframe) mode — strip chrome that the host page provides ──
    Screen-only: the printed artifact keeps its themed chrome (borders) even
@@ -233,10 +313,24 @@ button, input, textarea, select {
 #mp-zoom {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;   /* the circular targets carry their own breathing room */
   flex-shrink: 0;
 }
-:host([data-mp-edit-active]) #mp-zoom { display: none; }
+/* The paper, named before the view controls that look at it: a statement,
+   not a control — paper is fixed at generation time (see injectChrome).
+   Italic and a shade fainter than the zoom level beside it, so it reads as
+   an aside about the page rather than a value anything here can change. */
+#mp-paper-label {
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--mp-dim);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+:host([data-mp-edit-active]) #mp-zoom,
+:host([data-mp-edit-active]) #mp-paper-label,
+:host([data-mp-edit-active]) #mp-paper-sep { display: none; }
 #mp-zoom-level {
   font-size: 11.5px;
   color: var(--mp-mid);
@@ -246,8 +340,8 @@ button, input, textarea, select {
   /* Every digit the same width, so 90% → 100% doesn't nudge the buttons. */
   font-variant-numeric: tabular-nums;
 }
-/* Fit to page wears the nav buttons' clothes (icon-only, .mp-nav-btn); a
-   little extra room sets it apart from the stepper as its own action. */
+/* Fit to page is a secondary button like the stepper's − and +; a little
+   extra room sets it apart from the stepper as its own action. */
 #mp-toolbar #mp-btn-zoom-fit { margin-left: 6px; }
 
 /* ── Status region — the toolbar's right edge in edit mode ──
@@ -273,7 +367,17 @@ button, input, textarea, select {
   overflow: hidden;
 }
 :host([data-mp-edit-active]) #mp-live-status { display: flex; }
-.mp-live-label { min-width: 0; overflow: hidden; white-space: nowrap; }
+/* A sentence is allowed its second line on a narrow window — clipping
+   mid-sentence loses the half that mattered. The clamp keeps a third line
+   from escaping the toolbar's fixed height (56px holds two of these). */
+.mp-live-label {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
 /* The element's name is the part worth finding at a glance — weight is the
    whole of the emphasis, since the line already carries the selection's
    colour. */

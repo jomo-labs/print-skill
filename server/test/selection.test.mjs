@@ -135,7 +135,7 @@ test("what the user selects is on record, and the page says so", async (t) => {
   // has to tell them.
   await t.test("and the page tells the user they need only ask", async () => {
     await withPage(async (page) => {
-      assert.equal(await toolbarLine(page), "Ask your model for any changes",
+      assert.equal(await toolbarLine(page), "Ask your model for any changes, or select a specific element here to edit.",
         "at rest, the standing invitation — not a claim about this element");
 
       await page.dblclick("#probe");
@@ -193,7 +193,7 @@ test("what the user selects is on record, and the page says so", async (t) => {
 
       assert.equal(await selection(server.url), "NO_SELECTION");
       assert.equal(await outlined(page), null, "and the outline is gone");
-      assert.equal(await toolbarLine(page), "Ask your model for any changes",
+      assert.equal(await toolbarLine(page), "Ask your model for any changes, or select a specific element here to edit.",
         "and the page stops claiming it");
     });
   });
@@ -213,7 +213,7 @@ test("what the user selects is on record, and the page says so", async (t) => {
 
       assert.equal(await selection(server.url), "NO_SELECTION");
       assert.equal(await outlined(page), null, "the outline went with it");
-      assert.equal(await toolbarLine(page), "Ask your model for any changes",
+      assert.equal(await toolbarLine(page), "Ask your model for any changes, or select a specific element here to edit.",
         "and the line is free for whatever is next");
       assert.equal(
         await page.evaluate(`document.body.classList.contains("edit-active")`),
