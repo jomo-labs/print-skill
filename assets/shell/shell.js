@@ -3,14 +3,6 @@
 // document.currentScript is only meaningful while the script is executing.
 const SHELL_SRC = document.currentScript?.src || location.href;
 
-// localStorage throws in opaque-origin contexts (e.g. Playwright's
-// page.set_content(), sandboxed embeds). Writes go through this accessor so
-// applySize() completes — and the print pipeline still works — even where
-// storage is unavailable. (Nothing reads storage back on this surface: paper
-// size deliberately starts at letter — see init.)
-function lsSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
-function lsGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
-
 // ── Paper size ──────────────────────────────────────────────────────────────
 
 // Base paper sizes, portrait dimensions. Orientation is a SEPARATE axis —
@@ -37,10 +29,10 @@ function getActivePage() {
   return document.querySelector('.variant-page.active') || document.getElementById('page');
 }
 
-// Current paper/orientation are state, not control values: the toolbar's
-// pickers are injected chrome and legacy pages may carry their own baked
-// select, so a control may not exist when size is applied or read —
-// applySize keeps whatever is present in sync.
+// Current paper/orientation are state, fixed at generation time: init()
+// reads them from the body's data attributes, and nothing at runtime
+// changes them (the toolbar carries no pickers — paper is confirmed with
+// the user before the page is generated).
 let currentPaper = 'letter';
 let currentOrientation = 'portrait';
 
@@ -620,13 +612,6 @@ function applySize(key, orientation) {
   currentPaper = PAPERS[key] ? key : 'letter';
   if (orientation === 'portrait' || orientation === 'landscape') currentOrientation = orientation;
   const p = paperDims();
-  // Sync the toolbar's combo boxes so they read the current state, however it
-  // was set. They live in the chrome's shadow root — the document fallback is
-  // only for a legacy page's baked select.
-  const sel = mpq('#mp-paper-select') || document.getElementById('mp-paper-select');
-  if (sel && sel.value !== currentPaper) sel.value = currentPaper;
-  const osel = mpq('#mp-orient-select') || document.getElementById('mp-orient-select');
-  if (osel && osel.value !== currentOrientation) osel.value = currentOrientation;
   // Persist the choice on the body dataset: the Print pipeline reloads the
   // serialized DOM in headless Chromium, whose init() reads these attributes
   // — without them a runtime paper/orientation change would silently reset
@@ -684,12 +669,7 @@ function applySize(key, orientation) {
   // safe-margin control can layer on top of this later by reserving space
   // INSIDE the sheet, never by changing the page box.)
   document.getElementById('dynamic-page-css').textContent = `@page { size: ${p.css}; margin: 0; }`;
-  lsSet('mpPaper', currentPaper);
   scaleToFit(p.w);
-}
-
-function setOrientation(o) {
-  applySize(currentPaper, o === 'landscape' ? 'landscape' : 'portrait');
 }
 
 function scaleToFit(w) {
@@ -1790,41 +1770,9 @@ function injectChrome() {
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
 
-  // Page setup, right of the edit toggle (so the controls edit mode adds all
-  // grow rightward, away from Print): paper size and orientation as two
-  // combo boxes. They're independent axes — any size combines with either
-  // orientation — so they stay two controls, not one product list. Built
-  // always, shown only in edit mode (chrome.css gates them on the host's
-  // data-mp-edit-active), so applySize() can keep them in sync whether or not
-  // they're on screen.
-  const setup = document.createElement('div');
-  setup.id = 'mp-page-setup';
-  const combo = (id, options) => {
-    const s = document.createElement('select');
-    s.id = id;
-    s.className = 'mp-combo';
-    for (const [value, label] of options) {
-      const o = document.createElement('option');
-      o.value = value;
-      o.textContent = label;
-      s.appendChild(o);
-    }
-    setup.appendChild(s);
-    return s;
-  };
-  const paperSel = combo('mp-paper-select', [
-    ['letter', 'US Letter'], ['a4', 'A4'], ['legal', 'Legal'], ['half', 'Half'],
-  ]);
-  paperSel.title = 'Paper size';
-  paperSel.setAttribute('aria-label', 'Paper size');
-  paperSel.addEventListener('change', () => applySize(paperSel.value));
-  const orientSel = combo('mp-orient-select', [
-    ['portrait', 'Portrait'], ['landscape', 'Landscape'],
-  ]);
-  orientSel.title = 'Orientation';
-  orientSel.setAttribute('aria-label', 'Orientation');
-  orientSel.addEventListener('change', () => setOrientation(orientSel.value));
-  toolbar.appendChild(setup);
+  // No page-setup controls: paper size and orientation are confirmed with
+  // the user before generation and fixed in the body's data attributes —
+  // changing them afterwards means asking the model to regenerate.
 
   // Variant nav — hidden until initVariants() detects multiple .variant-page
   const vsep = sep();
@@ -1940,13 +1888,10 @@ function injectChrome() {
   // Nothing is applied or restored at load — design changes happen at
   // generation time, never in the shell.
   //
-  // Paper size deliberately NOT restored from storage: all file:// pages share
-  // one localStorage, so a paper picked on some other document weeks ago would
-  // silently re-target this page's @page size and sheet geometry — while the
-  // user's print dialog stays on their printer's paper, producing clipped or
-  // half-blank sheets. Every standalone page opens at its own configured
-  // paper; the toolbar picker still works per visit, and an embedding host
-  // can re-apply its own saved choice via applySize after load.
+  // Paper size comes from the page's own body attributes and nowhere else:
+  // it is confirmed with the user at generation time, so every standalone
+  // page opens at its own configured paper. An embedding host can still
+  // re-apply a choice of its own via applySize after load.
   // data-mp-paper may carry the legacy 'landscape' alias (applySize resolves
   // it); data-mp-orientation is the separate-axis form.
   const configured = document.body.dataset.mpPaper;

@@ -9,7 +9,7 @@ pure document with no chrome markup, whose styles
 (`assets/shell/document.css`) are inlined at assembly so the generated file
 is fully self-contained. The chrome (`assets/shell/chrome.css`,
 `assets/shell/chrome-host.css`, `assets/shell/shell.js` — toolbar,
-paper-size switching, edit mode, the live connection to the model) is injected
+edit mode, the live connection to the model) is injected
 by the local server at serve time, never baked into the page. It renders
 inside its own shadow root, so the two never collide: your `custom_css` cannot
 restyle the chrome, and the chrome adds nothing to the document beyond room

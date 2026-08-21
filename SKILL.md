@@ -3,7 +3,7 @@ name: print
 description: "Convert anything into a beautifully formatted, print-ready HTML page using the magicprint design system. Handles content reformatting (text, URLs, notes, data) and structured printable forms (dashboards, calendars, worksheets, chore charts, scorecards, certificates, word searches, mazes, comic strips, drawing pages, activity pages for kids). Use when asked to 'print', 'make printable', 'format for print', 'weekly calendar', 'daily dashboard', 'worksheet', 'something for the fridge', 'chore chart', 'certificate', 'word search', 'maze', 'comic strip', 'drawing page', 'activity page', or 'coloring page'."
 license: Apache-2.0
 compatibility: Node 18+ recommended for the bundled local PDF server (optional — without it, pages print via the browser dialog)
-allowed-tools: Read Write Edit Bash WebFetch
+allowed-tools: Read Write Edit Bash WebFetch AskUserQuestion
 metadata:
   version: "1.0.0"
   argument-hint: "<text | URL | page type description>"
@@ -14,7 +14,7 @@ metadata:
 Turn the user's request into a print-ready HTML page. You author the page
 **content**; the document template (`assets/page_template.html`) and the
 **shell chrome** it links (`assets/shell/` css+js — design tokens, print
-button, edit mode, paper-size switching, WYSIWYG print geometry) are
+button, edit mode, WYSIWYG print geometry) are
 never authored or retyped, only copied and filled (see
 `references/assembly.md`). The generated file is a pure document: all chrome
 is injected at runtime by the shell scripts, so shell updates apply to
@@ -52,6 +52,60 @@ URL, or describe the page you want."
 If the request contains an image URL (ends in `.jpg`/`.jpeg`/`.png`/`.webp`/
 `.gif`), it's a reference image: view it (Read/WebFetch) before designing, and
 design from what you saw, not from the URL string.
+
+### Step 0.5 — Interview (interactive sessions only)
+
+Before generating, confirm the decisions the user would otherwise correct
+afterwards. Two dialogs at most, and only for what is genuinely open:
+
+**Skip it** when there is no human to answer: headless / pipeline use (the
+triggers in "Headless / pipeline use" — output destined for an automated
+consumer, or the user asked for "a PDF file"). Skip any **question** whose
+answer the request or conversation already gives ("landscape A4 poster"
+settles two of them), and skip a whole dialog when nothing in it is open.
+Never re-ask on a regeneration or edit of an existing page — the earlier
+answers stand.
+
+**How to ask** is a harness capability — see `references/harness-support.md`
+Part 3. With a structured question tool (Claude Code: `AskUserQuestion`),
+run the two dialogs below. Without one, ask in plain chat instead: one
+compact message combining both dialogs, defaults bolded, one word accepts
+everything (the fallback shape in Part 3). Never stall because no tool
+exists.
+
+**Dialog 1 — page setup.** Ask immediately, before reading references — it
+needs no thinking, and the user can answer while you work. One call, up to
+three questions, defaults listed first and labeled "(Selected)" — they are
+guesses at what the user wants, not recommendations, and the label should
+read as "this is what you get if you just accept":
+
+- **Paper size**: US Letter / A4 / Legal / Half letter. Default by locale:
+  Letter for the US, Canada, and other Letter countries; A4 for the rest of
+  the world. Infer locale from the conversation (language, spellings, dates,
+  places); when unknown, Letter.
+- **Orientation**: Portrait / Landscape / Let the model decide. Pre-select
+  what the likely page type calls for (landscape for a weekly calendar);
+  otherwise "Let the model decide".
+- **Max pages**: Let the model decide (Selected) / 1 page / 2 pages. A
+  custom number arrives via free text. "Let the model decide" keeps this
+  skill's bias toward one-pagers — aim for a single sheet unless the content
+  genuinely needs more.
+
+**Dialog 2 — topics.** After Step 1 classification (good options need the
+page type). Only for pages whose content you compose: skip it when
+reformatting supplied text or a URL verbatim, and when the request already
+enumerates its content. One multi-select question: the 4 most load-bearing
+topics as options (selected = included), with the full outline you plan by
+default stated in the question text so unlisted items are still visible, and
+free text ("Other") for additions. Example — an Airbnb host's one-pager for
+guests: options `Greeting / WiFi & essentials / House rules / Local tips`,
+question text noting checkout and contact info are included by default.
+
+**How answers bind.** Paper size and orientation land directly in the
+`paper` / `orientation` channels (Step 3); "let the model decide" means
+choose per page type as usual. Max pages caps the sheets you author in Step
+3 and is the count `fit-cli.mjs` must confirm in Step 6. Selected topics
+define the content scope for Steps 2–3.
 
 ### Step 1 — Classify
 
@@ -263,7 +317,8 @@ every page this project generates.
 ## Headless / pipeline use
 
 Nothing in this workflow needs a human at a browser: authoring, assembly, and
-verification (Steps 0–6) are entirely yours, and the PDF renders without
+verification (Steps 0–6) are entirely yours — Step 0.5's interview is skipped,
+there is nobody to answer it — and the PDF renders without
 anyone clicking **Print / Save PDF**. When the output is destined for an
 automated consumer — a pipeline stage, a print/mail job, another agent, or the
 user asked for "a PDF file" rather than a page to open — produce the PDF
@@ -393,8 +448,8 @@ line unless the request clearly means another page.
 ### A page that stops fitting
 
 A page records it when it no longer fits the sheets it lays out — because the
-user's own browser edit outgrew a sheet, because they switched to smaller
-paper, or because it never fitted in the first place — and when content is cut
+user's own browser edit outgrew a sheet, or because it never fitted in the
+first place — and when content is cut
 off inside a clipping container (containers clip rather than overlap; what is
 past the clip edge does not print). Read it the same way you read a selection:
 

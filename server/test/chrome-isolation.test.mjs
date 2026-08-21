@@ -62,9 +62,9 @@ button, input, textarea, select, option, code, pre, i, svg, span, div, aside, fo
   opacity: 0.3 !important;
 }
 /* Aimed at the chrome by name. */
-#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-page-setup,
+#mp-chrome-root, #mp-toolbar, #mp-overlay,
 #mp-btn-edit, #mp-btn-print, #mp-live-status, .mp-live-dot, .mp-live-label,
-#mp-paper-select, #mp-orient-select, .mp-combo, [data-mp-chrome] {
+[data-mp-chrome] {
   display: none !important;
   visibility: hidden !important;
   position: static !important;
@@ -86,7 +86,6 @@ body.edit-active { cursor: crosshair !important; }
 // Chrome elements and the properties that would move if page CSS got through.
 const PROBES = [
   "#mp-toolbar", "#mp-btn-edit", "#mp-btn-edit-label", "#mp-btn-print", "#mp-toolbar .mp-sep",
-  "#mp-page-setup", "#mp-paper-select", "#mp-orient-select", ".mp-combo",
   "#mp-overlay", "#mp-live-status", ".mp-live-dot", ".mp-live-label",
 ];
 // The hover box traces whatever page element it is over, and the hostile page
@@ -151,8 +150,8 @@ async function inspect(browser, url) {
   await page.goto(url, { waitUntil: "networkidle" });
   await page.evaluate(() => document.getElementById("mp-chrome-root").shadowRoot
     .getElementById("mp-btn-edit").click());
-  await page.waitForFunction(() => document.getElementById("mp-chrome-root").shadowRoot
-    .querySelector("#mp-page-setup"));
+  await page.waitForFunction(() => document.getElementById("mp-chrome-root")
+    .hasAttribute("data-mp-edit-active"));
   // Drive the two edit-mode gestures so their chrome exists to be compared:
   // double-click selects (outline), hover draws the element box.
   await page.dblclick("#probe");
