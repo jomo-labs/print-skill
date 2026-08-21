@@ -83,9 +83,9 @@ read as "this is what you get if you just accept":
   Letter for the US, Canada, and other Letter countries; A4 for the rest of
   the world. Infer locale from the conversation (language, spellings, dates,
   places); when unknown, Letter.
-- **Orientation**: Portrait / Landscape / Let the model decide. Pre-select
-  what the likely page type calls for (landscape for a weekly calendar);
-  otherwise "Let the model decide".
+- **Orientation**: Let the model decide (Selected) / Portrait / Landscape.
+  "Let the model decide" means choose what the page type calls for
+  (landscape for a weekly calendar).
 - **Max pages**: Let the model decide (Selected) / 1 page / 2 pages. A
   custom number arrives via free text. "Let the model decide" keeps this
   skill's bias toward one-pagers — aim for a single sheet unless the content
