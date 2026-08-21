@@ -344,15 +344,17 @@ button, input, textarea, select {
    extra room sets it apart from the stepper as its own action. */
 #mp-toolbar #mp-btn-zoom-fit { margin-left: 6px; }
 
-/* ── Status region — the toolbar's right edge in edit mode ──
+/* ── Status region — edit mode's message, straight after the controls ──
    Everything the chrome has to say about this page: an indicator that is
    always there, one message slot, and the FIX button when there is something
    to hand over. Only one message is ever shown, and a selection outranks the
-   rest — see renderLiveStatus. It sits after the spacer, so it holds the right
-   edge as the controls to its left come and go with edit mode. A sentence, so
-   it is not shouted in caps like a label, and it gives up width before the
-   controls do. Shown only while editing — at rest the zoom controls above
-   hold this edge instead. */
+   rest — see renderLiveStatus. It sits before the spacer, right after the
+   editing controls, so the message reads left-aligned from where the eye
+   already is; everything to its left is fixed-width, so it never moves a
+   button while it grows. A sentence, so it is not shouted in caps like a
+   label, and it gives up width before the controls do. Shown only while
+   editing — at rest the paper label and zoom controls hold the toolbar's
+   right edge instead (they sit after the spacer). */
 #mp-live-status {
   display: none;
   align-items: center;
