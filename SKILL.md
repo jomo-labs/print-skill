@@ -125,8 +125,9 @@ exactly that, and a page that trips it is not finished.
 Content that stops well short of the content box is not minimal, it is
 unfinished: make what is there roomier — larger type, wider spacing, bigger
 fillable areas — never filler (`references/design-rules.md`, "Empty,
-overflow, and underfill"). Space the user will fill in, by pen or on screen,
-counts as filled.
+overflow, and underfill"). Blank space left intentionally for the user to
+fill in — by pen on the printed page, or on screen — counts as filled; only
+purposeless emptiness is underfill.
 
 ### Step 4 — Self-check
 

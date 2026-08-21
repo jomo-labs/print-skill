@@ -29,8 +29,9 @@ must not restate them and cannot opt out — it describes only what it changes.
   thirds of its height or less — reads as unfinished and wastes the paper.
   Scale up rather than pad: body type a step larger, wider spacing, bigger
   fillable areas (writing lines, drawing frames, cells), or a roomier layout —
-  never filler content. Space the user fills in by hand or on screen counts as
-  filled.
+  never filler content. Blank space left intentionally for the user to fill in
+  — by pen or on screen — counts as filled; only purposeless emptiness is
+  underfill.
 - **Containers clip, they never overlap.** Structural containers (div,
   section, li's list, table cells, …) carry `overflow: clip` from the document
   stylesheet: on paper, content painted over a neighbouring block is never
