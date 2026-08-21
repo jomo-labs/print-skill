@@ -121,6 +121,14 @@ another one at runtime rather than being lost, but the shell breaks where the
 content ran out of room, not where the design wanted a break. Step 6 checks for
 exactly that, and a page that trips it is not finished.
 
+**Fill the sheet.** Fitting is half the job — unused paper prints anyway.
+Content that stops well short of the content box is not minimal, it is
+unfinished: make what is there roomier — larger type, wider spacing, bigger
+fillable areas — never filler (`references/design-rules.md`, "Empty,
+overflow, and underfill"). Blank space left intentionally for the user to
+fill in — by pen on the printed page, or on screen — counts as filled; only
+purposeless emptiness is underfill.
+
 ### Step 4 — Self-check
 
 Run the full Part B checklist in `references/design-rules.md` against your
@@ -474,7 +482,9 @@ doesn't show a half-written file:
    what refreshes the open tab. Leaving a working status open holds their
    preview until it times out. Then say in one line what you changed.
 5. **Check the fit** (`fit`, above). Your edit is the likeliest thing to have
-   pushed the content off its sheets, and nothing will tell you if it did.
+   pushed the content off its sheets, and nothing will tell you if it did — or
+   hollowed it out: if the sheet is now well under-used, rebalance in the same
+   pass (Step 3, "Fill the sheet").
 
 If the server has stopped, `selection` and `status` will say so. Restart it
 (Step 7, same `--dir`) and carry on; there is no session to re-establish.
