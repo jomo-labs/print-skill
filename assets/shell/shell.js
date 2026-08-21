@@ -1903,9 +1903,16 @@ function injectChrome() {
   zoomIn.textContent = '+';
   const zoomFit = document.createElement('button');
   zoomFit.id = 'mp-btn-zoom-fit';
+  zoomFit.className = 'mp-nav-btn';
   zoomFit.type = 'button';
-  zoomFit.textContent = 'Fit to page';
-  zoomFit.title = 'Fit the whole page in the window';
+  // Icon-only, like the viewer controls it mirrors — the title and aria-label
+  // carry the words.
+  zoomFit.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="5" y="3" width="14" height="18" rx="1.5"/>' +
+    '<path d="M12 8v8"/><path d="M9.5 10.5 12 8l2.5 2.5"/><path d="M9.5 13.5 12 16l2.5-2.5"/></svg>';
+  zoomFit.title = 'Fit to page';
+  zoomFit.setAttribute('aria-label', 'Fit to page');
   zoomBox.appendChild(zoomOut);
   zoomBox.appendChild(zoomLevel);
   zoomBox.appendChild(zoomIn);

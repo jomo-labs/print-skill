@@ -237,20 +237,9 @@ button, input, textarea, select {
   /* Every digit the same width, so 90% → 100% doesn't nudge the buttons. */
   font-variant-numeric: tabular-nums;
 }
-#mp-toolbar #mp-btn-zoom-fit {
-  height: 28px;
-  padding: 0 12px;
-  margin-left: 6px;
-  background: transparent;
-  color: var(--mp-mid);
-  border: 1px solid var(--mp-rule);
-  border-radius: 3px;
-  font-size: 10px;
-}
-#mp-toolbar #mp-btn-zoom-fit:hover {
-  background: var(--mp-bg);
-  color: var(--mp-ink);
-}
+/* Fit to page wears the nav buttons' clothes (icon-only, .mp-nav-btn); a
+   little extra room sets it apart from the stepper as its own action. */
+#mp-toolbar #mp-btn-zoom-fit { margin-left: 6px; }
 
 /* ── Status region — the toolbar's right edge in edit mode ──
    Everything the chrome has to say about this page: an indicator that is
