@@ -2129,13 +2129,10 @@ function injectChrome() {
   toolbar.appendChild(zoomBox);
 
   // The status region: indicator, message, and the FIX button that hands a fit
-  // problem over. One element for all of it — see renderLiveStatus. It reads
-  // from where the eye already is in edit mode — straight after the editing
-  // controls, before the spacer, so the message starts at the controls' edge
-  // instead of hanging off the toolbar's far right. Everything to its LEFT is
-  // fixed-width, so the message growing and shrinking still never moves a
-  // button out from under the user's cursor, and the FIX button is built once
-  // and hidden rather than created on demand, so the indicator never shifts.
+  // problem over. One element for all of it — see renderLiveStatus. It is last
+  // in the toolbar, so the message growing and shrinking never moves a button
+  // out from under the user's cursor, and the button is built once and hidden
+  // rather than created on demand, so the indicator beside it never shifts.
   const live = document.createElement('div');
   live.id = 'mp-live-status';
   const dot = document.createElement('span');
@@ -2152,7 +2149,7 @@ function injectChrome() {
   live.appendChild(dot);
   live.appendChild(liveLabel);
   live.appendChild(fitFix);
-  toolbar.insertBefore(live, spacer);
+  toolbar.appendChild(live);
 
   const ov = document.createElement('div');
   ov.id = 'mp-overlay';
