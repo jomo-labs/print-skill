@@ -168,6 +168,15 @@ button, input, textarea, select {
   color: var(--mp-ink);
 }
 
+/* ── Undo / redo — history over the user's own committed changes ──
+   Edit-mode controls: outside edit mode there is nothing they could act on
+   (every entry is an edit-mode gesture), so they appear and vanish with the
+   mode. shell.js disables each while its stack is empty — the global
+   :disabled rule above quiets them. */
+#mp-history-sep, #mp-history { display: none; }
+:host([data-mp-edit-active]) #mp-history-sep { display: block; }
+:host([data-mp-edit-active]) #mp-history { display: flex; align-items: center; gap: 8px; }
+
 /* ── Embedded (iframe) mode — strip chrome that the host page provides ──
    Screen-only: the printed artifact keeps its themed chrome (borders) even
    when printed from inside an embedding host like create.html. The matching

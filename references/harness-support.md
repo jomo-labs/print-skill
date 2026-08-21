@@ -145,7 +145,7 @@ let one word accept them all:
 > Before I generate — reply **go** to accept all of this, or correct any
 > line:
 > - Paper: **Letter** (or A4 / Legal / Half letter)
-> - Orientation: **portrait** (or landscape / my call)
+> - Orientation: **my call** (or portrait / landscape)
 > - Max pages: **my call** (or give a number)
 > - I plan to include: greeting, WiFi, checkout, house rules, local tips,
 >   contact — anything to add or drop?

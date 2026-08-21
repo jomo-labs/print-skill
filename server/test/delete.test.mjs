@@ -70,7 +70,7 @@ async function openPage(page, url) {
   await page.goto(url);
   await page.waitForFunction(`!!${CHROME}.getElementById("mp-btn-edit")`);
   await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
-  await page.waitForFunction(`!!${CHROME}.querySelector("#mp-page-setup")`);
+  await page.waitForFunction(`document.body.classList.contains("edit-active")`);
 }
 
 test("Delete removes the selected element, with the user's say-so", async (t) => {

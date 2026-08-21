@@ -12,7 +12,12 @@
 //   GET  /                 index of served pages
 //   GET  /healthz          liveness + identity probe
 //   GET  /pdf/<page>.html  render a served page -> application/pdf (headless use)
-//   POST /render-pdf       { html, title } -> application/pdf
+//   POST /render-pdf       { html, title, path } -> application/pdf, or with
+//                          Accept: application/json -> saves <page>.pdf next
+//                          to the page in the served dir (same basename as
+//                          the page file; reprints overwrite it) and answers
+//                          { ok, url } with that file's path, so saving from
+//                          the browser gets the page's own name
 //   PUT  /<page>.html      raw html body -> saved to the page's file
 //   POST /chat/<page>.html/messages   the page recording what the user has
 //                          selected or that it no longer fits its sheets, or
@@ -575,11 +580,15 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
     // pages one directory deep too; root when absent or invalid. The
     // dot-prefixed name keeps the staging file out of PUT/chat/index reach.
     let stageDirUrl = "";
-    if (typeof payload.path === "string" && /^\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html$/.test(payload.path)) {
+    let pageBase = ""; // the page's own filename sans .html — already semantic
+    if (
+      typeof payload.path === "string" &&
+      /^\/(?:[^/.][^/]*\/)?[^/.][^/]*\.html$/.test(payload.path) &&
+      safeJoin(ROOT, payload.path)
+    ) {
       const slash = payload.path.lastIndexOf("/");
-      if (slash > 0 && safeJoin(ROOT, payload.path)) {
-        stageDirUrl = payload.path.slice(1, slash + 1); // "project/"
-      }
+      if (slash > 0) stageDirUrl = payload.path.slice(1, slash + 1); // "project/"
+      pageBase = payload.path.slice(slash + 1, -".html".length);
     }
     const temp = `.render-${crypto.randomBytes(6).toString("hex")}.html`;
     const tempPath = path.join(ROOT, stageDirUrl, temp);
@@ -587,9 +596,28 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
       await fs.writeFile(tempPath, payload.html);
       const encodedDir = stageDirUrl.split("/").filter(Boolean).map(encodeURIComponent).join("/");
       const pdf = await renderPdf(`${baseUrl}/${encodedDir ? encodedDir + "/" : ""}${temp}`);
+      // The page's filename with .pdf swapped in for .html — the page name is
+      // already semantic, so the printable inherits it. Title slug only for
+      // callers that POST without a valid page path.
+      const pdfName = `${pageBase || slugify(payload.title)}.pdf`;
+      if ((req.headers.accept || "").includes("application/json")) {
+        // The shell asks for a URL rather than bytes: the PDF is saved next
+        // to its page in the served directory (reprints overwrite it) and the
+        // answer is that file's static path. Opening a URL whose last segment
+        // is the semantic name — not a blob: URL, which would surface its
+        // random UUID — is what makes the save dialog offer that name.
+        // pageBase has no slashes (it's the basename of a safeJoin-validated
+        // path) so the write can't escape the page's own directory, and PUT
+        // only reaches .html so the file can't be edited from the browser.
+        await fs.writeFile(path.join(ROOT, stageDirUrl, pdfName), pdf);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(
+          JSON.stringify({ ok: true, url: `/${encodedDir ? encodedDir + "/" : ""}${encodeURIComponent(pdfName)}` })
+        );
+      }
       res.writeHead(200, {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${slugify(payload.title)}.pdf"`,
+        "Content-Disposition": `inline; filename="${pdfName}"`,
       });
       res.end(pdf);
     } catch (e) {

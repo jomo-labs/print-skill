@@ -896,6 +896,10 @@ function enableEditMode() {
     // element, whose blur will never come (see finishEdit).
     finishEdit?.();
     const before = el.innerHTML;
+    // The page as it stands when typing begins — the state undo returns to if
+    // this session commits a real change. Captured here, not at commit: by
+    // commit time the DOM already holds the typing.
+    const histBefore = captureHistoryState();
     el.contentEditable = 'true';
     el.focus();
     // Double-click is also the selection gesture: it marks the element
@@ -915,6 +919,7 @@ function enableEditMode() {
       // touched — it's how the model finds user edits in the saved file
       // (and it strips the markers it has addressed).
       if (el.innerHTML !== before) {
+        pushHistory(histBefore);
         el.setAttribute('data-mp-edited', '');
         // Their text can outgrow the sheet it is on, and that is the same
         // failure as content that never fitted: re-split and re-measure, so
@@ -935,6 +940,17 @@ function enableEditMode() {
   const onKey = (e) => {
     // Escape commits an in-progress text edit — see blurActiveEdit.
     if (e.key === 'Escape') { blurActiveEdit(); clearHover(); return; }
+    // Ctrl/Cmd+Z undoes the last committed change; +Shift (or Ctrl+Y) redoes
+    // it. Never from inside a text-editing session, where the browser's own
+    // undo owns the keys — the page's history takes over only once the
+    // session has committed.
+    if ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())) {
+      if (editingEl || document.activeElement?.isContentEditable) return;
+      e.preventDefault();
+      if (e.key.toLowerCase() === 'y' || e.shiftKey) redoEdit();
+      else undoEdit();
+      return;
+    }
     // Delete (or Backspace — the key a Mac labels Delete) removes the
     // selected element — see deleteSelected. Never from inside a text-editing
     // session, where the same keys are how words come out: the element there
@@ -1029,7 +1045,11 @@ let saving = false;
 // re-derived on load: applySize() sets page widths and splits the overflow
 // onto continuation sheets, scaleToFit() sets transform and margins, init()
 // adds mp-embedded, edit mode adds the rest.
-function serializeForSave() {
+//
+// cleanClone() is that stripping alone, factored out because the save is not
+// its only reader: undo/redo snapshots go through the same rewind, so a
+// restored state is exactly a state the file could have held.
+function cleanClone() {
   const root = document.documentElement.cloneNode(true);
   root.querySelectorAll('.mp-hover-box').forEach(el => el.remove());
   // Continuation sheets are a runtime view of one authored flow (see
@@ -1061,11 +1081,29 @@ function serializeForSave() {
     if (!body.classList.length) body.removeAttribute('class');
   }
   root.querySelectorAll('.page, .variant-page, .page-surround').forEach(el => el.removeAttribute('style'));
-  return '<!DOCTYPE html>\n' + root.outerHTML;
+  return root;
 }
+
+function serializeForSave() {
+  return '<!DOCTYPE html>\n' + cleanClone().outerHTML;
+}
+
+// Saves run strictly one after another, each serializing the DOM as it stands
+// when its turn comes. Two PUTs in flight at once would race their If-Match
+// headers — the second still carries the ETag the first is about to replace,
+// and its 412 would read as the model's edit and reload the tab. That was
+// unreachable while only commits saved; undo can now follow a commit within
+// the same click (see undoEdit), so the order is enforced here.
+let saveQueue = Promise.resolve();
 
 async function savePage() {
   if (location.protocol === 'file:') return;
+  const turn = saveQueue.then(savePageNow);
+  saveQueue = turn.catch(() => {});
+  return turn;
+}
+
+async function savePageNow() {
   saving = true;
   try {
     const res = await fetch(location.pathname, {
@@ -1090,6 +1128,92 @@ async function savePage() {
   } finally {
     saving = false;
   }
+}
+
+// ── Undo / redo ─────────────────────────────────────────────────────────────
+// A local history of the user's own committed changes — text edits and
+// deletes — held in memory for this page load and nowhere else. Each entry is
+// the authored body as cleanClone() writes it, captured BEFORE the change
+// lands, so undoing restores exactly the state the file held (and a restore
+// saves through the same PUT path, so the file follows the browser as ever).
+//
+// The model's edits are deliberately not history: they arrive as a reload
+// (see Auto-reload), which clears these stacks — undo never silently rewinds
+// work the user asked their model for, and the model's own record of the
+// conversation is where that work is renegotiated.
+
+const HISTORY_MAX = 50;
+let undoStack = [];
+let redoStack = [];
+
+// The authored body, as the file would hold it. Body ATTRIBUTES are not part
+// of the state: paper and orientation are fixed at generation time, and the
+// rest (edit-active, data-mp-overflow) is runtime the restore re-derives.
+function captureHistoryState() {
+  return cleanClone().querySelector('body').innerHTML;
+}
+
+// A new change makes the undone future unreachable — same rule as every
+// editor: the redo stack only survives while undo/redo are the only writers.
+function pushHistory(state) {
+  undoStack.push(state);
+  if (undoStack.length > HISTORY_MAX) undoStack.shift();
+  redoStack.length = 0;
+  renderHistoryButtons();
+}
+
+function renderHistoryButtons() {
+  const u = mpq('#mp-btn-undo');
+  const r = mpq('#mp-btn-redo');
+  if (u) u.disabled = !undoStack.length;
+  if (r) r.disabled = !redoStack.length;
+}
+
+// Swap the page's content for a snapshot. The chrome lives on <html> outside
+// the body, and the edit-mode listeners on document — both survive; what dies
+// with the old body (hover box target, selection, an editing session) is
+// cleared first. The snapshot carries no runtime sizing (cleanClone stripped
+// it), so refit() runs before the save rather than after it: the sheets are
+// back on screen at once, and the PUT serializes the same authored flow
+// either way.
+function restoreHistoryState(state) {
+  finishEdit?.();
+  clearHover();
+  clearSelection();
+  document.body.innerHTML = state;
+  variantPages = Array.from(document.querySelectorAll('.variant-page'));
+  variantTotal = variantPages.length;
+  if (variantTotal) {
+    // The snapshot remembers its own active variant; trust it, and fall back
+    // to the nearest index only for a snapshot that somehow carries none.
+    const act = variantPages.findIndex(el => el.classList.contains('active'));
+    variantCurrent = act >= 0 ? act : Math.min(variantCurrent, variantTotal - 1);
+    variantPages.forEach((el, i) => el.classList.toggle('active', i === variantCurrent));
+    const lbl = mpq('#mp-variant-label');
+    if (lbl) lbl.textContent = (variantCurrent + 1) + ' / ' + variantTotal;
+  }
+  refit();
+  savePage();
+}
+
+// Both directions end an open editing session first: pressing Undo mid-typing
+// means "take back what I just did", and the blur commits that typing — which
+// pushes it — so the pop below takes back exactly that. The save queue keeps
+// the commit's PUT and the restore's PUT in order.
+function undoEdit() {
+  blurActiveEdit();
+  if (!undoStack.length) return;
+  redoStack.push(captureHistoryState());
+  restoreHistoryState(undoStack.pop());
+  renderHistoryButtons();
+}
+
+function redoEdit() {
+  blurActiveEdit();
+  if (!redoStack.length) return;
+  undoStack.push(captureHistoryState());
+  restoreHistoryState(redoStack.pop());
+  renderHistoryButtons();
 }
 
 // ── Print ───────────────────────────────────────────────────────────────────
@@ -1122,25 +1246,30 @@ async function printThisPage() {
   try {
     const res = await fetch('/render-pdf', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // Accept: application/json asks for the rendered PDF's URL instead of
+      // its bytes: the server saves the PDF next to this page in the served
+      // directory, under the page's own filename with .pdf swapped in, and
+      // answers with that file's path. Opening a URL that ends in the page's
+      // name is what makes the browser's save dialog offer it — a blob: URL
+      // here would surface its random UUID — and the printable stays on disk
+      // alongside its page.
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       // path lets the server stage the render temp next to this page, so
       // relative asset references resolve for nested build/<project>/ pages.
       body: JSON.stringify({ html, title: document.title, path: location.pathname }),
     });
     if (!res.ok) throw new Error(`server returned ${res.status}`);
-    const blob = await res.blob();
+    const { url } = await res.json();
+    if (!url) throw new Error('server returned no pdf url');
     if (tab) {
-      const url = URL.createObjectURL(blob);
       tab.location = url;
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } else {
-      // Popup blocked — hand the PDF over as a download instead.
+      // Popup blocked — hand the PDF over as a download instead. Same-origin
+      // href, so the download attribute names the file.
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = (document.title.replace(/[^a-zA-Z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '').toLowerCase() || 'printable') + '.pdf';
+      a.href = url;
+      a.download = decodeURIComponent(url.split('/').pop());
       a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     }
   } catch (e) {
     // Offline, or the endpoint isn't reachable from wherever this file is
@@ -1510,6 +1639,9 @@ function deleteSelected() {
   // it — there is no document left on the other side of deleting it.
   if (el.id === 'page' || el.classList.contains('page') || el.classList.contains('variant-page')) return;
   if (!window.confirm(`Delete ${nameElement(selectedDesc)} from the page?`)) return;
+  // The state undo returns to — captured once the user has said yes, so a
+  // declined dialog leaves no history entry behind.
+  const histBefore = captureHistoryState();
   // Every piece the split left goes together: what is selected is the head
   // (selectElement), and any tail shells on later sheets are pieces of the
   // same element — left behind, the next unpaginate() would merge their
@@ -1517,6 +1649,7 @@ function deleteSelected() {
   const gid = el.getAttribute('data-mp-split-src');
   if (gid) document.querySelectorAll(`[data-mp-split="${gid}"]`).forEach(s => s.remove());
   el.remove();
+  pushHistory(histBefore);
   clearHover();
   clearSelection();
   // Same commit path as a text edit: persist first, then re-measure — the
@@ -1841,6 +1974,33 @@ function injectChrome() {
     '<span id="mp-btn-edit-label">Edit</span>';
   toolbar.appendChild(edit);
 
+  // Undo / redo — history over the user's own committed changes (see the
+  // Undo/redo section). Edit-mode controls: chrome.css reveals them with the
+  // rest of the editing chrome, and renderHistoryButtons() keeps each
+  // disabled while its stack is empty.
+  const hsep = sep();
+  hsep.id = 'mp-history-sep';
+  toolbar.appendChild(hsep);
+  const history = document.createElement('div');
+  history.id = 'mp-history';
+  const undoBtn = document.createElement('button');
+  undoBtn.id = 'mp-btn-undo';
+  undoBtn.className = 'mp-nav-btn';
+  undoBtn.title = 'Undo (Ctrl+Z)';
+  undoBtn.disabled = true;
+  undoBtn.innerHTML =
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+  const redoBtn = document.createElement('button');
+  redoBtn.id = 'mp-btn-redo';
+  redoBtn.className = 'mp-nav-btn';
+  redoBtn.title = 'Redo (Ctrl+Shift+Z)';
+  redoBtn.disabled = true;
+  redoBtn.innerHTML =
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>';
+  history.appendChild(undoBtn);
+  history.appendChild(redoBtn);
+  toolbar.appendChild(history);
+
   // No page-setup controls: paper size and orientation are confirmed with
   // the user before generation and fixed in the body's data attributes —
   // changing them afterwards means asking the model to regenerate.
@@ -1972,6 +2132,8 @@ function injectChrome() {
   mpq('#mp-btn-zoom-out').addEventListener('click', () => zoomStep(-1));
   mpq('#mp-btn-zoom-in').addEventListener('click', () => zoomStep(1));
   mpq('#mp-btn-zoom-fit').addEventListener('click', () => setZoom('fit'));
+  mpq('#mp-btn-undo').addEventListener('click', undoEdit);
+  mpq('#mp-btn-redo').addEventListener('click', redoEdit);
   // Before applySize below applies the transform: the zoom the user chose is
   // per-tab presentation state, like edit mode, and comes back with the tab.
   restoreZoom();
