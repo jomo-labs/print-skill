@@ -229,6 +229,7 @@ function reportFit(p) {
   // at all. The marker survives that reload; a variable would not.
   if (!fitBroken(fit)) {
     fitFixing = false;
+    fitHandedAt = 0;
     const handed = !!ssGet('mpFitHanded');
     ssSet('mpFitHanded', '');
     if (handed) clearFitReport(fit);
@@ -275,7 +276,8 @@ function refit() { applySize(currentPaper); }
 // evil, not a fix: whatever is past the clip edge is simply absent from the
 // printed sheet. So every fit pass hunts for it: each clipping container
 // whose content exceeds its clip edge is marked data-mp-clipped (a red dashed
-// outline on screen — chrome-host.css — and nothing in print; the marker is
+// outline in edit mode — chrome-host.css, gated like the selection's box —
+// nothing at rest, nothing in print; the marker is
 // runtime state, stripped by serializeForSave like the rest), and the count
 // rides the same fit verdict as sheets that spilled, with the same red line,
 // the same FIX button, and the same record for the model to read.
@@ -350,6 +352,7 @@ function isClipped(el) {
 
 const FIX_COMMAND = '/print fix';   // what the press copies — the ping the user carries
 let fitFixing = false;  // handed to the model this page load, no answer yet
+let fitHandedAt = 0;    // when the press handed it over — see renderLiveStatus
 let fitSending = false; // the press is in flight — don't send it twice
 let fitMeasured = false; // the first pass has run — see reportFit
 let brokenAt = 0;       // when the page became wrong, or 0 if it arrived so
@@ -414,6 +417,7 @@ async function sendFitReport() {
     });
     if (!res.ok) throw new Error(String(res.status));
     fitFixing = true;
+    fitHandedAt = Date.now();
     // Remembered across the reload the fix will cause, so the page knows there
     // is a report of its own to take back once it fits again.
     ssSet('mpFitHanded', '1');
@@ -457,7 +461,7 @@ function fitProblem({ authored, rendered, overflowing, clipped }) {
       'breaks fall where the content ran out of room rather than where they were designed.';
   }
   return `Content inside ${clipped} container${clipped === 1 ? '' : 's'} — outlined in red ` +
-    'on the sheet — is bigger than the container and is cut off at its edge. What is past ' +
+    'in edit mode — is bigger than the container and is cut off at its edge. What is past ' +
     'the edge will not print: shorten the content, or size the container for it.';
 }
 
@@ -756,7 +760,15 @@ let finishEdit = null;
 // null and silently kill the hover boxes).
 let overlay = null;
 
-function clearHover() { if (hoverBox) { hoverBox.remove(); hoverBox = null; } }
+// The clipped element whose own dashed outline the hover box is standing in
+// for — cleared with the box, so the outline comes back the moment the box
+// leaves. See showHover.
+let hoverClipEl = null;
+
+function clearHover() {
+  if (hoverBox) { hoverBox.remove(); hoverBox = null; }
+  if (hoverClipEl) { hoverClipEl.removeAttribute('data-mp-clip-hover'); hoverClipEl = null; }
+}
 
 function showHover(el) {
   clearHover();
@@ -764,10 +776,23 @@ function showHover(el) {
   if (r.width < 4 || r.height < 4) return;
   hoverBox = document.createElement('div');
   hoverBox.className = 'mp-hover-box';
+  // An element the fit pass marked as clipping its content is already wearing
+  // a red dashed outline (chrome-host.css). Its hover box is not a second
+  // rectangle saying a second thing: it IS that box — same red, dashed as
+  // every hover is, with the label naming the problem instead of offering the
+  // edit. The element's own outline steps aside while the box traces it
+  // (data-mp-clip-hover), so there is one box on one element, always.
+  const clipped = el.hasAttribute('data-mp-clipped');
+  if (clipped) {
+    hoverBox.classList.add('mp-hover-clipped');
+    el.setAttribute('data-mp-clip-hover', '');
+    hoverClipEl = el;
+  }
   hoverBox.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;
   const lbl = document.createElement('div');
   lbl.className = 'mp-hover-label';
-  lbl.textContent = (ELEMENT_LABELS[el.tagName.toLowerCase()] || el.tagName) + ' — double-click to edit';
+  lbl.textContent = (ELEMENT_LABELS[el.tagName.toLowerCase()] || el.tagName) +
+    (clipped ? ' — overflowing' : ' — double-click to edit');
   hoverBox.appendChild(lbl);
   overlay.appendChild(hoverBox);
 }
@@ -860,9 +885,25 @@ function enableEditMode() {
     // Escape commits an in-progress text edit — see blurActiveEdit.
     if (e.key === 'Escape') { blurActiveEdit(); clearHover(); }
   };
+  // Selecting is pointing, and pointing ends when the hand moves away: a
+  // click that lands off the selected element lets it go. Without this the
+  // outline — and the toolbar's "selected" line — outlives the user's
+  // interest, sitting on top of newer news like the fit error their own edit
+  // just caused. Clicks on the chrome don't count (pressing FIX, or a toolbar
+  // control, is not moving away — and the shadow boundary retargets those to
+  // the host), and clicks inside the element — including the two a
+  // double-click is made of — keep it.
+  const onClick = (e) => {
+    if (!selectedEl?.isConnected) return;
+    if (e.target === chromeHost) return;
+    const el = e.target instanceof Element ? e.target : null;
+    if (el && el.closest('.mp-selected')) return;
+    clearSelection();
+  };
 
   document.addEventListener('mousemove', onMove, { passive: true });
   document.addEventListener('dblclick', onDbl);
+  document.addEventListener('click', onClick);
   // Captured, because the sheets are not scrolled by the window: the canvas
   // is its own scroll region (.page-surround, chrome-host.css) and a scroll
   // event on an element does not bubble. Without the capture phase the hover
@@ -874,6 +915,7 @@ function enableEditMode() {
   editListeners = () => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('dblclick', onDbl);
+    document.removeEventListener('click', onClick);
     document.removeEventListener('scroll', onScroll, { capture: true });
     document.removeEventListener('keydown', onKey);
   };
@@ -946,6 +988,7 @@ function serializeForSave() {
   // Re-derived on every layout pass — the file never records a verdict the
   // next load will re-measure anyway (same rule as data-mp-overflow's absence).
   root.querySelectorAll('[data-mp-clipped]').forEach(el => el.removeAttribute('data-mp-clipped'));
+  root.querySelectorAll('[data-mp-clip-hover]').forEach(el => el.removeAttribute('data-mp-clip-hover'));
   root.querySelectorAll('.mp-selected').forEach(el => {
     el.classList.remove('mp-selected');
     if (!el.classList.length) el.removeAttribute('class');
@@ -1196,7 +1239,20 @@ function renderLiveStatus() {
   // What the slot says, one of: the model mid-edit, the selection, the
   // standing fit problem (with its button), the instruction a FIX press
   // leaves behind, or the invitation.
-  const sel = !working && selected && !(broken && brokenAt > selectedAt && !fitFixing);
+  //
+  // The problem has two moments of news — when the page became wrong, and
+  // when the user handed it over — and a selection older than the newer of
+  // them yields the slot. The press moment matters as much as the break: a
+  // press has to visibly leave its instruction behind, never bounce the line
+  // back to a selection made before it (which read as the press doing
+  // nothing at all). A selection made after either is newer news and takes
+  // the slot, as ever — with one exception: selecting the red-boxed element
+  // ITSELF is pointing at the problem, not at competing news, so the slot
+  // keeps stating the error (FIX button and all) rather than announcing a
+  // selection of the very thing the error is about.
+  const selClipped = selected && selectedEl.hasAttribute('data-mp-clipped');
+  const news = Math.max(brokenAt, fitHandedAt);
+  const sel = !working && selected && !selClipped && !(broken && news > selectedAt);
   const err = !working && broken && !sel && !fitFixing;
   const handed = !working && broken && !sel && fitFixing;
 
@@ -1217,8 +1273,10 @@ function renderLiveStatus() {
           : '';
 
   // The button stands beside a problem nobody has taken yet, and nowhere
-  // else: not once it has been handed over, and never next to a selection,
-  // where "Fix" would read as an offer to fix the element the user picked.
+  // else: not once it has been handed over, and never next to the selection
+  // MESSAGE, where "Fix" would read as an offer to fix the element the user
+  // picked. (When the picked element is the red-boxed one, the slot states
+  // the problem instead — and there the offer is exactly right.)
   // ...and never beside "Working…": mid-edit, a press would race the very fix
   // it asks for.
   const btn = mpq('#mp-fit-fix');

@@ -38,7 +38,7 @@
     /* Element selected by double-click in edit mode. The outline sits on a
        document node, so it belongs here — serializeForSave() strips the
        class, and print never sees it (this whole block is screen-only). */
-    .mp-selected {
+    body.edit-active .mp-selected {
       outline: 2px solid rgba(59, 130, 246, 0.7) !important;
       outline-offset: 2px !important;
     }
@@ -49,10 +49,31 @@
        outline lives here, screen-only — on paper the cut itself is the point,
        and the toolbar's red line carries the words. Dashed, where the
        selection is solid: this outline traces the edge the content is being
-       cut at. */
-    [data-mp-clipped] {
+       cut at.
+
+       Every box in this family is gated on edit mode — leaving it takes the
+       selection AND the error outlines off the sheet together, so the page at
+       rest shows only the document (the toolbar's red line still states the
+       problem; the boxes come back the moment editing does). */
+    body.edit-active [data-mp-clipped] {
       outline: 2px dashed rgba(220, 38, 38, 0.75) !important;
       outline-offset: 1px !important;
+    }
+
+    /* One element never wears two boxes. Hovering a clipped element draws the
+       chrome's hover box over it in this same red (shell.js marks the moment
+       with data-mp-clip-hover), so the element's own outline steps aside
+       until the box leaves — the error keeps its red, the hover keeps being
+       one dashed rectangle. */
+    body.edit-active [data-mp-clipped][data-mp-clip-hover] { outline: none !important; }
+
+    /* ...and selecting a clipped element keeps the selection's shape in the
+       error's colour: solid, as every selection is, red, because what is
+       selected is the thing that is wrong. Last, so a selected element stays
+       outlined while the hover box passes over it. */
+    body.edit-active .mp-selected[data-mp-clipped] {
+      outline: 2px solid rgba(220, 38, 38, 0.75) !important;
+      outline-offset: 2px !important;
     }
 
     /* Embedded (iframe) mode — the host page provides its own chrome. */

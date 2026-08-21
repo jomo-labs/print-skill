@@ -38,6 +38,12 @@
   --mp-error:   oklch(52% 0.20 27);           /* the page does not fit — the one real error */
   --mp-select:  rgba(59, 130, 246, 0.7);      /* hover/selection blue, as an outline     */
   --mp-select-chip: rgba(59, 130, 246, 0.9);  /* ...and filled, behind the hover label   */
+  /* The clip error's red, matched exactly to the [data-mp-clipped] outline in
+     chrome-host.css: on a clipped element the hover box IS the error box, so
+     the two stylesheets must draw the same red or the box changes colour the
+     moment the hover lands. */
+  --mp-clip:      rgba(220, 38, 38, 0.75);    /* clipped/overflowing, as an outline      */
+  --mp-clip-chip: rgba(220, 38, 38, 0.9);     /* ...and filled, behind the hover label   */
 
   /* Generic families only. A page can @font-face any real family name out
      from under the chrome (font faces are document-global — the shadow
@@ -242,6 +248,12 @@ button, input, textarea, select {
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
+/* Hovering a clipped element: the same one box, in the error's red — the
+   element's own dashed outline steps aside while this traces it (shell.js
+   sets data-mp-clip-hover; chrome-host.css hides the outline). The label chip
+   goes red with it and names the problem instead of offering the edit. */
+.mp-hover-box.mp-hover-clipped { border-color: var(--mp-clip); }
+.mp-hover-box.mp-hover-clipped .mp-hover-label { background: var(--mp-clip-chip); }
 
 /* ── Status region — the toolbar's right edge ──
    Everything the chrome has to say about this page: an indicator that is

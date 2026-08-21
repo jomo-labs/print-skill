@@ -403,7 +403,7 @@ EVERYTHING_FITS
 
 The `clipped:` lines are the page's own hints: each is the selector, in the
 file's authored flow, of a container whose content exceeds its clip edge (the
-same containers wear a red dashed outline in the browser). Go straight to
+same containers wear a red dashed outline in the browser's edit mode). Go straight to
 those elements — shorten their content or size them for it — rather than
 re-deriving what the page already measured.
 
