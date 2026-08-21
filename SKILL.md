@@ -185,10 +185,6 @@ and re-run. Remember the footer takes ~41px out of the content box on every
 sheet (`design-rules.md`, Platform invariants) — content that measures exactly
 the box height is already too tall.
 
-The fit gate checks only overflow — also glance at the served page for the
-mirror: content should reach down the content box, per Step 3's "Fill the
-sheet".
-
 Then check that every piece of text clears its contrast floor:
 
 ```
