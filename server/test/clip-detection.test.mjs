@@ -261,6 +261,24 @@ test("content cut off inside a container is detected and handed over", async (t)
       assert.equal(picked.style, "solid", "solid — the selection's shape");
       assert.equal(picked.color, "rgba(220, 38, 38, 0.75)", "in the error's colour");
 
+      // Selecting the red-boxed element is pointing at the problem, not at
+      // competing news: the toolbar keeps stating the error, FIX button and
+      // all, instead of swapping to the selection message.
+      const line = await page.evaluate(`(() => {
+        const root = ${CHROME};
+        const el = root.getElementById("mp-live-status");
+        return {
+          error: el.classList.contains("mp-live-error"),
+          selected: el.classList.contains("mp-live-selected"),
+          text: el.querySelector(".mp-live-label").textContent,
+          fixShown: getComputedStyle(root.getElementById("mp-fit-fix")).display !== "none",
+        };
+      })()`);
+      assert.equal(line.error, true, "the slot states the problem");
+      assert.equal(line.selected, false, "not a selection of the very thing it is about");
+      assert.match(line.text, /^content is cut off in 1 place$/, line.text);
+      assert.equal(line.fixShown, true, "with FIX still there to press");
+
       // ...and off the element, the hover box reverts to the offer, in blue.
       const other = await page.locator("#page > div > p >> nth=0").boundingBox();
       await page.mouse.move(other.x + 8, other.y + 8);
@@ -278,6 +296,19 @@ test("content cut off inside a container is detected and handed over", async (t)
       assert.equal(plain.border, "rgba(59, 130, 246, 0.7)", "an unclipped element keeps the blue");
       assert.equal(plain.clipOutline, "solid",
         "and the clipped element gets its own outline back — still selected, so solid red");
+
+      // Leaving edit mode takes every box off the sheet — selection and error
+      // outlines together. The page at rest shows only the document; the
+      // toolbar's red line still states the problem.
+      await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
+      const atRest = await page.evaluate(`(() => ({
+        selected: document.querySelectorAll(".mp-selected").length,
+        clipOutline: getComputedStyle(document.querySelector("[data-mp-clipped]")).outlineStyle,
+        error: ${CHROME}.getElementById("mp-live-status").classList.contains("mp-live-error"),
+      }))()`);
+      assert.equal(atRest.selected, 0, "the selection did not survive leaving edit mode");
+      assert.equal(atRest.clipOutline, "none", "and neither did the error's box");
+      assert.equal(atRest.error, true, "the toolbar still states the problem in red");
     });
   });
 

@@ -276,7 +276,8 @@ function refit() { applySize(currentPaper); }
 // evil, not a fix: whatever is past the clip edge is simply absent from the
 // printed sheet. So every fit pass hunts for it: each clipping container
 // whose content exceeds its clip edge is marked data-mp-clipped (a red dashed
-// outline on screen — chrome-host.css — and nothing in print; the marker is
+// outline in edit mode — chrome-host.css, gated like the selection's box —
+// nothing at rest, nothing in print; the marker is
 // runtime state, stripped by serializeForSave like the rest), and the count
 // rides the same fit verdict as sheets that spilled, with the same red line,
 // the same FIX button, and the same record for the model to read.
@@ -460,7 +461,7 @@ function fitProblem({ authored, rendered, overflowing, clipped }) {
       'breaks fall where the content ran out of room rather than where they were designed.';
   }
   return `Content inside ${clipped} container${clipped === 1 ? '' : 's'} — outlined in red ` +
-    'on the sheet — is bigger than the container and is cut off at its edge. What is past ' +
+    'in edit mode — is bigger than the container and is cut off at its edge. What is past ' +
     'the edge will not print: shorten the content, or size the container for it.';
 }
 
@@ -1245,9 +1246,13 @@ function renderLiveStatus() {
   // press has to visibly leave its instruction behind, never bounce the line
   // back to a selection made before it (which read as the press doing
   // nothing at all). A selection made after either is newer news and takes
-  // the slot, as ever.
+  // the slot, as ever — with one exception: selecting the red-boxed element
+  // ITSELF is pointing at the problem, not at competing news, so the slot
+  // keeps stating the error (FIX button and all) rather than announcing a
+  // selection of the very thing the error is about.
+  const selClipped = selected && selectedEl.hasAttribute('data-mp-clipped');
   const news = Math.max(brokenAt, fitHandedAt);
-  const sel = !working && selected && !(broken && news > selectedAt);
+  const sel = !working && selected && !selClipped && !(broken && news > selectedAt);
   const err = !working && broken && !sel && !fitFixing;
   const handed = !working && broken && !sel && fitFixing;
 
@@ -1268,8 +1273,10 @@ function renderLiveStatus() {
           : '';
 
   // The button stands beside a problem nobody has taken yet, and nowhere
-  // else: not once it has been handed over, and never next to a selection,
-  // where "Fix" would read as an offer to fix the element the user picked.
+  // else: not once it has been handed over, and never next to the selection
+  // MESSAGE, where "Fix" would read as an offer to fix the element the user
+  // picked. (When the picked element is the red-boxed one, the slot states
+  // the problem instead — and there the offer is exactly right.)
   // ...and never beside "Working…": mid-edit, a press would race the very fix
   // it asks for.
   const btn = mpq('#mp-fit-fix');
