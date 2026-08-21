@@ -74,22 +74,29 @@ everything (the fallback shape in Part 3). Never stall because no tool
 exists.
 
 **Dialog 1 — page setup.** Ask immediately, before reading references — it
-needs no thinking, and the user can answer while you work. One call, up to
-three questions, defaults listed first and labeled "(Selected)" — they are
-guesses at what the user wants, not recommendations, and the label should
-read as "this is what you get if you just accept":
+needs no thinking, and the user can answer while you work. One call, ONE
+question — a single confirmation covering paper size, orientation, and max
+pages together, never a separate question per setting, so one action accepts
+the whole setup.
 
-- **Paper size**: US Letter / A4 / Legal / Half letter. Default by locale:
-  Letter for the US, Canada, and other Letter countries; A4 for the rest of
-  the world. Infer locale from the conversation (language, spellings, dates,
-  places); when unknown, Letter.
-- **Orientation**: Let the model decide (Selected) / Portrait / Landscape.
-  "Let the model decide" means choose what the page type calls for
+The proposed defaults (guesses at what the user wants, not
+recommendations):
+
+- **Paper size**: by locale — Letter for the US, Canada, and other Letter
+  countries; A4 for the rest of the world. Infer locale from the
+  conversation (language, spellings, dates, places); when unknown, Letter.
+- **Orientation**: the model decides — choose what the page type calls for
   (landscape for a weekly calendar).
-- **Max pages**: Let the model decide (Selected) / 1 page / 2 pages. A
-  custom number arrives via free text. "Let the model decide" keeps this
-  skill's bias toward one-pagers — aim for a single sheet unless the content
-  genuinely needs more.
+- **Max pages**: the model decides — this skill's bias toward one-pagers:
+  a single sheet unless the content genuinely needs more.
+
+Shape of the question: state all three proposed values in the question
+text. Option 1, pre-selected and labeled "(Selected)", is **Accept all** —
+it should read as "this is what you get if you just confirm". The remaining
+2–3 options are the likeliest single tweaks (the other common paper size, a
+forced orientation), each meaning "as proposed, plus this one change". Free
+text ("Other") catches everything else — a custom paper size or page count,
+or several changes at once ("A4 landscape, 2 pages").
 
 **Dialog 2 — topics.** After Step 1 classification (good options need the
 page type). Only for pages whose content you compose: skip it when
