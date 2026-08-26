@@ -219,4 +219,4 @@ runs most-fundamental-first. Empty `custom_css` passes items 1–7 trivially; em
   elements themselves (using `var()` tokens) for page types whose identity depends
   on structure — a certificate must still read as a certificate with `custom_css`
   gone. Reserve `custom_css` for the `:root` token block and typographic
-  refinement. (See the per-type notes in `page-types.md`.)
+  refinement. (See the per-type notes in the `types/` spec files, via `page-types.md`.)
