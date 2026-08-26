@@ -161,9 +161,7 @@ body {
 body[data-mp-paper="a4"] .page        { width: 793px;  height: 1122px; }
 body[data-mp-paper="legal"] .page     { width: 816px;  height: 1344px; }
 body[data-mp-paper="half"] .page      { width: 528px;  height: 816px;  }
-/* Orientation is a separate axis: landscape swaps each size's dimensions.
-   (data-mp-paper="landscape" is the legacy letter-landscape alias.) */
-body[data-mp-paper="landscape"] .page { width: 1056px; height: 816px;  }
+/* Orientation is a separate axis: landscape swaps each size's dimensions. */
 body[data-mp-orientation="landscape"] .page                        { width: 1056px; height: 816px; }
 body[data-mp-paper="a4"][data-mp-orientation="landscape"] .page    { width: 1122px; height: 793px; }
 body[data-mp-paper="legal"][data-mp-orientation="landscape"] .page { width: 1344px; height: 816px; }

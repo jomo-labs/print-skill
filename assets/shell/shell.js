@@ -1,5 +1,5 @@
-// Where this script was loaded from — the base for resolving sibling shell
-// assets (chrome.css) on pages the server didn't wrap. Read at parse time:
+// Where this script was loaded from — the base for resolving chrome.css when
+// the inline template is missing (see chromeStylesheet). Read at parse time:
 // document.currentScript is only meaningful while the script is executing.
 const SHELL_SRC = document.currentScript?.src || location.href;
 
@@ -601,9 +601,6 @@ function makeContinuation(prev, p) {
 }
 
 function applySize(key, orientation) {
-  // Legacy alias: 'landscape' was once a paper key meaning letter-landscape
-  // (older pages carry applySize('landscape') lines or data-mp-paper values).
-  if (key === 'landscape') { key = 'letter'; orientation = 'landscape'; }
   currentPaper = PAPERS[key] ? key : 'letter';
   if (orientation === 'portrait' || orientation === 'landscape') currentOrientation = orientation;
   const p = paperDims();
@@ -646,9 +643,8 @@ function applySize(key, orientation) {
     } else {
       el.style.height = p.h + 'px';
     }
-    // '0', not '' — older generated pages carry min-height sheet rules in
-    // their frozen inline stylesheet, and CSS min-height would beat the
-    // fixed inline height; an inline 0 neutralizes it everywhere.
+    // '0', not '' — an authored min-height (a theme's own sheet rule) would
+    // beat the fixed inline height; an inline 0 neutralizes it everywhere.
     el.style.minHeight = '0';
   });
   // Nested multi-page assemblies: each nested sheet is one full fixed page.
@@ -1054,14 +1050,13 @@ function cleanClone() {
   // rewinds through, so what is saved is exactly what a reload re-splits.
   unpaginate(root);
   // ALL chrome is runtime-only (injectChrome rebuilds it every load) —
-  // stripping it here keeps the saved file a pure document, and turns the
-  // first save of a legacy page (baked-in chrome) into a cleanse.
+  // stripping it here keeps the saved file a pure document.
   // data-mp-edited markers on content are NOT stripped — persisting them is
   // how the model finds user edits in the file.
   // Chrome lives in one shadow host ([data-mp-chrome]); the serve-time wrap
-  // (its stylesheet, its scripts) is tagged the same way, and legacy pages
-  // carry the old baked-in chrome by id. The file on disk keeps none of it.
-  root.querySelectorAll('[data-mp-chrome], #mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel')
+  // (its stylesheet, its scripts) is tagged the same way. The file on disk
+  // keeps none of it.
+  root.querySelectorAll('[data-mp-chrome], #mp-chrome-root')
       .forEach(el => el.remove());
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
   // Re-derived on every layout pass — the file never records a verdict the
@@ -1074,7 +1069,7 @@ function cleanClone() {
   });
   const body = root.querySelector('body');
   if (body) {
-    body.classList.remove('edit-active', 'mp-chat-open');
+    body.classList.remove('edit-active');
     if (!body.classList.length) body.removeAttribute('class');
   }
   root.querySelectorAll('.page, .page-surround').forEach(el => el.removeAttribute('style'));
@@ -1847,9 +1842,7 @@ function restoreSelection() {
 // ── Chrome injection ────────────────────────────────────────────────────────
 // The generated file is a pure document; ALL skill chrome is built here at
 // runtime, so shell updates apply to already-generated pages the moment
-// they're (re)loaded. Any pre-existing #mp-toolbar/#mp-overlay in the file is
-// a legacy page with baked-in chrome — it's removed and replaced, and the
-// next PUT save cleanses it from the file (serializeForSave strips chrome).
+// they're (re)loaded (serializeForSave strips it all again on save).
 //
 // The chrome is built inside a SHADOW ROOT, and that is a guarantee, not a
 // detail: a generated page carries arbitrary CSS — a theme redefines every
@@ -1895,8 +1888,8 @@ function setChromeState(name, on) { if (chromeHost) chromeHost.toggleAttribute(n
 
 // The chrome's stylesheet. Served pages carry it inline in an inert
 // <template> the server injected, so it applies synchronously — the chrome
-// never paints unstyled. Anything else (a legacy page that links the shell
-// itself, file:// use) falls back to a <link> next to this script.
+// never paints unstyled. A page whose template injection had no </head> to
+// anchor on falls back to a <link> next to this script.
 function chromeStylesheet() {
   const tpl = document.getElementById('mp-chrome-css');
   if (tpl && tpl.content && tpl.content.childElementCount) return tpl.content.cloneNode(true);
@@ -1907,17 +1900,10 @@ function chromeStylesheet() {
 }
 
 function injectChrome() {
-  // Whatever chrome the document already carries goes: a legacy page's baked
-  // toolbar, or the empty host left in a re-serialized DOM (the print
-  // pipeline re-renders the serialized page).
-  // Two of these are only ever found on older pages: .page-break-guide, the
-  // dotted rules an older shell drew inside the sheet to mark overflow
-  // (continuation sheets replaced them — overflow that lands on its own sheet
-  // has nothing to warn about, and a remainder that still cannot be placed
-  // says so by hanging off the paper), and #mp-chat-panel, from before the
-  // chat panel was retired. Both go like any other stale chrome.
-  document.querySelectorAll('#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, .page-break-guide')
-          .forEach(el => el.remove());
+  // The empty host left behind in a re-serialized DOM goes first: the print
+  // pipeline re-renders the serialized page, and its shadow content was never
+  // serialized — a fresh host is built either way.
+  document.querySelectorAll('#mp-chrome-root').forEach(el => el.remove());
 
   chromeHost = document.createElement('div');
   chromeHost.id = 'mp-chrome-root';
@@ -2121,10 +2107,8 @@ function injectChrome() {
   renderLiveStatus();
 
   // Per-page configuration is declarative: assembly sets data attributes on
-  // <body> (the document carries data, never chrome API calls). Legacy pages
-  // instead carry an injected applySize() script line after this script —
-  // that global still works, so they self-configure too. Live edit is NOT
-  // among these: it is not a property of the document at all, only of
+  // <body> (the document carries data, never chrome API calls). Live edit is
+  // NOT among these: it is not a property of the document at all, only of
   // whether this page is being served.
 
   // Pages ship their design baked in: the shell's :root tokens plus whatever
@@ -2135,10 +2119,8 @@ function injectChrome() {
   // Paper size comes from the page's own body attributes and nowhere else:
   // it is confirmed with the user at generation time, so every standalone
   // page opens at its own configured paper.
-  // data-mp-paper may carry the legacy 'landscape' alias (applySize resolves
-  // it); data-mp-orientation is the separate-axis form.
   const configured = document.body.dataset.mpPaper;
-  const savedPaper = (PAPERS[configured] || configured === 'landscape') ? configured : 'letter';
+  const savedPaper = PAPERS[configured] ? configured : 'letter';
   const configuredOrient = document.body.dataset.mpOrientation === 'landscape' ? 'landscape' : undefined;
 
   applySize(savedPaper, configuredOrient);
