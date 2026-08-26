@@ -132,36 +132,6 @@ button, input, textarea, select {
 
 #mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--mp-rule); flex-shrink: 0; }
 
-/* Variant nav — shell.js flips it to flex once it finds multiple variants. */
-#mp-variant-nav { display: none; align-items: center; gap: 8px; }
-#mp-variant-label {
-  font-size: 11px;
-  color: var(--mp-mid);
-  white-space: nowrap;
-  letter-spacing: 0.04em;
-}
-
-
-#mp-toolbar .mp-nav-btn {
-  width: 28px; height: 28px;
-  border: 1px solid var(--mp-rule);
-  background: transparent;
-  color: var(--mp-mid);
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  flex-shrink: 0;
-  line-height: 1;
-}
-#mp-toolbar .mp-nav-btn:hover {
-  background: var(--mp-bg);
-  color: var(--mp-ink);
-}
-
 /* ── Secondary buttons — quiet, circular icon controls ──
    For toolbar actions that support the document rather than act on it:
    no border, no box at rest — just the icon in the toolbar's muted ink,

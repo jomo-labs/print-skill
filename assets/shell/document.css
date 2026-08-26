@@ -153,10 +153,6 @@ body {
 #page:has(> .page) { height: auto; }
 #page:has(> .page)::before { content: none; }
 
-/* Multi-variant mode: hide all variants, show only .active */
-.variant-page { display: none; }
-.variant-page.active { display: block; }
-
 /* Static per-paper sheet geometry so a page opened directly (no scripts)
    still shows and prints its configured paper exactly. applySize() sets the
    same dimensions as inline styles at runtime; these cover the script-less
@@ -217,7 +213,7 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
 /* ── No-fill enforcement — color lives in text/strokes only ── */
 /* Lock page surface to white — a literal, not var(--color-paper), so that a
    generated :root override moving --color-paper cannot tint the sheet. */
-.page, .variant-page { background: white !important; }
+.page { background: white !important; }
 .page div, .page section, .page aside, .page article,
 .page header, .page figure, .page li, .page span, .page blockquote,
 .page p, .page label, .page dl, .page dt, .page dd {
@@ -269,8 +265,8 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
    (p/headings/span are auto-sized, so they never cause overlap themselves,
    and clipping them would shear ascenders and italic overhang). A container
    that intentionally bleeds (rare) may opt out with `overflow: visible`. */
-:is(.page, .variant-page) :is(div, section, aside, article, header, footer,
-    figure, ul, ol, dl, dt, dd, blockquote, td, th):not(.page):not(.variant-page) {
+.page :is(div, section, aside, article, header, footer,
+    figure, ul, ol, dl, dt, dd, blockquote, td, th):not(.page) {
   overflow: clip;
   overflow-clip-margin: 6px;
 }
@@ -332,7 +328,7 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
      padding, and themed border all stay, inside a zero-margin @page box the
      same size as the sheet. No zoom, no re-layout: only the screen-fit
      transform and the drop shadow are stripped. */
-  .page-surround > .page, .variant-page.active {
+  .page-surround > .page {
     transform: none !important;
     box-shadow: none !important;
     margin: 0 auto !important;
@@ -379,9 +375,6 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
     print-color-adjust: exact;
   }
   #page > .page:not(:last-of-type) { break-after: page; }
-  /* In variant mode, only the active variant prints */
-  .variant-page { display: none !important; }
-  .variant-page.active { display: block !important; }
   /* Overflow past the fit floor breaks at section boundaries, never mid-block.
      (break-inside is a request, not a guarantee — a single section taller than
      one sheet still tears; that overflow is a generation-side bug.) */

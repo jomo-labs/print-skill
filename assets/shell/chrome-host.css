@@ -95,9 +95,8 @@
      separation the screen puts between them. */
   @media print {
     /* Each continuation starts a printed page. break-BEFORE, not break-after
-       on its predecessor: a break-after would also fire on the last sheet of
-       a chain that is followed only by display:none variants, and print a
-       trailing blank page. */
+       on its predecessor: break-before cannot leave a trailing blank page
+       after the last sheet of a chain. */
     .mp-continuation {
       break-before: page !important;
       break-after: auto !important;
@@ -110,7 +109,6 @@
        pages, edge to edge. Scoped to the sheets the chrome manages so a
        .page nested inside generated content is left alone. */
     .page-surround > .page,
-    .page-surround > .variant-page,
     #page > .page {
       margin-top: 0 !important;
       margin-bottom: 0 !important;
