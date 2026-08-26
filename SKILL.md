@@ -34,6 +34,13 @@ means you are also the design validator: the self-check in
 
 ## Workflow
 
+One habit pays for itself throughout: **batch independent tool calls into a
+single message.** Every tool call is an API round-trip that re-sends the
+whole conversation, so three Reads issued one at a time cost three
+round-trips — issued together in one message they cost one. The reference
+reads in Steps 1 and 3, and the channel-file Writes in Step 5, are all
+independent: always issue each group together.
+
 ### Step 0 — Input & server warm-up
 
 First, warm up the PDF server in the background so the one-time Chromium
@@ -125,6 +132,8 @@ Two independent decisions:
 spec file** (`references/types/<slug>.md`, named in the index there) for its
 functional requirements and default styling. The other specs are other
 requests' context — every file read here rides along in every later turn.
+Read the spec together with Step 3's design docs in one batched message
+(classification needs only the routing table, which you have already read).
 
 **Themed?** The request is themed when it names a visual identity: "in the
 theme/style of X", "styled/themed like X", "X-themed", "in an X style", and the
@@ -157,7 +166,10 @@ made either way.
 ### Step 3 — Author
 
 Read `references/design-rules.md` — its platform invariants (what every page
-inherits and no theme overrides) and Part A — before writing any CSS,
+inherits and no theme overrides) and Part A — before writing any CSS
+(batch this Read with the others, and note the token quick reference in
+`page-types.md` already lists every design token and the base-layer styles —
+no need to grep the stylesheet for them),
 `references/principles.md` for the layout and typography craft (rank
 multi-item content, design empty states, set type properly, size the layout to
 the content), and `references/print-fundamentals.md` when physical exactness
@@ -212,7 +224,8 @@ say so in your report.
 
 Write your channels to files — `content_html` (and `custom_css` /
 `answer_key_html` when set) — in a scratch location, **never inside `out/`**
-(stray `.html` files next to the pages confuse serving). Then assemble,
+(stray `.html` files next to the pages confuse serving). Write them all in
+one batched message. Then assemble,
 verify, and check in ONE command:
 
 ```
