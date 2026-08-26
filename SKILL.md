@@ -203,32 +203,45 @@ say so in your report.
 
 ### Step 5 — Assemble
 
-Follow `references/assembly.md` exactly: produce `<slugified-title>.html`
-from `assets/page_template.html` with the step-1 sed (it inlines the document
-stylesheet — the generated file is fully self-contained, no sidecar), then
-make the anchored insertions — nested-sheet CSS (two-sheet only), font
-`<link>`, `custom_css` into `<style id="content-overrides">`, the `<body>`
-data attributes (`data-mp-paper`, `data-mp-orientation`) when
-paper/orientation are set, and finally replace
-`<!-- CONTENT -->` with your content. Use the given commands — never retype
-template or stylesheet.
+Write your channels to files — `content_html` (and `custom_css` /
+`answer_key_html` when set) — in a scratch location, **never inside `out/`**
+(stray `.html` files next to the pages confuse serving). Then assemble,
+verify, and check in ONE command:
+
+```
+node <skill-dir>/server/assemble-cli.mjs \
+  --content <scratch>/content.html --title "<Page Title>" \
+  [--css <scratch>/overrides.css] [--font-import <url>] \
+  [--paper a4|legal|half] [--orientation landscape] \
+  [--answer-key <scratch>/key.html] --check
+```
+
+It executes the whole procedure in `references/assembly.md` — template copy
+with the document stylesheet inlined, two-sheet wrapping, anchored
+insertions, `<body>` attributes, `@page` size — then runs the structural
+verification list AND the fit + contrast checks (`--check`) on the written
+file, exiting 0 only when everything passes. One command instead of a chain
+of sed/grep round-trips, and the anchor mistakes the greps used to catch
+can't happen at all. The output lands in `<cwd>/out/<slugified-title>.html`
+(`--out-dir` overrides; an explicit output location from the user wins).
+Read `references/assembly.md` when you need the underlying anchors — for
+editing an existing page in place, or assembling by hand without Node.
 
 ### Step 6 — Verify
 
-Run the grep checks listed at the end of `references/assembly.md` against the
-written file (no leftover `<!-- CONTENT -->`, shell intact, anchors in order).
-Fix in place if anything fails.
-
-Then check the page itself — fit and contrast in one command:
+Step 5's `--check` already verified structure, fit, and contrast — this step
+is the fix loop for when it exited 1. Diagnose with the failing check's own
+CLI — `fit-cli.mjs --sections` (what each section costs and the px to cut)
+or `contrast-cli.mjs --all` — fix your channels, and re-run the Step 5
+command until it exits 0. After any later in-place edit to the generated
+file, re-check directly:
 
 ```
 node <skill-dir>/server/check-cli.mjs out/<file>.html
 ```
 
 It runs both checks below concurrently (one page load's wall time, not two)
-and exits 0 only when both pass. On a failure, re-run just the failing check's
-own CLI with its detail flag — `fit-cli.mjs --sections` or
-`contrast-cli.mjs --all` — fix, and re-run `check-cli.mjs` until it passes.
+and exits 0 only when both pass.
 
 **The fit check** (`fit-cli.mjs`) verifies the content fits the sheets you
 laid out. It loads the page exactly as the browser and the PDF renderer do and reports
@@ -273,33 +286,34 @@ Make the page reachable at `http://127.0.0.1:<port>/<file>.html`. The served
 root is `<cwd>/out` — the assembly output directory — so one server covers
 every page this project generates.
 
-1. Probe ports 4949–4958 with `GET http://127.0.0.1:<port>/healthz`. An
-   answer naming `"print-skill-server"` whose `dir` equals `<cwd>/out` is
-   this project's server — reuse it (note its port); a healthy server with a
-   **different** `dir` belongs to another project — leave it alone and keep
-   probing.
-2. If none matched, start one **in the background** (never foreground — some
-   harnesses kill foreground commands at 30s, taking the server down):
-   `node <skill-dir>/server/server.mjs --dir <cwd>/out --port 4949 --auto-port`.
-   `--auto-port` walks to the next free port when 4949 is taken; the startup
-   line prints the URL it actually bound — read it, don't assume 4949.
+1. One command does the probe / reuse / start sequence and prints the URL:
+
+   ```
+   node <skill-dir>/server/serve-cli.mjs --dir <cwd>/out
+   ```
+
+   It finds a print-skill server already serving this exact directory on
+   ports 4949–4958 and reuses it, or starts one **detached** (it outlives
+   the command — never start `server.mjs` in the foreground yourself; some
+   harnesses kill foreground commands at 30s, taking the server down) and
+   reports the URL it actually bound — read it, don't assume 4949. A healthy
+   server on another `dir` belongs to another project and is left alone.
    Give `--dir` as an **absolute** path: a shell that ran the Step 0
    `npm install` is still sitting in `<skill-dir>/server`, and a relative
-   `out` resolves there instead of in the project. The server refuses to
-   start on a root inside the skill and says so — re-run with the absolute
-   path rather than reading the pages back out of the skill directory.
+   `out` resolves there instead of in the project. The server refuses a
+   root inside the skill and says so — re-run with the absolute path.
    If the Step 0 background `npm install` is still running, wait for it to
    finish first; if it was skipped or failed, run
    `npm install --prefix <skill-dir>/server` now (its postinstall fetches the
    Chromium build).
-3. A running server is all live editing needs — there is nothing to connect
+2. A running server is all live editing needs — there is nothing to connect
    or arm (see "Live mode"). Whether you started it just now or reused one
    that was already up, you are done. One exception, and it is about where
    YOU are running rather than anything you did: if the user's browser cannot
    reach your loopback (cloud sandboxes — see
    `references/harness-support.md` Part 1), the URL is useless to them. Report the
    file path instead, and say the page prints correctly opened directly.
-4. If Node is unavailable or the install fails, skip serving — the generated
+3. If Node is unavailable or the install fails, skip serving — the generated
    file still works opened directly in a browser as a **plain printable**
    (styled and print-exact via the browser dialog; no toolbar, editing, or
    live connection — those are server-injected chrome). Say so in the report

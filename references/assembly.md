@@ -17,6 +17,23 @@ for the toolbar. You never author or retype any of
 these files — **produce the copy with the commands below, then make targeted
 insertions at the anchors.**
 
+## Run it as one command
+
+`server/assemble-cli.mjs` executes this whole procedure — page copy, the
+anchored insertions in the right order, and the verification list at the end
+— and with `--check` also runs the fit and contrast checks on the result:
+
+```
+node <skill-dir>/server/assemble-cli.mjs --content <content.html> --title "<title>" \
+  [--css <overrides.css>] [--font-import <url>] [--paper a4|legal|half] \
+  [--orientation landscape] [--answer-key <key.html>] [--out-dir <dir>] [--check]
+```
+
+Prefer it whenever Node is available: it is one round-trip instead of a
+chain, and it cannot miss an anchor. The manual procedure below remains the
+spec the CLI implements — and the path to follow by hand when Node is not
+available, or when editing an already-generated file in place.
+
 ## Inputs (the authored channels)
 
 | Channel | Required | What it is |
@@ -31,10 +48,10 @@ insertions at the anchors.**
 
 ## Procedure
 
-### 1. Output directory, gitignore, produce the page copy
+### 1. Output directory, produce the page copy
 
-Generated pages are outputs, not sources — they live flat in a gitignored
-`out/` directory (each printable is one self-contained file, so no
+Generated pages are outputs, not sources — they live flat in an `out/`
+directory (each printable is one self-contained file, so no
 subdirectories are needed), and users reach them through the local server
 URL, never the file path:
 
@@ -56,9 +73,8 @@ The `sed` inlines the document stylesheet (single source:
 block — one command, nothing retyped. There is **no shell copy step**:
 `<outdir>` contains only `.html` files.
 
-**Gitignore** (once per project): if `<cwd>` is inside a git repository and
-`git check-ignore -q out` fails, append an `out/` line to `<cwd>/.gitignore`
-(creating the file if needed).
+(Whether `out/` is git-ignored is the project's own call — this skill never
+edits the project's `.gitignore` or any other file outside `out/`.)
 
 Output filename: the title, lowercased, every run of non-alphanumeric characters
 replaced with a single hyphen, leading/trailing hyphens trimmed, plus `.html`
