@@ -1,5 +1,5 @@
-// Where this script was loaded from — the base for resolving sibling shell
-// assets (chrome.css) on pages the server didn't wrap. Read at parse time:
+// Where this script was loaded from — the base for resolving chrome.css when
+// the inline template is missing (see chromeStylesheet). Read at parse time:
 // document.currentScript is only meaningful while the script is executing.
 const SHELL_SRC = document.currentScript?.src || location.href;
 
@@ -26,7 +26,7 @@ const PAPERS = {
 };
 
 function getActivePage() {
-  return document.querySelector('.variant-page.active') || document.getElementById('page');
+  return document.getElementById('page');
 }
 
 // Current paper/orientation are state, fixed at generation time: init()
@@ -53,8 +53,8 @@ function paperDims() {
 //
 // The split is a RUNTIME VIEW of the document, never part of it. The file on
 // disk keeps the single authored flow: unpaginate() rewinds to that flow
-// before every pass, applySize() re-splits from scratch on load, on paper
-// change and on variant switch, and serializeForSave() unpaginates the DOM it
+// before every pass, applySize() re-splits from scratch on load and on paper
+// change, and serializeForSave() unpaginates the DOM it
 // writes back. That is also what makes the split idempotent for the print
 // pipeline, which re-renders the LIVE DOM — an already-split page re-splits
 // into exactly the same sheets.
@@ -96,9 +96,7 @@ function sheetChain(sheet) {
 }
 
 // The sheets pagination owns: every sheet of a nested multi-sheet assembly,
-// or the one active top-level sheet. Inactive variants are left alone — they
-// are not on screen, and splitting them would only be undone at the next
-// variant switch.
+// or the one top-level sheet.
 function originSheets() {
   const nested = Array.from(document.querySelectorAll('#page > .page')).filter(el => !isContinuation(el));
   if (nested.length) return nested;
@@ -589,13 +587,10 @@ function nodeRect(node) {
 // A continuation sheet IS a sheet: it inherits the origin's own classes, so a
 // themed .page continues onto an identically themed one and picks up paper,
 // margins, frame and shadow from the page's own CSS with nothing restated
-// here. Only the id (which belongs to one element) and the variant/active
-// classes (which the chrome owns) are left behind.
+// here. Only the id (which belongs to one element) is left behind.
 function makeContinuation(prev, p) {
   const sheet = document.createElement('div');
-  sheet.className = Array.from(prev.classList)
-    .filter(c => c !== 'variant-page' && c !== 'active')
-    .join(' ');
+  sheet.className = prev.className;
   sheet.classList.add('page', 'mp-continuation');
   sheet.setAttribute('data-mp-continuation', '');
   sheet.style.width = p.w + 'px';
@@ -606,9 +601,6 @@ function makeContinuation(prev, p) {
 }
 
 function applySize(key, orientation) {
-  // Legacy alias: 'landscape' was once a paper key meaning letter-landscape
-  // (older pages carry applySize('landscape') lines or data-mp-paper values).
-  if (key === 'landscape') { key = 'letter'; orientation = 'landscape'; }
   currentPaper = PAPERS[key] ? key : 'letter';
   if (orientation === 'portrait' || orientation === 'landscape') currentOrientation = orientation;
   const p = paperDims();
@@ -634,7 +626,7 @@ function applySize(key, orientation) {
   // scratch against the paper that is current now.
   unpaginate(document);
   const nested = document.querySelector('#page > .page');
-  document.querySelectorAll('.variant-page, #page').forEach(el => {
+  document.querySelectorAll('#page').forEach(el => {
     el.style.width = p.w + 'px';
     // The screen-fit transform and its margin compensation are cleared before
     // the fit pass: getBoundingClientRect reports SCALED pixels, and the
@@ -651,9 +643,8 @@ function applySize(key, orientation) {
     } else {
       el.style.height = p.h + 'px';
     }
-    // '0', not '' — older generated pages carry min-height sheet rules in
-    // their frozen inline stylesheet, and CSS min-height would beat the
-    // fixed inline height; an inline 0 neutralizes it everywhere.
+    // '0', not '' — an authored min-height (a theme's own sheet rule) would
+    // beat the fixed inline height; an inline 0 neutralizes it everywhere.
     el.style.minHeight = '0';
   });
   // Nested multi-page assemblies: each nested sheet is one full fixed page.
@@ -777,31 +768,6 @@ function scaleToFit(w) {
     el.style.marginLeft = mx;
     el.style.marginRight = mx;
   }
-}
-
-// ── Variant picker ───────────────────────────────────────────────────────────
-
-let variantPages = [], variantTotal = 0, variantCurrent = 0;
-
-function showVariant(n) {
-  variantCurrent = n;
-  variantPages.forEach((el, i) => el.classList.toggle('active', i === n));
-  mpq('#mp-variant-label').textContent = (n + 1) + ' / ' + variantTotal;
-  // Re-apply size so width/transform/sheets target the newly active variant
-  applySize(currentPaper);
-}
-
-function initVariants() {
-  variantPages = Array.from(document.querySelectorAll('.variant-page'));
-  variantTotal = variantPages.length;
-  if (variantTotal < 2) return;
-  mpq('#mp-variant-sep').style.display = '';
-  mpq('#mp-variant-nav').style.display = 'flex';
-  mpq('#mp-btn-prev').addEventListener('click', () =>
-    showVariant((variantCurrent - 1 + variantTotal) % variantTotal));
-  mpq('#mp-btn-next').addEventListener('click', () =>
-    showVariant((variantCurrent + 1) % variantTotal));
-  showVariant(0);
 }
 
 // ── Edit mode ───────────────────────────────────────────────────────────────
@@ -1070,8 +1036,8 @@ let saving = false;
 // The saved document is the live DOM minus runtime-only state, so the file
 // stays as clean as the assembly wrote it. Everything stripped here is
 // re-derived on load: applySize() sets page widths and splits the overflow
-// onto continuation sheets, scaleToFit() sets transform and margins, init()
-// adds mp-embedded, edit mode adds the rest.
+// onto continuation sheets, scaleToFit() sets transform and margins, edit
+// mode adds the rest.
 //
 // cleanClone() is that stripping alone, factored out because the save is not
 // its only reader: undo/redo snapshots go through the same rewind, so a
@@ -1084,14 +1050,13 @@ function cleanClone() {
   // rewinds through, so what is saved is exactly what a reload re-splits.
   unpaginate(root);
   // ALL chrome is runtime-only (injectChrome rebuilds it every load) —
-  // stripping it here keeps the saved file a pure document, and turns the
-  // first save of a legacy page (baked-in chrome) into a cleanse.
+  // stripping it here keeps the saved file a pure document.
   // data-mp-edited markers on content are NOT stripped — persisting them is
   // how the model finds user edits in the file.
   // Chrome lives in one shadow host ([data-mp-chrome]); the serve-time wrap
-  // (its stylesheet, its scripts) is tagged the same way, and legacy pages
-  // carry the old baked-in chrome by id. The file on disk keeps none of it.
-  root.querySelectorAll('[data-mp-chrome], #mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel')
+  // (its stylesheet, its scripts) is tagged the same way. The file on disk
+  // keeps none of it.
+  root.querySelectorAll('[data-mp-chrome], #mp-chrome-root')
       .forEach(el => el.remove());
   root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
   // Re-derived on every layout pass — the file never records a verdict the
@@ -1104,10 +1069,10 @@ function cleanClone() {
   });
   const body = root.querySelector('body');
   if (body) {
-    body.classList.remove('edit-active', 'mp-embedded', 'mp-chat-open');
+    body.classList.remove('edit-active');
     if (!body.classList.length) body.removeAttribute('class');
   }
-  root.querySelectorAll('.page, .variant-page, .page-surround').forEach(el => el.removeAttribute('style'));
+  root.querySelectorAll('.page, .page-surround').forEach(el => el.removeAttribute('style'));
   return root;
 }
 
@@ -1208,17 +1173,6 @@ function restoreHistoryState(state) {
   clearHover();
   clearSelection();
   document.body.innerHTML = state;
-  variantPages = Array.from(document.querySelectorAll('.variant-page'));
-  variantTotal = variantPages.length;
-  if (variantTotal) {
-    // The snapshot remembers its own active variant; trust it, and fall back
-    // to the nearest index only for a snapshot that somehow carries none.
-    const act = variantPages.findIndex(el => el.classList.contains('active'));
-    variantCurrent = act >= 0 ? act : Math.min(variantCurrent, variantTotal - 1);
-    variantPages.forEach((el, i) => el.classList.toggle('active', i === variantCurrent));
-    const lbl = mpq('#mp-variant-label');
-    if (lbl) lbl.textContent = (variantCurrent + 1) + ' / ' + variantTotal;
-  }
   refit();
   savePage();
 }
@@ -1667,7 +1621,7 @@ function deleteSelected() {
   if (!el?.isConnected) return;
   // The sheet is the paper everything stands on, not an element standing on
   // it — there is no document left on the other side of deleting it.
-  if (el.id === 'page' || el.classList.contains('page') || el.classList.contains('variant-page')) return;
+  if (el.id === 'page' || el.classList.contains('page')) return;
   if (!window.confirm(`Delete ${nameElement(selectedDesc)} from the page?`)) return;
   // The state undo returns to — captured once the user has said yes, so a
   // declined dialog leaves no history entry behind.
@@ -1726,21 +1680,15 @@ function clip(text, max) {
   return (space > max * 0.5 ? cut.slice(0, space) : cut).replace(/[.,;:]$/, '') + '…';
 }
 
-// Captured fresh each time, so the snapshot carries whatever the user has just
-// typed into the element — minus the runtime-only state, and whole: an element
-// cut across two sheets is one element again here, because that is how the
-// model will find it in the file.
+// The record is an address plus a name, nothing more: the selector into the
+// authored flow, and the same label/index/text the toolbar shows the user.
+// Everything else about the element lives in the file on disk, which is the
+// authoritative read anyway (chat-cli's own contract).
 function captureElement(target) {
   const { el, pg } = authoredPosition(target);
-  const clone = el.cloneNode(true);
-  clone.removeAttribute('contenteditable');
-  clone.classList.remove('mp-selected');
-  if (!clone.classList.length) clone.removeAttribute('class');
   return {
     selector: selectorWithin(el, pg),
     ...describeElement(el),
-    snapshot: clone.outerHTML.slice(0, 2048),
-    edited: el.hasAttribute('data-mp-edited'),
   };
 }
 
@@ -1839,9 +1787,7 @@ function selectorWithin(target, pg) {
     parts.unshift(sibs.length > 1 ? `${tag}:nth-of-type(${sibs.indexOf(cur) + 1})` : tag);
     cur = cur.parentElement;
   }
-  if (parts[0]?.[0] !== '#') {
-    parts.unshift(pg?.classList.contains('variant-page') ? '.variant-page.active' : '#page');
-  }
+  if (parts[0]?.[0] !== '#') parts.unshift('#page');
   return parts.join(' > ');
 }
 
@@ -1896,9 +1842,7 @@ function restoreSelection() {
 // ── Chrome injection ────────────────────────────────────────────────────────
 // The generated file is a pure document; ALL skill chrome is built here at
 // runtime, so shell updates apply to already-generated pages the moment
-// they're (re)loaded. Any pre-existing #mp-toolbar/#mp-overlay in the file is
-// a legacy page with baked-in chrome — it's removed and replaced, and the
-// next PUT save cleanses it from the file (serializeForSave strips chrome).
+// they're (re)loaded (serializeForSave strips it all again on save).
 //
 // The chrome is built inside a SHADOW ROOT, and that is a guarantee, not a
 // detail: a generated page carries arbitrary CSS — a theme redefines every
@@ -1936,7 +1880,6 @@ let chromeRoot = null;  // its shadow root — every chrome node lives in here
 // would never find it: everything that reaches for a chrome element goes
 // through these.
 function mpq(sel) { return chromeRoot ? chromeRoot.querySelector(sel) : null; }
-function mpAll(sel) { return chromeRoot ? Array.from(chromeRoot.querySelectorAll(sel)) : []; }
 
 // Screen-state flags the chrome styles itself by (chrome.css :host([...])).
 // The matching body classes stay too — chrome-host.css reads those for the
@@ -1945,8 +1888,8 @@ function setChromeState(name, on) { if (chromeHost) chromeHost.toggleAttribute(n
 
 // The chrome's stylesheet. Served pages carry it inline in an inert
 // <template> the server injected, so it applies synchronously — the chrome
-// never paints unstyled. Anything else (a legacy page that links the shell
-// itself, file:// use) falls back to a <link> next to this script.
+// never paints unstyled. A page whose template injection had no </head> to
+// anchor on falls back to a <link> next to this script.
 function chromeStylesheet() {
   const tpl = document.getElementById('mp-chrome-css');
   if (tpl && tpl.content && tpl.content.childElementCount) return tpl.content.cloneNode(true);
@@ -1957,17 +1900,10 @@ function chromeStylesheet() {
 }
 
 function injectChrome() {
-  // Whatever chrome the document already carries goes: a legacy page's baked
-  // toolbar, or the empty host left in a re-serialized DOM (the print
-  // pipeline re-renders the serialized page).
-  // Two of these are only ever found on older pages: .page-break-guide, the
-  // dotted rules an older shell drew inside the sheet to mark overflow
-  // (continuation sheets replaced them — overflow that lands on its own sheet
-  // has nothing to warn about, and a remainder that still cannot be placed
-  // says so by hanging off the paper), and #mp-chat-panel, from before the
-  // chat panel was retired. Both go like any other stale chrome.
-  document.querySelectorAll('#mp-chrome-root, #mp-toolbar, #mp-overlay, #mp-chat-panel, .page-break-guide')
-          .forEach(el => el.remove());
+  // The empty host left behind in a re-serialized DOM goes first: the print
+  // pipeline re-renders the serialized page, and its shadow content was never
+  // serialized — a fresh host is built either way.
+  document.querySelectorAll('#mp-chrome-root').forEach(el => el.remove());
 
   chromeHost = document.createElement('div');
   chromeHost.id = 'mp-chrome-root';
@@ -2044,31 +1980,6 @@ function injectChrome() {
   // No page-setup controls: paper size and orientation are confirmed with
   // the user before generation and fixed in the body's data attributes —
   // changing them afterwards means asking the model to regenerate.
-
-  // Variant nav — hidden until initVariants() detects multiple .variant-page
-  const vsep = sep();
-  vsep.id = 'mp-variant-sep';
-  vsep.style.display = 'none';
-  toolbar.appendChild(vsep);
-  const nav = document.createElement('div');
-  nav.id = 'mp-variant-nav';
-  const prev = document.createElement('button');
-  prev.id = 'mp-btn-prev';
-  prev.className = 'mp-nav-btn';
-  tip(prev, 'Previous variant');
-  prev.innerHTML = '&#8592;';
-  const label = document.createElement('span');
-  label.id = 'mp-variant-label';
-  label.textContent = '1 / 1';
-  const next = document.createElement('button');
-  next.id = 'mp-btn-next';
-  next.className = 'mp-nav-btn';
-  tip(next, 'Next variant');
-  next.innerHTML = '&#8594;';
-  nav.appendChild(prev);
-  nav.appendChild(label);
-  nav.appendChild(next);
-  toolbar.appendChild(nav);
 
   // Everything after this spacer sits at the toolbar's right edge, and nothing
   // to its left ever shifts. A spacer rather than margin-left:auto on the
@@ -2167,14 +2078,6 @@ function injectChrome() {
 (function init() {
   injectChrome();
 
-  // Detect iframe embedding — strip standalone chrome. The state is flagged
-  // twice on purpose: the body class drives the document-side trim
-  // (chrome-host.css), the host attribute the chrome's own (chrome.css).
-  if (window.self !== window.top) {
-    document.body.classList.add('mp-embedded');
-    setChromeState('data-mp-embedded', true);
-  }
-
   // Toolbar buttons
   mpq('#mp-btn-print').addEventListener('click', printThisPage);
   mpq('#mp-btn-edit').addEventListener('click', toggleEditMode);
@@ -2204,10 +2107,8 @@ function injectChrome() {
   renderLiveStatus();
 
   // Per-page configuration is declarative: assembly sets data attributes on
-  // <body> (the document carries data, never chrome API calls). Legacy pages
-  // instead carry an injected applySize() script line after this script —
-  // that global still works, so they self-configure too. Live edit is NOT
-  // among these: it is not a property of the document at all, only of
+  // <body> (the document carries data, never chrome API calls). Live edit is
+  // NOT among these: it is not a property of the document at all, only of
   // whether this page is being served.
 
   // Pages ship their design baked in: the shell's :root tokens plus whatever
@@ -2217,15 +2118,11 @@ function injectChrome() {
   //
   // Paper size comes from the page's own body attributes and nowhere else:
   // it is confirmed with the user at generation time, so every standalone
-  // page opens at its own configured paper. An embedding host can still
-  // re-apply a choice of its own via applySize after load.
-  // data-mp-paper may carry the legacy 'landscape' alias (applySize resolves
-  // it); data-mp-orientation is the separate-axis form.
+  // page opens at its own configured paper.
   const configured = document.body.dataset.mpPaper;
-  const savedPaper = (PAPERS[configured] || configured === 'landscape') ? configured : 'letter';
+  const savedPaper = PAPERS[configured] ? configured : 'letter';
   const configuredOrient = document.body.dataset.mpOrientation === 'landscape' ? 'landscape' : undefined;
 
-  initVariants();
   applySize(savedPaper, configuredOrient);
   window.addEventListener('resize', () => scaleToFit(paperDims().w));
 })();

@@ -2,8 +2,8 @@
    Everything the chrome DRAWS lives in a shadow root (chrome.css) where no
    page CSS can reach it; these few rules are the reverse direction — what the
    chrome needs FROM the page: room under the fixed toolbar, the canvas's own
-   scroll region, the edit-mode cursor, the outline on a selected element, and
-   the embedded-mode trim. Nothing here
+   scroll region, the edit-mode cursor, and the outline on a selected element.
+   Nothing here
    styles chrome; nothing in chrome.css depends on the page honoring it.
 
    Why a layer, why the !important on every declaration: a generated page can
@@ -82,26 +82,6 @@
       outline-offset: 2px !important;
     }
 
-    /* Embedded (iframe) mode — the host page provides its own chrome. */
-    body.mp-embedded { padding-top: 0 !important; }
-    /* The embedding host sizes and scrolls the preview itself, so the canvas
-       gives up the viewport-height scroll region it owns when standalone. */
-    body.mp-embedded .page-surround {
-      padding: 0 !important;
-      min-height: 0 !important;
-      height: auto !important;
-      overflow: visible !important;
-      background: transparent !important;
-    }
-    /* border-color, not border: none — the on-screen box must keep the exact
-       geometry print will have (print reuses this box 1:1), or the embedded
-       preview would wrap lines differently than the printed sheet. */
-    body.mp-embedded .page,
-    body.mp-embedded .variant-page {
-      box-shadow: none !important;
-      border-color: transparent !important;
-    }
-
     /* Continuation sheets — where content that outgrows one sheet goes (see
        paginate() in shell.js). Everything that makes them look like sheets
        comes from the page's own .page rule, so a themed document continues
@@ -115,9 +95,8 @@
      separation the screen puts between them. */
   @media print {
     /* Each continuation starts a printed page. break-BEFORE, not break-after
-       on its predecessor: a break-after would also fire on the last sheet of
-       a chain that is followed only by display:none variants, and print a
-       trailing blank page. */
+       on its predecessor: break-before cannot leave a trailing blank page
+       after the last sheet of a chain. */
     .mp-continuation {
       break-before: page !important;
       break-after: auto !important;
@@ -130,7 +109,6 @@
        pages, edge to edge. Scoped to the sheets the chrome manages so a
        .page nested inside generated content is left alone. */
     .page-surround > .page,
-    .page-surround > .variant-page,
     #page > .page {
       margin-top: 0 !important;
       margin-bottom: 0 !important;

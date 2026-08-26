@@ -1,7 +1,7 @@
 /* document.css — the printable document's own styles: design tokens, page
    geometry, element defaults, and print rules. This is everything a generated
    page needs to look right and print exactly when opened directly as a plain
-   HTML file. NO chrome here — the toolbar/edit/chat styles live in chrome.css,
+   HTML file. NO chrome here — the toolbar/edit styles live in chrome.css,
    which the local server injects (with the shell scripts) at serve time. */
 
 /* ── Design tokens ── */
@@ -134,7 +134,7 @@ body {
      artifact being generated. A fixed literal rather than a token, locked the
      same way the paper background below is: generated content styles the
      document, not the UI around it. (The chrome's own overrides still win on
-     specificity — embedded mode and the print rules both drop it.) */
+     specificity — the print rules drop it.) */
   box-shadow: 0 6px 48px oklch(0% 0 0 / 0.16) !important;
   flex-shrink: 0;
 }
@@ -153,10 +153,6 @@ body {
 #page:has(> .page) { height: auto; }
 #page:has(> .page)::before { content: none; }
 
-/* Multi-variant mode: hide all variants, show only .active */
-.variant-page { display: none; }
-.variant-page.active { display: block; }
-
 /* Static per-paper sheet geometry so a page opened directly (no scripts)
    still shows and prints its configured paper exactly. applySize() sets the
    same dimensions as inline styles at runtime; these cover the script-less
@@ -165,9 +161,7 @@ body {
 body[data-mp-paper="a4"] .page        { width: 793px;  height: 1122px; }
 body[data-mp-paper="legal"] .page     { width: 816px;  height: 1344px; }
 body[data-mp-paper="half"] .page      { width: 528px;  height: 816px;  }
-/* Orientation is a separate axis: landscape swaps each size's dimensions.
-   (data-mp-paper="landscape" is the legacy letter-landscape alias.) */
-body[data-mp-paper="landscape"] .page { width: 1056px; height: 816px;  }
+/* Orientation is a separate axis: landscape swaps each size's dimensions. */
 body[data-mp-orientation="landscape"] .page                        { width: 1056px; height: 816px; }
 body[data-mp-paper="a4"][data-mp-orientation="landscape"] .page    { width: 1122px; height: 793px; }
 body[data-mp-paper="legal"][data-mp-orientation="landscape"] .page { width: 1344px; height: 816px; }
@@ -217,7 +211,7 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
 /* ── No-fill enforcement — color lives in text/strokes only ── */
 /* Lock page surface to white — a literal, not var(--color-paper), so that a
    generated :root override moving --color-paper cannot tint the sheet. */
-.page, .variant-page { background: white !important; }
+.page { background: white !important; }
 .page div, .page section, .page aside, .page article,
 .page header, .page figure, .page li, .page span, .page blockquote,
 .page p, .page label, .page dl, .page dt, .page dd {
@@ -269,8 +263,8 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
    (p/headings/span are auto-sized, so they never cause overlap themselves,
    and clipping them would shear ascenders and italic overhang). A container
    that intentionally bleeds (rare) may opt out with `overflow: visible`. */
-:is(.page, .variant-page) :is(div, section, aside, article, header, footer,
-    figure, ul, ol, dl, dt, dd, blockquote, td, th):not(.page):not(.variant-page) {
+.page :is(div, section, aside, article, header, footer,
+    figure, ul, ol, dl, dt, dd, blockquote, td, th):not(.page) {
   overflow: clip;
   overflow-clip-margin: 6px;
 }
@@ -332,7 +326,7 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
      padding, and themed border all stay, inside a zero-margin @page box the
      same size as the sheet. No zoom, no re-layout: only the screen-fit
      transform and the drop shadow are stripped. */
-  .page-surround > .page, .variant-page.active {
+  .page-surround > .page {
     transform: none !important;
     box-shadow: none !important;
     margin: 0 auto !important;
@@ -379,9 +373,6 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
     print-color-adjust: exact;
   }
   #page > .page:not(:last-of-type) { break-after: page; }
-  /* In variant mode, only the active variant prints */
-  .variant-page { display: none !important; }
-  .variant-page.active { display: block !important; }
   /* Overflow past the fit floor breaks at section boundaries, never mid-block.
      (break-inside is a request, not a guarantee — a single section taller than
      one sheet still tears; that overflow is a generation-side bug.) */
