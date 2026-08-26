@@ -128,7 +128,7 @@ them:
 
 | Family | Tokens (value) |
 |---|---|
-| Ink | `--color-ink` (near-black) · `--color-mid` · `--color-dim` · `--color-ghost` · `--color-rule` · `--color-rule-light` · `--color-pull-bg` (faint tint) · `--color-accent` · `--color-paper` |
+| Ink | `--color-ink` oklch(11% .005 78) · `--color-mid` oklch(44% .008 78) · `--color-dim` oklch(67% .006 78) · `--color-ghost` oklch(87% .005 78) · `--color-rule` = ink · `--color-rule-light` oklch(83% .005 78) · `--color-pull-bg` oklch(94% .009 78) · `--color-accent` oklch(52% .15 78) · `--color-paper` white |
 | Fonts | `--font-display` (Playfair) · `--font-body` (Source Serif 4) · `--font-label` (Inter) |
 | Type scale | `--text-2xs` 9 · `--text-xs` 10.5 · `--text-body` 13.5 · `--text-md` 15.5 · `--text-lg` 19 · `--text-xl` 26 · `--text-2xl` 38 · `--text-3xl` 48 · `--text-4xl` 80 (px) |
 | Spacing | `--space-1..20`: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80 (px) |
