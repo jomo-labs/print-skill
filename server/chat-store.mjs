@@ -50,18 +50,7 @@ export function createLiveLog() {
     // Absent means it fits, which is why a page that comes back into fit
     // clears its entry rather than filing a second report.
     fits: new Map(),
-    waiters: new Set(),
   };
-}
-
-/**
- * Resolve every pending long-poll (empty) so open sockets never hold the
- * server up — called from startServer's close() ahead of server.close(),
- * without which render-cli's one-shot server and SIGINT shutdown would hang
- * until the longest poll times out.
- */
-export function closeAll(log) {
-  for (const w of [...log.waiters]) w.settle([]);
 }
 
 // ── Selection state ─────────────────────────────────────────────────────────
@@ -78,12 +67,12 @@ export function setSelection(log, page, data) {
 }
 
 /**
- * What is selected right now, newest first. With no page, every page that has
- * something selected — a model asks the server, not a document, so it does not
- * have to know which page the user is looking at.
+ * What is selected right now, newest first, across every page — a model asks
+ * the server, not a document, so it does not have to know which page the user
+ * is looking at.
  */
-export function getSelections(log, page) {
-  return newestFirst(log.selections, page);
+export function getSelections(log) {
+  return newestFirst(log.selections);
 }
 
 /** Record that a page does not fit. `null` means it fits again. */
@@ -98,15 +87,12 @@ export function setFit(log, page, data) {
 }
 
 /** Which pages do not currently fit their sheets, newest first. */
-export function getFits(log, page) {
-  return newestFirst(log.fits, page);
+export function getFits(log) {
+  return newestFirst(log.fits);
 }
 
-function newestFirst(map, page) {
-  const all = page === undefined
-    ? [...map.values()]
-    : (map.has(page) ? [map.get(page)] : []);
-  return all.sort((a, b) => b.ts - a.ts);
+function newestFirst(map) {
+  return [...map.values()].sort((a, b) => b.ts - a.ts);
 }
 
 // ── Status messages ─────────────────────────────────────────────────────────
@@ -120,35 +106,10 @@ export function postMessage(log, { page, kind, text, data }) {
   if (data !== undefined) msg.data = data;
   log.messages.push(msg);
   if (log.messages.length > MAX_MESSAGES) log.messages.shift();
-  for (const w of [...log.waiters]) {
-    if (page === undefined || w.page === undefined || w.page === page) {
-      w.settle(pending(log, w.after, w.page));
-    }
-  }
   return msg;
 }
 
-/**
- * Resolve with status messages after `after` — immediately if any exist,
- * otherwise when one arrives or waitMs elapses (then possibly []). onAbort
- * registration lets the caller drop the waiter when the client socket closes
- * mid-poll.
- */
-export function awaitMessages(log, { after = 0, page, waitMs, onAbort }) {
-  const ready = pending(log, after, page);
-  if (ready.length || !waitMs) return Promise.resolve(ready);
-
-  return new Promise((resolve) => {
-    const waiter = { after, page };
-    let timer = null;
-    const finish = (msgs) => {
-      log.waiters.delete(waiter);
-      clearTimeout(timer);
-      resolve(msgs);
-    };
-    waiter.settle = finish;
-    log.waiters.add(waiter);
-    timer = setTimeout(() => finish([]), waitMs);
-    if (onAbort) onAbort(() => finish([]));
-  });
+/** Status messages after `after`, for one page — the tab's own 1.5s poll. */
+export function readMessages(log, { after = 0, page }) {
+  return pending(log, after, page);
 }

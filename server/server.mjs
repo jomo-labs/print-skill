@@ -68,8 +68,8 @@ import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderPdf, closeBrowser } from "./render.mjs";
 import {
-  createLiveLog, postMessage, awaitMessages,
-  setSelection, getSelections, setFit, getFits, closeAll,
+  createLiveLog, postMessage, readMessages,
+  setSelection, getSelections, setFit, getFits,
 } from "./chat-store.mjs";
 
 const DEFAULT_PORT = 4949;
@@ -518,14 +518,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
 
     if (req.method === "GET") {
       const after = query.has("after") ? Math.max(0, Number(query.get("after")) || 0) : 0;
-      const waitMs = Math.min(Math.max(Number(query.get("wait")) || 0, 0), 300) * 1000;
-      const messages = await awaitMessages(live, {
-        after,
-        page: pagePath,
-        waitMs,
-        onAbort: (drop) => req.on("close", drop),
-      });
-      if (res.writableEnded) return; // client went away mid-poll
+      const messages = readMessages(live, { after, page: pagePath });
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true, epoch: live.epoch, messages }));
     }
@@ -713,12 +706,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
           server,
           port: bound,
           url: baseUrl,
-          // Settle open chat long-polls first or close() waits out the longest
-          // poll (render-cli's one-shot server and SIGINT both come through here).
-          close: () => {
-            closeAll(live);
-            return new Promise((r) => server.close(r));
-          },
+          close: () => new Promise((r) => server.close(r)),
         });
       });
     };
