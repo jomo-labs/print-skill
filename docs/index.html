@@ -88,13 +88,13 @@ h1 {
   font-size: var(--text-4xl);
   font-weight: 900;
   line-height: 1.05;
-  margin: 6px 0 2px;
+  margin: 10px 0 4px;
 }
 h1 .slash { color: var(--color-accent); }
 .masthead-rule {
   border: none;
   border-top: var(--border-mid) solid var(--color-ink);
-  margin: 14px 0 6px;
+  margin: 18px 0 8px;
 }
 .dateline {
   font-family: var(--font-label);
@@ -113,14 +113,14 @@ h1 .slash { color: var(--color-accent); }
 .lead {
   font-size: var(--text-lg);
   line-height: 1.5;
-  margin: 24px 0 0;
+  margin: 30px 0 0;
 }
 
 /* ── CTA ── */
 .cta {
   border: var(--border-thin) solid var(--color-accent);
-  padding: 18px 24px;
-  margin: 24px 0 0;
+  padding: 22px 24px;
+  margin: 30px 0 0;
   text-align: center;
 }
 .cta .cta-label {
@@ -164,8 +164,8 @@ h1 .slash { color: var(--color-accent); }
 
 /* ── How to use ── */
 .howto {
-  margin-top: 24px;
-  padding-top: 18px;
+  margin-top: 30px;
+  padding-top: 22px;
   border-top: var(--border-hair) solid var(--color-rule-light);
 }
 .section-label {
@@ -178,10 +178,10 @@ h1 .slash { color: var(--color-accent); }
   color: var(--color-ink);
 }
 .prompts {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+  margin-top: 18px;
 }
 .prompt {
   border-left: var(--border-mid) solid var(--color-accent);
@@ -201,7 +201,7 @@ h1 .slash { color: var(--color-accent); }
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
   color: var(--color-dim);
-  margin: 8px 0 0 19px;
+  margin: 12px 0 0 19px;
 }
 
 /* ── Features ── */
@@ -209,9 +209,9 @@ h1 .slash { color: var(--color-accent); }
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: 40px;
-  row-gap: 16px;
-  margin-top: 24px;
-  padding-top: 18px;
+  row-gap: 26px;
+  margin-top: 30px;
+  padding-top: 22px;
   border-top: var(--border-hair) solid var(--color-rule-light);
 }
 .feature h3 {
@@ -256,6 +256,7 @@ h1 .slash { color: var(--color-accent); }
   }
   h1 { font-size: 56px; }
   .page { height: auto; }
+  .prompts { grid-template-columns: 1fr; gap: 10px; }
   .features { grid-template-columns: 1fr; }
   .cta .cmd-row { gap: 10px; }
   .cta code { font-size: 12px; white-space: nowrap; }
@@ -303,7 +304,6 @@ h1 .slash { color: var(--color-accent); }
       <div class="prompts">
         <blockquote class="prompt"><span class="cmd-prefix">/print</span> a weekly chore chart for Maya (9) and Leo (6)</blockquote>
         <blockquote class="prompt"><span class="cmd-prefix">/print</span> this recipe, big type, something for the kitchen wall</blockquote>
-        <blockquote class="prompt"><span class="cmd-prefix">/print</span> an ocean-animals word search for a 7-year-old</blockquote>
         <blockquote class="prompt"><span class="cmd-prefix">/print</span> a certificate for the World’s Okayest Dog</blockquote>
       </div>
       <div class="prompt-note">…and anything else you can describe. That’s the whole workflow.</div>
