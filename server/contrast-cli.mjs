@@ -13,8 +13,9 @@
 // and applies the threshold that actually governs each run of text, from its
 // own computed size and weight.
 //
-// Usage: node contrast-cli.mjs <page.html> [--json] [--all]
-//   --all   list every distinct text style, not just the failures
+// Usage: node contrast-cli.mjs <page.html>
+// Failures list every offending style with the size and weight that set its
+// threshold; a passing page prints one summary line.
 // Exit:  0  every text run clears its floor
 //        1  at least one does not (or the page could not be loaded)
 //        2  bad usage
@@ -23,12 +24,9 @@ import path from "node:path";
 import { launchBrowser, guardFonts } from "./browser.mjs";
 import { startServer } from "./server.mjs";
 
-const args = process.argv.slice(2);
-const asJson = args.includes("--json");
-const showAll = args.includes("--all");
-const pageArg = args.find((a) => !a.startsWith("--"));
-if (!pageArg) {
-  console.error("usage: node contrast-cli.mjs <page.html> [--json] [--all]");
+const pageArg = process.argv[2];
+if (!pageArg || pageArg.startsWith("--") || process.argv[3]) {
+  console.error("usage: node contrast-cli.mjs <page.html>");
   process.exit(2);
 }
 const pagePath = path.resolve(pageArg);
@@ -155,10 +153,8 @@ try {
   // An unparseable color is a finding, not a pass — it must not exit 0.
   const fails = found.filter((f) => !f.pass);
 
-  if (asJson) {
-    console.log(JSON.stringify({ ok: fails.length === 0, styles: found, failures: fails }));
-  } else {
-    const rows = showAll ? found : fails;
+  {
+    const rows = fails;
     const multi = new Set(found.map((f) => f.sheet)).size > 1;
     for (const f of rows) {
       const mark = f.unparsed ? "????" : f.pass ? "ok  " : "FAIL";

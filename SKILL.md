@@ -111,8 +111,9 @@ question text noting checkout and contact info are included by default.
 
 **How answers bind.** Paper size and orientation land directly in the
 `paper` / `orientation` channels (Step 3); "let the model decide" means
-choose per page type as usual. Max pages caps the sheets you author in Step
-3 and is the count `fit-cli.mjs` must confirm in Step 6. Selected topics
+choose per page type as usual. Max pages becomes `--max-sheets` on the Step
+5 command (default 1) — the sheets you author in Step 3 must fit that budget,
+and assembly refuses more. Selected topics
 define the content scope for Steps 2–3.
 
 ### Step 1 — Classify
@@ -172,10 +173,16 @@ matters (paper size, DPI, margins). Produce these channels:
 | `title` | Page title; also becomes the filename. |
 | `answer_key_html` | Worksheets with an answer key only; otherwise empty. Never author the key as a second page inside `content_html`. |
 
-**Fit one sheet.** Size the content to the paper before you write it (Principle
-VII, and the sheet geometry in `references/page-types.md` plus the type's own
-spec file): count the
-steps, items or rows and pick a layout that holds them. If the content genuinely
+**Fit one sheet — and do the arithmetic first.** Before writing any content,
+make a sizing ledger: the content box from the sheet geometry in
+`references/page-types.md` (≈ 680×912px letter portrait, less the ~41px
+footer), and each planned block's cost from the type's spec file — then check
+the sum fits. `header 60 + 2 sections × 300 + tracker 120 + footer 41 =
+821 ≤ 912` takes one line of thought and saves the fix rounds that eyeballing
+costs (Principle VII). Declare the sheet count while you're at it: one sheet
+unless the request genuinely needs more, and a multi-sheet page is authored
+as explicit `.page` sheets AND passed as `--max-sheets N` in Step 5 — never
+the accident of writing too much. If the content genuinely
 will not fit, author the further sheets **explicitly** — the two-sheet form in
 `references/assembly.md` — and decide what lands on each, so every sheet reads
 as complete.
@@ -213,14 +220,17 @@ node <skill-dir>/server/assemble-cli.mjs \
   --content <scratch>/content.html --title "<Page Title>" \
   [--css <scratch>/overrides.css] [--font-import <url>] \
   [--paper a4|legal|half] [--orientation landscape] \
-  [--answer-key <scratch>/key.html] --check
+  [--answer-key <scratch>/key.html] [--max-sheets N]
 ```
 
 It executes the whole procedure in `references/assembly.md` — template copy
-with the document stylesheet inlined, two-sheet wrapping, anchored
-insertions, `<body>` attributes, `@page` size — then runs the structural
-verification list AND the fit + contrast checks (`--check`) on the written
-file, exiting 0 only when everything passes. One command instead of a chain
+with the document stylesheet inlined, multi-sheet wrapping, anchored
+insertions, `<body>` attributes, `@page` size — then always runs the
+structural verification list, the fit check, and the contrast check on the
+written file, exiting 0 only when everything passes. `--max-sheets` is the
+user's page budget (default 1; an answer key makes it 2): authoring more
+sheets than the budget fails the build, so a bigger page is an explicit
+choice, not a spill. One command instead of a chain
 of sed/grep round-trips, and the anchor mistakes the greps used to catch
 can't happen at all. The output lands in `<cwd>/out/<slugified-title>.html`
 (`--out-dir` overrides; an explicit output location from the user wins).
@@ -229,53 +239,43 @@ editing an existing page in place, or assembling by hand without Node.
 
 ### Step 6 — Verify
 
-Step 5's `--check` already verified structure, fit, and contrast — this step
-is the fix loop for when it exited 1. Diagnose with the failing check's own
-CLI — `fit-cli.mjs --sections` (what each section costs and the px to cut)
-or `contrast-cli.mjs --all` — fix your channels, and re-run the Step 5
-command until it exits 0. After any later in-place edit to the generated
-file, re-check directly:
-
-```
-node <skill-dir>/server/check-cli.mjs out/<file>.html
-```
-
-It runs both checks below concurrently (one page load's wall time, not two)
-and exits 0 only when both pass.
+Step 5 already verified everything; this step is what its output means, and
+the fix loop for a non-zero exit.
 
 **The fit check** (`fit-cli.mjs`) verifies the content fits the sheets you
-laid out. It loads the page exactly as the browser and the PDF renderer do and reports
-what the shell had to do. Exit 0 means the content fits as authored. Exit 1
-means it does not, and says how:
+laid out, loading the page exactly as the browser and the PDF renderer do.
+Three outcomes:
 
-- *authored N sheets, content needs M* — the shell had to continue the content
-  onto sheets you did not lay out. Nothing is lost and all M sheets print, but
-  the breaks are accidents. Cut or tighten the content to fit N, or author the
-  M sheets and place the breaks yourself. Re-run until it passes.
-- *content too tall to place on any sheet* — one block is taller than the paper.
-  It hangs past the edge and **prints clipped**. Always fix this: split the
-  block, shorten it, or give it its own sheet.
-- *content is cut off inside N containers* — content outgrew a fixed-size
-  container. Containers clip rather than overlap (the document stylesheet sets
-  `overflow: clip` on structural containers — on paper, overlap is never
-  right), so whatever is past the clip edge **does not print at all**. The
-  check lists each container's selector in the file's authored flow. Always
-  fix this: shorten the content, or size the container for it.
-
-Add `--sections` (on `fit-cli.mjs`) when it fails: it prints what each marked
-section costs, what the footer reserved, and the exact px to cut, instead of
-leaving you to guess and re-run. Remember the footer takes ~41px out of the content box on every
-sheet (`design-rules.md`, Platform invariants) — content that measures exactly
-the box height is already too tall.
+- **Fits as authored** — done.
+- **Small miss, nothing clipped** — the check fixes it itself: it tightens
+  the page's spacing tokens (down to 75%) and, past that, its type tokens
+  (down to 92%), persists the result into the file as a
+  `<style id="mp-fit-squeeze">` block, re-verifies, and exits 0 with a line
+  like *"squeezed to fit: spacing −20%"*. Mention that in your report; if
+  the tightened look isn't right, cut content instead and re-run Step 5 —
+  a re-run always re-derives from the authored sizes, never compounds.
+- **Big miss, or content cut off inside a container** — exit 1, with the
+  per-sheet section table (what each block costs, what the footer reserves,
+  the exact px to cut) printed automatically. A *clipped* container does not
+  print what is past its edge, and no squeeze can fix it (tightening shrinks
+  container and content together) — shorten the content or size the
+  container for it. Fix your channels and re-run the Step 5 command; never
+  hand-tune around the numbers the table already gives you.
 
 **The contrast check** (`contrast-cli.mjs`) verifies every piece of text
-clears its contrast floor. Exit 0 means every text style clears WCAG AA
-(4.5:1 body, 3:1 large or bold);
-exit 1 lists the ones that do not, with the size and weight that set each
-threshold. This is the one platform invariant the Part B self-check cannot
-verify by reading CSS — Part B greps for banned constructs, it never computes a
-ratio, so a theme accent that reads fine at 19px can ship at 9px unnoticed. Add
-`--all` to see every text style rather than only the failures.
+clears its WCAG AA floor (4.5:1 body, 3:1 large or bold), measured at the
+sizes that actually print — squeeze included, which is why it runs after
+fit. Failures list each offending style with the size and weight that set
+its threshold. This is the one platform invariant the Part B self-check
+cannot verify by reading CSS — Part B greps for banned constructs, it never
+computes a ratio.
+
+After any later in-place edit to the generated file, re-check both in one
+command:
+
+```
+node <skill-dir>/server/fit-cli.mjs out/<file>.html && node <skill-dir>/server/contrast-cli.mjs out/<file>.html
+```
 
 Both need Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in
 the report that the fit and contrast checks could not run.
@@ -358,10 +358,11 @@ directly after Step 6:
 - **Against the running server** (Step 7 already done):
   `curl -fsS -o <file>.pdf http://127.0.0.1:<port>/pdf/<file>.html`
 
-`check-cli.mjs` (Step 6) is the gate to run before either: it exits non-zero
-when the content did not fit the sheets the page lays out (or a text style
-fails its contrast floor), so a pipeline can stop on an accidental page break
-instead of shipping it. (An open page checks the same
+The Step 5 `assemble-cli.mjs` exit code is the gate before either: it is
+non-zero when the content did not fit the sheets the page lays out (beyond
+what a bounded squeeze could absorb) or a text style fails its contrast
+floor, so a pipeline can stop on an accidental page break instead of
+shipping it. (An open page checks the same
 thing continuously, and in live mode offers the user a FIX button that sends
 you a `kind: "fit"` event — see "A fit problem arrives".)
 

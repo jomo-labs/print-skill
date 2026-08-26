@@ -21,12 +21,12 @@ insertions at the anchors.**
 
 `server/assemble-cli.mjs` executes this whole procedure — page copy, the
 anchored insertions in the right order, and the verification list at the end
-— and with `--check` also runs the fit and contrast checks on the result:
+— and always runs the fit and contrast checks on the result:
 
 ```
 node <skill-dir>/server/assemble-cli.mjs --content <content.html> --title "<title>" \
   [--css <overrides.css>] [--font-import <url>] [--paper a4|legal|half] \
-  [--orientation landscape] [--answer-key <key.html>] [--out-dir <dir>] [--check]
+  [--orientation landscape] [--answer-key <key.html>] [--out-dir <dir>] [--max-sheets N]
 ```
 
 Prefer it whenever Node is available: it is one round-trip instead of a
