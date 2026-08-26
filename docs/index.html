@@ -65,7 +65,7 @@ body {
 .page {
   width: 816px;
   max-width: 100%;
-  min-height: 1056px;           /* US Letter proportions */
+  height: 1056px;               /* US Letter, fixed — a true one-pager */
   background: var(--color-paper);
   padding: 64px 72px 72px;
   box-shadow: 0 6px 48px oklch(0% 0 0 / 0.16);
@@ -113,19 +113,14 @@ h1 .slash { color: var(--color-accent); }
 .lead {
   font-size: var(--text-lg);
   line-height: 1.5;
-  margin: 26px 0 0;
-}
-.lead strong { font-weight: 600; }
-.sub {
-  margin-top: 10px;
-  color: var(--color-mid);
+  margin: 24px 0 0;
 }
 
 /* ── CTA ── */
 .cta {
   border: var(--border-thin) solid var(--color-accent);
-  padding: 20px 24px;
-  margin: 26px 0 0;
+  padding: 18px 24px;
+  margin: 24px 0 0;
   text-align: center;
 }
 .cta .cta-label {
@@ -164,12 +159,13 @@ h1 .slash { color: var(--color-accent); }
   cursor: pointer;
 }
 .copy-btn:hover { background: var(--color-pull-bg); }
+.copy-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .copy-btn.copied { border-color: var(--color-accent); color: var(--color-accent); }
 
 /* ── How to use ── */
 .howto {
-  margin-top: 28px;
-  padding-top: 22px;
+  margin-top: 24px;
+  padding-top: 18px;
   border-top: var(--border-hair) solid var(--color-rule-light);
 }
 .section-label {
@@ -184,7 +180,7 @@ h1 .slash { color: var(--color-accent); }
 .prompts {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 10px;
   margin-top: 12px;
 }
 .prompt {
@@ -205,7 +201,7 @@ h1 .slash { color: var(--color-accent); }
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
   color: var(--color-dim);
-  margin: 10px 0 0 19px;
+  margin: 8px 0 0 19px;
 }
 
 /* ── Features ── */
@@ -213,9 +209,9 @@ h1 .slash { color: var(--color-accent); }
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: 40px;
-  row-gap: 18px;
-  margin-top: 30px;
-  padding-top: 22px;
+  row-gap: 16px;
+  margin-top: 24px;
+  padding-top: 18px;
   border-top: var(--border-hair) solid var(--color-rule-light);
 }
 .feature h3 {
@@ -248,8 +244,6 @@ h1 .slash { color: var(--color-accent); }
 }
 .page footer a { color: inherit; text-decoration: none; }
 .page footer a:hover { text-decoration: underline; color: var(--color-mid); }
-.page footer > :first-child { margin-top: 24px; }
-.page footer > :last-child { margin-top: 24px; }
 
 /* ── Small screens: the sheet yields, the content doesn't ── */
 @media (max-width: 700px) {
@@ -261,6 +255,7 @@ h1 .slash { color: var(--color-accent); }
     box-shadow: none;
   }
   h1 { font-size: 56px; }
+  .page { height: auto; }
   .features { grid-template-columns: 1fr; }
   .cta .cmd-row { gap: 10px; }
   .cta code { font-size: 12px; white-space: nowrap; }
@@ -291,14 +286,9 @@ h1 .slash { color: var(--color-accent); }
       </div>
     </header>
 
-    <p class="lead">Some things belong on paper — the chore chart on the
-    fridge, the worksheet on the desk, the certificate on the wall.
-    <strong>/print</strong> takes you straight there: describe the page you
-    want, and your agent comes back with a beautifully set sheet, ready for
-    the printer.</p>
-
-    <p class="sub">This very page is set in the skill’s design system: a letter
-    sheet, real margins, ink-only color. Go ahead — print it.</p>
+    <p class="lead">Sometimes your agent needs to design for paper, not
+    screens. Describe the page you want, and it comes back with a
+    beautifully set sheet, ready for the printer.</p>
 
     <div class="cta">
       <div class="cta-label">Install in one line</div>
@@ -322,37 +312,34 @@ h1 .slash { color: var(--color-accent); }
     <div class="features">
       <div class="feature">
         <h3>Reliably print-ready</h3>
-        <p>Ink-friendly, grayscale-safe, inside the margins real printers can
-        reach. And WYSIWYG: the sheet on screen is exactly the sheet that
-        prints, identical on every machine.</p>
+        <p>Ink-friendly, grayscale-safe, inside real printer margins — and
+        WYSIWYG: the sheet on screen is exactly the sheet that prints.</p>
       </div>
       <div class="feature">
         <h3>Works anywhere</h3>
-        <p>Markdown instructions, a small page shell, an optional local Node
-        server. No build step, no cloud — works in any
+        <p>Markdown instructions and a small page shell. No build step, no
+        cloud — any
         <a href="https://agentskills.io" style="color:inherit">skills-compatible agent</a>.</p>
       </div>
       <div class="feature">
         <h3>Interactive mode</h3>
-        <p>Double-click any text to edit it, undo and redo, save an exact PDF
-        with one click — and when content outgrows its sheet, a FIX button
-        hands the layout straight back to your agent.</p>
+        <p>Double-click text to edit, undo and redo, save an exact PDF — and a
+        FIX button hands overgrown layouts back to your agent.</p>
       </div>
       <div class="feature">
         <h3>Headless mode for your agents</h3>
         <p>No clicks, no browser: pages author and render to PDF entirely in
-        the pipeline, ready to email, archive, or send to print.</p>
+        the pipeline, ready to ship onward.</p>
       </div>
       <div class="feature">
         <h3>20+ page types</h3>
-        <p>Worksheets with answer keys, chore charts, certificates, calendars,
-        meal plans, scorecards, word searches, comic scaffolds, and a
-        catch-all for everything else.</p>
+        <p>Worksheets, chore charts, certificates, calendars, meal plans,
+        scorecards, word searches, comic scaffolds — and a catch-all.</p>
       </div>
       <div class="feature">
         <h3>Theme-ready</h3>
         <p>“…in the style of Dog Man” restyles fonts, palette, page chrome,
-        even the writing voice — while the print rules hold.</p>
+        even the voice — while the print rules hold.</p>
       </div>
     </div>
 
