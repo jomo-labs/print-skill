@@ -1,7 +1,7 @@
 /* document.css — the printable document's own styles: design tokens, page
    geometry, element defaults, and print rules. This is everything a generated
    page needs to look right and print exactly when opened directly as a plain
-   HTML file. NO chrome here — the toolbar/edit/chat styles live in chrome.css,
+   HTML file. NO chrome here — the toolbar/edit styles live in chrome.css,
    which the local server injects (with the shell scripts) at serve time. */
 
 /* ── Design tokens ── */

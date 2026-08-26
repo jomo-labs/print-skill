@@ -1930,7 +1930,6 @@ let chromeRoot = null;  // its shadow root — every chrome node lives in here
 // would never find it: everything that reaches for a chrome element goes
 // through these.
 function mpq(sel) { return chromeRoot ? chromeRoot.querySelector(sel) : null; }
-function mpAll(sel) { return chromeRoot ? Array.from(chromeRoot.querySelectorAll(sel)) : []; }
 
 // Screen-state flags the chrome styles itself by (chrome.css :host([...])).
 // The matching body classes stay too — chrome-host.css reads those for the

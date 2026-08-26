@@ -35,7 +35,6 @@
   --mp-faint:   oklch(78% 0.006 78);  /* disabled icon ink — see .mp-btn-secondary */
   --mp-surface: oklch(94% 0.009 78);
   --mp-live:    oklch(52% 0.14 150);          /* recorded — a state, not a theme accent */
-  --mp-notice:  oklch(52% 0.13 65);           /* a decision is owed — not an error        */
   --mp-error:   oklch(52% 0.20 27);           /* the page does not fit — the one real error */
   --mp-select:  rgba(59, 130, 246, 0.7);      /* hover/selection blue, as an outline     */
   --mp-select-chip: rgba(59, 130, 246, 0.9);  /* ...and filled, behind the hover label   */
@@ -51,12 +50,6 @@
      boundary does not stop them); generic families cannot be redefined. */
   --mp-font-ui:   ui-sans-serif, system-ui, sans-serif;
   --mp-font-mono: ui-monospace, monospace;
-
-  /* The panel's slide. chrome-host.css restates these numbers for the
-     document side of the same motion (custom properties don't reach out of
-     the shadow root) — change them together. */
-  --mp-slide: 220ms;
-  --mp-ease:  cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 /* The shadow tree gets no UA-reset from the page's own `* { }` rule, and

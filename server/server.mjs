@@ -182,8 +182,8 @@ async function chromeAssets() {
 }
 
 // mtime+size of every asset a served page carries — the two inlined
-// stylesheets and the two scripts it links. Cheap enough to stat on each
-// request (four stats, no reads); a missing file just drops out of the
+// stylesheets and the script it links. Cheap enough to stat on each
+// request (three stats, no reads); a missing file just drops out of the
 // signature rather than failing the response.
 const CHROME_ASSET_FILES = ["chrome-host.css", "chrome.css", "shell.js"];
 async function chromeSignature() {
