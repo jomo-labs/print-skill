@@ -22,7 +22,7 @@
 //        2  bad usage
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchBrowser, guardFonts } from "./browser.mjs";
 import { startServer } from "./server.mjs";
 
 const args = process.argv.slice(2);
@@ -42,14 +42,14 @@ try {
 }
 
 const { url, close } = await startServer({ dir: path.dirname(pagePath), port: 0 });
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-});
+const browser = await launchBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
   // networkidle, like the PDF path: fallback-font metrics wrap lines
   // differently, and line wrapping is precisely what decides the answer here.
+  // guardFonts bounds the font fetches, so an unreachable font host degrades
+  // to fallback metrics in seconds instead of stalling the whole load.
+  await guardFonts(page);
   await page.goto(`${url}/${encodeURIComponent(path.basename(pagePath))}`,
     { waitUntil: "networkidle", timeout: 30_000 });
   // Published by reportFit() on every layout pass.
