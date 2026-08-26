@@ -120,6 +120,26 @@ sheet (`design-rules.md`, Platform invariants). Size content to that box
 before writing it; the spec files refine per-type dimensions where they
 matter.
 
+### Token quick reference
+
+The design tokens the document stylesheet defines — author with these
+(`var(--…)`) instead of raw values, and don't re-grep the stylesheet for
+them:
+
+| Family | Tokens (value) |
+|---|---|
+| Ink | `--color-ink` (near-black) · `--color-mid` · `--color-dim` · `--color-ghost` · `--color-rule` · `--color-rule-light` · `--color-pull-bg` (faint tint) · `--color-accent` · `--color-paper` |
+| Fonts | `--font-display` (Playfair) · `--font-body` (Source Serif 4) · `--font-label` (Inter) |
+| Type scale | `--text-2xs` 9 · `--text-xs` 10.5 · `--text-body` 13.5 · `--text-md` 15.5 · `--text-lg` 19 · `--text-xl` 26 · `--text-2xl` 38 · `--text-3xl` 48 · `--text-4xl` 80 (px) |
+| Spacing | `--space-1..20`: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80 (px) |
+| Borders | `--border-fat` 5 · `--border-mid` 3 · `--border-thin` 1.5 · `--border-hair` 1 (px) |
+| Leading / tracking | `--leading-display` 1.1 · `--leading-body` 1.65 · `--leading-label` 1.4 · `--tracking-label` 0.08em · `--tracking-kicker` 0.32em |
+| Page margins | `--page-margin-top` 64 · `--page-margin-x` 72 · `--page-margin-bottom` 72 (px) |
+
+Already styled by the base layer (use as-is, don't restyle): **tables**
+(label font, tabular figures, ink-on-paper uppercase `th` row, hairline row
+rules, faint zebra tint), `.columns-2` (two-column grid), and the footer.
+
 ---
 
 ## Page types (L3): one spec file per type
