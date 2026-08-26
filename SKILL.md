@@ -60,7 +60,15 @@ afterwards. Two dialogs at most, and only for what is genuinely open:
 
 **Skip it** when there is no human to answer: headless / pipeline use (the
 triggers in "Headless / pipeline use" — output destined for an automated
-consumer, or the user asked for "a PDF file"). Skip any **question** whose
+consumer, or the user asked for "a PDF file"), and any **non-interactive
+invocation** — a one-shot programmatic run (`claude -p`, CI, a scheduled job,
+another agent driving this session), where ending the turn with a question
+means the run simply stops with no page and nobody ever answers. The
+reliable tell in Claude Code: `AskUserQuestion` missing from your tools
+means print/headless mode — see `references/harness-support.md` Part 3.
+When in doubt whether anyone can reply, don't ask: pick sensible defaults,
+generate, and state the choices in the report — a wrong default costs one
+regeneration, a stalled run costs the whole task. Skip any **question** whose
 answer the request or conversation already gives ("landscape A4 poster"
 settles two of them), and skip a whole dialog when nothing in it is open.
 Never re-ask on a regeneration or edit of an existing page — the earlier
@@ -209,13 +217,19 @@ Run the grep checks listed at the end of `references/assembly.md` against the
 written file (no leftover `<!-- CONTENT -->`, shell intact, anchors in order).
 Fix in place if anything fails.
 
-Then check that the content fits the sheets you laid out:
+Then check the page itself — fit and contrast in one command:
 
 ```
-node <skill-dir>/server/fit-cli.mjs out/<file>.html
+node <skill-dir>/server/check-cli.mjs out/<file>.html
 ```
 
-It loads the page exactly as the browser and the PDF renderer do and reports
+It runs both checks below concurrently (one page load's wall time, not two)
+and exits 0 only when both pass. On a failure, re-run just the failing check's
+own CLI with its detail flag — `fit-cli.mjs --sections` or
+`contrast-cli.mjs --all` — fix, and re-run `check-cli.mjs` until it passes.
+
+**The fit check** (`fit-cli.mjs`) verifies the content fits the sheets you
+laid out. It loads the page exactly as the browser and the PDF renderer do and reports
 what the shell had to do. Exit 0 means the content fits as authored. Exit 1
 means it does not, and says how:
 
@@ -233,19 +247,15 @@ means it does not, and says how:
   check lists each container's selector in the file's authored flow. Always
   fix this: shorten the content, or size the container for it.
 
-Add `--sections` when it fails: it prints what each marked section costs, what
-the footer reserved, and the exact px to cut, instead of leaving you to guess
-and re-run. Remember the footer takes ~41px out of the content box on every
+Add `--sections` (on `fit-cli.mjs`) when it fails: it prints what each marked
+section costs, what the footer reserved, and the exact px to cut, instead of
+leaving you to guess and re-run. Remember the footer takes ~41px out of the content box on every
 sheet (`design-rules.md`, Platform invariants) — content that measures exactly
 the box height is already too tall.
 
-Then check that every piece of text clears its contrast floor:
-
-```
-node <skill-dir>/server/contrast-cli.mjs out/<file>.html
-```
-
-Exit 0 means every text style clears WCAG AA (4.5:1 body, 3:1 large or bold);
+**The contrast check** (`contrast-cli.mjs`) verifies every piece of text
+clears its contrast floor. Exit 0 means every text style clears WCAG AA
+(4.5:1 body, 3:1 large or bold);
 exit 1 lists the ones that do not, with the size and weight that set each
 threshold. This is the one platform invariant the Part B self-check cannot
 verify by reading CSS — Part B greps for banned constructs, it never computes a
@@ -332,9 +342,10 @@ directly after Step 6:
 - **Against the running server** (Step 7 already done):
   `curl -fsS -o <file>.pdf http://127.0.0.1:<port>/pdf/<file>.html`
 
-`fit-cli.mjs` (Step 6) is the gate to run before either: it exits non-zero when
-the content did not fit the sheets the page lays out, so a pipeline can stop on
-an accidental page break instead of shipping it. (An open page checks the same
+`check-cli.mjs` (Step 6) is the gate to run before either: it exits non-zero
+when the content did not fit the sheets the page lays out (or a text style
+fails its contrast floor), so a pipeline can stop on an accidental page break
+instead of shipping it. (An open page checks the same
 thing continuously, and in live mode offers the user a FIX button that sends
 you a `kind: "fit"` event — see "A fit problem arrives".)
 

@@ -4,24 +4,13 @@
 // depend on the user's browser. Pages are WYSIWYG by construction — the .page
 // element is the sheet, printed 1:1 into a zero-margin page box — so nothing
 // needs to run before printing.
-import { chromium } from "playwright";
+import { launchBrowser, guardFonts } from "./browser.mjs";
 
 let browserPromise = null;
 
-function launchOptions() {
-  const opts = { headless: true };
-  // Explicit executable override for environments with a system-managed
-  // Chromium (CI sandboxes, nix, etc.). Playwright's own browser cache
-  // (PLAYWRIGHT_BROWSERS_PATH) is honored automatically without this.
-  if (process.env.PRINT_SKILL_CHROMIUM) {
-    opts.executablePath = process.env.PRINT_SKILL_CHROMIUM;
-  }
-  return opts;
-}
-
 async function getBrowser() {
   if (!browserPromise) {
-    browserPromise = chromium.launch(launchOptions()).then((browser) => {
+    browserPromise = launchBrowser().then((browser) => {
       browser.on("disconnected", () => {
         browserPromise = null;
       });
@@ -48,6 +37,9 @@ export async function renderPdf(url) {
     const page = await context.newPage();
     // networkidle so web fonts are loaded before printing — fallback-font
     // metrics wrap lines differently than the fonts the screen view shows.
+    // guardFonts bounds the font fetches, so an unreachable font host means
+    // fallback fonts in seconds, not a stalled render.
+    await guardFonts(page);
     await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
     // preferCSSPageSize: the page's @page rule (letter / A4 / legal /
     // landscape / 5.5in 8.5in) decides the sheet; Letter is only the
