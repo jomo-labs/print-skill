@@ -2,8 +2,8 @@
    Everything the chrome DRAWS lives in a shadow root (chrome.css) where no
    page CSS can reach it; these few rules are the reverse direction — what the
    chrome needs FROM the page: room under the fixed toolbar, the canvas's own
-   scroll region, the edit-mode cursor, the outline on a selected element, and
-   the embedded-mode trim. Nothing here
+   scroll region, the edit-mode cursor, and the outline on a selected element.
+   Nothing here
    styles chrome; nothing in chrome.css depends on the page honoring it.
 
    Why a layer, why the !important on every declaration: a generated page can
@@ -80,26 +80,6 @@
     body.edit-active .mp-selected[data-mp-clipped] {
       outline: 2px solid rgba(220, 38, 38, 0.75) !important;
       outline-offset: 2px !important;
-    }
-
-    /* Embedded (iframe) mode — the host page provides its own chrome. */
-    body.mp-embedded { padding-top: 0 !important; }
-    /* The embedding host sizes and scrolls the preview itself, so the canvas
-       gives up the viewport-height scroll region it owns when standalone. */
-    body.mp-embedded .page-surround {
-      padding: 0 !important;
-      min-height: 0 !important;
-      height: auto !important;
-      overflow: visible !important;
-      background: transparent !important;
-    }
-    /* border-color, not border: none — the on-screen box must keep the exact
-       geometry print will have (print reuses this box 1:1), or the embedded
-       preview would wrap lines differently than the printed sheet. */
-    body.mp-embedded .page,
-    body.mp-embedded .variant-page {
-      box-shadow: none !important;
-      border-color: transparent !important;
     }
 
     /* Continuation sheets — where content that outgrows one sheet goes (see

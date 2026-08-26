@@ -1070,8 +1070,8 @@ let saving = false;
 // The saved document is the live DOM minus runtime-only state, so the file
 // stays as clean as the assembly wrote it. Everything stripped here is
 // re-derived on load: applySize() sets page widths and splits the overflow
-// onto continuation sheets, scaleToFit() sets transform and margins, init()
-// adds mp-embedded, edit mode adds the rest.
+// onto continuation sheets, scaleToFit() sets transform and margins, edit
+// mode adds the rest.
 //
 // cleanClone() is that stripping alone, factored out because the save is not
 // its only reader: undo/redo snapshots go through the same rewind, so a
@@ -1104,7 +1104,7 @@ function cleanClone() {
   });
   const body = root.querySelector('body');
   if (body) {
-    body.classList.remove('edit-active', 'mp-embedded', 'mp-chat-open');
+    body.classList.remove('edit-active', 'mp-chat-open');
     if (!body.classList.length) body.removeAttribute('class');
   }
   root.querySelectorAll('.page, .variant-page, .page-surround').forEach(el => el.removeAttribute('style'));
@@ -1726,21 +1726,15 @@ function clip(text, max) {
   return (space > max * 0.5 ? cut.slice(0, space) : cut).replace(/[.,;:]$/, '') + '…';
 }
 
-// Captured fresh each time, so the snapshot carries whatever the user has just
-// typed into the element — minus the runtime-only state, and whole: an element
-// cut across two sheets is one element again here, because that is how the
-// model will find it in the file.
+// The record is an address plus a name, nothing more: the selector into the
+// authored flow, and the same label/index/text the toolbar shows the user.
+// Everything else about the element lives in the file on disk, which is the
+// authoritative read anyway (chat-cli's own contract).
 function captureElement(target) {
   const { el, pg } = authoredPosition(target);
-  const clone = el.cloneNode(true);
-  clone.removeAttribute('contenteditable');
-  clone.classList.remove('mp-selected');
-  if (!clone.classList.length) clone.removeAttribute('class');
   return {
     selector: selectorWithin(el, pg),
     ...describeElement(el),
-    snapshot: clone.outerHTML.slice(0, 2048),
-    edited: el.hasAttribute('data-mp-edited'),
   };
 }
 
@@ -2167,14 +2161,6 @@ function injectChrome() {
 (function init() {
   injectChrome();
 
-  // Detect iframe embedding — strip standalone chrome. The state is flagged
-  // twice on purpose: the body class drives the document-side trim
-  // (chrome-host.css), the host attribute the chrome's own (chrome.css).
-  if (window.self !== window.top) {
-    document.body.classList.add('mp-embedded');
-    setChromeState('data-mp-embedded', true);
-  }
-
   // Toolbar buttons
   mpq('#mp-btn-print').addEventListener('click', printThisPage);
   mpq('#mp-btn-edit').addEventListener('click', toggleEditMode);
@@ -2217,8 +2203,7 @@ function injectChrome() {
   //
   // Paper size comes from the page's own body attributes and nowhere else:
   // it is confirmed with the user at generation time, so every standalone
-  // page opens at its own configured paper. An embedding host can still
-  // re-apply a choice of its own via applySize after load.
+  // page opens at its own configured paper.
   // data-mp-paper may carry the legacy 'landscape' alias (applySize resolves
   // it); data-mp-orientation is the separate-axis form.
   const configured = document.body.dataset.mpPaper;

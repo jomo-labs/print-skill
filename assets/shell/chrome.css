@@ -257,15 +257,6 @@ button, input, textarea, select {
 :host([data-mp-edit-active]) #mp-history-sep { display: block; }
 :host([data-mp-edit-active]) #mp-history { display: flex; align-items: center; gap: 2px; }
 
-/* ── Embedded (iframe) mode — strip chrome that the host page provides ──
-   Screen-only: the printed artifact keeps its themed chrome (borders) even
-   when printed from inside an embedding host like create.html. The matching
-   document-side trimming (.page-surround padding, sheet shadow) lives in
-   chrome-host.css. */
-@media screen {
-  :host([data-mp-embedded]) #mp-toolbar { display: none; }
-}
-
 /* ── Edit mode ── */
 
 #mp-overlay {

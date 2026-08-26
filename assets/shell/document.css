@@ -134,7 +134,7 @@ body {
      artifact being generated. A fixed literal rather than a token, locked the
      same way the paper background below is: generated content styles the
      document, not the UI around it. (The chrome's own overrides still win on
-     specificity — embedded mode and the print rules both drop it.) */
+     specificity — the print rules drop it.) */
   box-shadow: 0 6px 48px oklch(0% 0 0 / 0.16) !important;
   flex-shrink: 0;
 }

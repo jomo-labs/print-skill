@@ -41,9 +41,9 @@ export function createLiveLog() {
     nextId: 1,
     // Status messages only, and only ever read by the page they belong to.
     messages: [],
-    // The current selection per page: page -> { selector, label, text, edited,
-    // snapshot, ts }, or absent once cleared. Latest wins; there is no history,
-    // because nothing downstream wants one.
+    // The current selection per page: page -> { selector, label, index, text,
+    // ts }, or absent once cleared. Latest wins; there is no history, because
+    // nothing downstream wants one.
     selections: new Map(),
     // The same shape for the other thing a page knows about itself and the
     // model does not: that its content no longer fits the sheets it lays out.
