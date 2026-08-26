@@ -120,8 +120,10 @@ define the content scope for Steps 2–3.
 Two independent decisions:
 
 **Page type.** Match the request against the routing table at the top of
-`references/page-types.md` (first match wins), then read that type's section for
-its functional requirements and default styling.
+`references/page-types.md` (first match wins), then read **only that type's
+spec file** (`references/types/<slug>.md`, named in the index there) for its
+functional requirements and default styling. The other specs are other
+requests' context — every file read here rides along in every later turn.
 
 **Themed?** The request is themed when it names a visual identity: "in the
 theme/style of X", "styled/themed like X", "X-themed", "in an X style", and the
@@ -134,8 +136,8 @@ any separate style instructions.
 If themed: open `references/themes/README.md`, match the trigger phrases, and
 load the **one** matching spec — or follow its ad-hoc theme checklist when
 nothing matches. A themed request **drops the page type's default styling
-entirely**; only its functional requirements survive (they're marked in each
-type's section). The theme, not the type, governs everything visual.
+entirely**; only its functional requirements survive (they're marked in the
+type's spec file). The theme, not the type, governs everything visual.
 
 ### Step 2 — Gather content
 
@@ -147,8 +149,7 @@ fetching and write it directly.
 If the page needs **line art derived from a photograph** (coloring page, image
 page, drawing prompt — and only those), produce it now: check for an image
 backend per `references/harness-support.md` Part 2, generate, then run the
-normalize pass and both checks from the **Image block** entry in
-`references/page-types.md`. With no backend available, hand-author the art as
+normalize pass and both checks from `references/types/image-block.md`. With no backend available, hand-author the art as
 stroked SVG (design rule 1a) and say so in the report — the page still gets
 made either way.
 
@@ -172,7 +173,8 @@ matters (paper size, DPI, margins). Produce these channels:
 | `answer_key_html` | Worksheets with an answer key only; otherwise empty. Never author the key as a second page inside `content_html`. |
 
 **Fit one sheet.** Size the content to the paper before you write it (Principle
-VII, and the content-box dimensions in `references/page-types.md`): count the
+VII, and the sheet geometry in `references/page-types.md` plus the type's own
+spec file): count the
 steps, items or rows and pick a layout that holds them. If the content genuinely
 will not fit, author the further sheets **explicitly** — the two-sheet form in
 `references/assembly.md` — and decide what lands on each, so every sheet reads
@@ -505,7 +507,8 @@ waiting to be asked again:
    fix, `status <page> done`. The `done` refreshes their tab, and the refreshed
    page re-measures itself: fixed means the red line disappears on its own and
    the page takes its own report back. Nothing else clears it.
-2. Fix it the way the page type wants it fixed (`references/page-types.md`,
+2. Fix it the way the page type wants it fixed (the type's spec in
+   `references/types/`,
    `principles.md` VII): tighten the content back onto the sheet it was
    authored for, or lay the further sheets out **on purpose** — the problem is
    never the extra sheet itself, it is a break nobody designed. `overflowing`
