@@ -166,22 +166,46 @@ h1 .slash { color: var(--color-accent); }
 .copy-btn:hover { background: var(--color-pull-bg); }
 .copy-btn.copied { border-color: var(--color-accent); color: var(--color-accent); }
 
-/* ── Example prompt ── */
+/* ── How to use ── */
+.howto {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: var(--border-hair) solid var(--color-rule-light);
+}
+.section-label {
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  line-height: 1.4;
+  color: var(--color-ink);
+}
+.prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 12px;
+}
 .prompt {
   border-left: var(--border-mid) solid var(--color-accent);
-  padding: 6px 0 6px 16px;
-  margin: 22px 0 0;
+  padding: 2px 0 2px 16px;
   color: var(--color-mid);
   font-style: italic;
 }
-.prompt .arrow { color: var(--color-accent); font-style: normal; font-family: var(--font-mono); }
+.prompt .cmd-prefix {
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-weight: 600;
+  color: var(--color-accent);
+}
 .prompt-note {
   font-family: var(--font-label);
   font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
   color: var(--color-dim);
-  margin: 6px 0 0 19px;
+  margin: 10px 0 0 19px;
 }
 
 /* ── Features ── */
@@ -210,34 +234,19 @@ h1 .slash { color: var(--color-accent); }
 }
 .feature p { color: var(--color-mid); }
 
-/* ── Headless strip ── */
-.headless {
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: var(--border-hair) solid var(--color-rule-light);
-  display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  gap: 28px;
-  align-items: center;
-}
-.headless h3 {
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  margin-bottom: 3px;
-}
-.headless p { color: var(--color-mid); }
-.headless pre {
+.mini-cmd {
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  line-height: 1.7;
+  font-size: var(--text-2xs);
+  line-height: 1.6;
+  color: var(--color-mid);
   border: var(--border-thin) solid var(--color-rule-light);
-  padding: 12px 16px;
+  padding: 5px 10px;
+  margin-top: 8px;
   overflow-x: auto;
+  white-space: nowrap;
+  width: fit-content;
+  max-width: 100%;
 }
-.headless pre .c { color: var(--color-dim); }
 
 /* ── Footer ── */
 .page footer {
@@ -266,7 +275,7 @@ h1 .slash { color: var(--color-accent); }
     box-shadow: none;
   }
   h1 { font-size: 56px; }
-  .features, .headless { grid-template-columns: 1fr; }
+  .features { grid-template-columns: 1fr; }
   .cta .cmd-row { gap: 10px; }
   .cta code { font-size: 12px; white-space: nowrap; }
 }
@@ -296,10 +305,11 @@ h1 .slash { color: var(--color-accent); }
       </div>
     </header>
 
-    <p class="lead">Ask a model for “printable HTML” and you get a web page —
-    ink-hungry fills, backgrounds that vanish in the print dialog, content
-    clipped at the sheet edge. <strong>This skill packages print as a design
-    discipline.</strong> One request in, one print-ready page out.</p>
+    <p class="lead">Some things belong on paper — the chore chart on the
+    fridge, the worksheet on the desk, the certificate on the wall.
+    <strong>/print</strong> takes you straight there: describe the page you
+    want, and your agent comes back with a beautifully set sheet, ready for
+    the printer.</p>
 
     <p class="sub">This very page is set in the skill’s design system: a letter
     sheet, real margins, ink-only color. Go ahead — print it.</p>
@@ -312,16 +322,41 @@ h1 .slash { color: var(--color-accent); }
       </div>
     </div>
 
-    <blockquote class="prompt">
-      <span class="arrow">&gt;</span> make me a weekly chore chart for Maya (9) and Leo (6)
-    </blockquote>
-    <div class="prompt-note">…then just ask. That’s the whole workflow.</div>
+    <div class="howto">
+      <h3 class="section-label">How to use</h3>
+      <div class="prompts">
+        <blockquote class="prompt"><span class="cmd-prefix">/print</span> a weekly chore chart for Maya (9) and Leo (6)</blockquote>
+        <blockquote class="prompt"><span class="cmd-prefix">/print</span> this recipe, big type, something for the kitchen wall</blockquote>
+        <blockquote class="prompt"><span class="cmd-prefix">/print</span> an ocean-animals word search for a 7-year-old</blockquote>
+        <blockquote class="prompt"><span class="cmd-prefix">/print</span> a certificate for the World’s Okayest Dog</blockquote>
+      </div>
+      <div class="prompt-note">…and anything else you can describe. That’s the whole workflow.</div>
+    </div>
 
     <div class="features">
       <div class="feature">
-        <h3>Built for paper</h3>
+        <h3>Reliably print-ready</h3>
         <p>Ink-friendly, grayscale-safe, inside the margins real printers can
-        reach. WYSIWYG: the on-screen sheet and the printed sheet are 1:1.</p>
+        reach. And WYSIWYG: the sheet on screen is exactly the sheet that
+        prints, identical on every machine.</p>
+      </div>
+      <div class="feature">
+        <h3>Works anywhere</h3>
+        <p>Markdown instructions, a small page shell, an optional local Node
+        server. No build step, no cloud — works in any
+        <a href="https://agentskills.io" style="color:inherit">skills-compatible agent</a>.</p>
+      </div>
+      <div class="feature">
+        <h3>Interactive mode</h3>
+        <p>Double-click any text to edit it, undo and redo, save an exact PDF
+        with one click — and when content outgrows its sheet, a FIX button
+        hands the layout straight back to your agent.</p>
+      </div>
+      <div class="feature">
+        <h3>Headless mode for your agents</h3>
+        <p>No clicks, no browser: pages author and render to PDF entirely in
+        the pipeline, ready to email, archive, or send to print.</p>
+        <pre class="mini-cmd">node server/render-cli.mjs chore-chart.html</pre>
       </div>
       <div class="feature">
         <h3>20+ page types</h3>
@@ -330,39 +365,10 @@ h1 .slash { color: var(--color-accent); }
         catch-all for everything else.</p>
       </div>
       <div class="feature">
-        <h3>Themeable in one phrase</h3>
+        <h3>Theme-ready</h3>
         <p>“…in the style of Dog Man” restyles fonts, palette, page chrome,
         even the writing voice — while the print rules hold.</p>
       </div>
-      <div class="feature">
-        <h3>Interactive output</h3>
-        <p>Served pages get a Print / Save PDF button, double-click text
-        editing with undo/redo, and a FIX button when content outgrows its
-        sheet — the page hands the problem back to your model.</p>
-      </div>
-      <div class="feature">
-        <h3>Deterministic PDFs</h3>
-        <p>A bundled local server renders pixel-identical PDFs with headless
-        Chromium on every machine. Without it, pages still print fine via the
-        browser dialog.</p>
-      </div>
-      <div class="feature">
-        <h3>Tiny footprint</h3>
-        <p>Markdown instructions, a small page shell, an optional local Node
-        server. No build step, no cloud. Works in any
-        <a href="https://agentskills.io" style="color:inherit">skills-compatible agent</a>.</p>
-      </div>
-    </div>
-
-    <div class="headless">
-      <div>
-        <h3>Headless, too</h3>
-        <p>No UI required end to end — the agent authors the page, the PDF
-        renders without a browser or a click. Ready for pipelines that format
-        something printable and ship it onward.</p>
-      </div>
-      <pre><span class="c"># one-shot: writes the PDF and exits</span>
-node server/render-cli.mjs out/chore-chart.html</pre>
     </div>
 
     <footer>
