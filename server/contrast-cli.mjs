@@ -20,7 +20,7 @@
 //        2  bad usage
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchBrowser, guardFonts } from "./browser.mjs";
 import { startServer } from "./server.mjs";
 
 const args = process.argv.slice(2);
@@ -40,14 +40,13 @@ try {
 }
 
 const { url, close } = await startServer({ dir: path.dirname(pagePath), port: 0 });
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-});
+const browser = await launchBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
   // networkidle like fit-cli: the real font has to be in place, since weight
-  // and size decide which threshold applies.
+  // and size decide which threshold applies. guardFonts bounds the font
+  // fetches so an unreachable host cannot stall the load.
+  await guardFonts(page);
   await page.goto(`${url}/${encodeURIComponent(path.basename(pagePath))}`,
     { waitUntil: "networkidle", timeout: 30_000 });
 

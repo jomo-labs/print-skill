@@ -133,9 +133,17 @@ respects, so a roomier tool needs no adjustment.
 
 ## The fallback: plain chat
 
-No such tool means the interview happens **as an ordinary chat message** —
-never skip it just because the tool is missing, and never fail or stall
-looking for one.
+First check what the tool's absence means in YOUR harness. In a harness
+that normally offers the tool, its absence is a mode signal, not a gap: in
+Claude Code, `AskUserQuestion` is withheld exactly when nobody can answer —
+print/headless mode (`claude -p`), a subagent, a scheduled job. There the
+turn ending with a question is the run ending with no page: **skip the
+interview, take defaults, and state them in the report.**
+
+In a harness that simply never has such a tool but does have a live human on
+the other end (a plain chat app), the interview happens **as an ordinary
+chat message** — don't skip it there, and never fail or stall looking for a
+tool.
 
 Chat round trips are expensive, so the fallback collapses both dialogs into
 ONE compact message — by the time you can send it you have already generated
