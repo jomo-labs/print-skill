@@ -18,33 +18,18 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
+import {
+  CHROME, loadPageParts, fillTemplate, launchTestBrowser, openTab,
+  openEditMode as openPage, cliSelection as selection, selectionBecomes,
+} from "./helpers.mjs";
 
-const run = promisify(execFile);
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "chat-cli.mjs");
-const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets");
 const NOTICE_MS = 400; // shell.js SELECT_NOTICE_MS
 const SETTLE_MS = 3 * NOTICE_MS; // long enough that the post would have gone out
 
-const CHROME = `document.getElementById("mp-chrome-root").shadowRoot`;
-
 function assemble(template, documentCss, heading) {
-  return template
-    .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace(
-      "<!-- CONTENT -->",
-      `<h1 id="probe">${heading}</h1><p id="other">Sweep the floor.</p>`
-    );
-}
-
-// What the model does when a request needs a target: ask, once.
-async function selection(serverUrl, page) {
-  const args = [CLI, "selection", ...(page ? [page] : []), "--url", serverUrl];
-  return (await run("node", args)).stdout.trim();
+  return fillTemplate(template, documentCss,
+    `<h1 id="probe">${heading}</h1><p id="other">Sweep the floor.</p>`);
 }
 
 // The record itself, rather than the sentence built from it — for the
@@ -52,27 +37,6 @@ async function selection(serverUrl, page) {
 async function record(serverUrl, page) {
   const body = await (await fetch(`${serverUrl}/chat/selection`)).json();
   return body.selections.filter((s) => page === undefined || s.page === page);
-}
-
-// Poll the read until it says what we are waiting for — used where the wait is
-// for the PAGE to notice something (a restarted server), not for its own
-// debounce, since that has to cover a failed poll, a reconnect and a retry.
-async function selectionBecomes(serverUrl, want, ms = 15000) {
-  const deadline = Date.now() + ms;
-  let last = "";
-  while (Date.now() < deadline) {
-    last = await selection(serverUrl);
-    if (last === want) return last;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return last;
-}
-
-async function openPage(page, url) {
-  await page.goto(url);
-  await page.waitForFunction(`!!${CHROME}.getElementById("mp-btn-edit")`);
-  await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
-  await page.waitForFunction(`document.getElementById("mp-chrome-root").hasAttribute("data-mp-edit-active")`);
 }
 
 // The selection's traces on screen: the outline, and the line the toolbar
@@ -84,18 +48,12 @@ const toolbarLine = (page) =>
 
 test("what the user selects is on record, and the page says so", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-selection-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   const file = path.join(dir, "page.html");
   const writePage = (heading) => fs.writeFile(file, assemble(template, documentCss, heading));
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -104,8 +62,7 @@ test("what the user selects is on record, and the page says so", async (t) => {
 
   const withPage = async (fn) => {
     await writePage("BEFORE");
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     try {
       await openPage(page, `${server.url}/page.html`);
       await fn(page);
@@ -338,14 +295,10 @@ test("what the user selects is on record, and the page says so", async (t) => {
 // one the model would find on record.
 test("selecting a nested child releases its ancestor", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-nested-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   await fs.writeFile(
     path.join(dir, "page.html"),
-    template.replace("/* @@DOCUMENT_CSS@@ */", documentCss).replace(
-      "<!-- CONTENT -->",
+    fillTemplate(template, documentCss,
       // The padding is what makes the ancestor clickable in its own right —
       // the same reason a real quote or callout is: it has room around the
       // child that belongs to it and not to the child.
@@ -354,19 +307,15 @@ test("selecting a nested child releases its ancestor", async (t) => {
   );
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await page.route("**://fonts.g*/**", (route) => route.abort());
-  await openPage(page, `${server.url}/page.html`);
+  const page = await openTab(browser);
+  await openPage(page,`${server.url}/page.html`);
 
   // Double-click the ancestor's own padding, where the child is not.
   const box = await page.locator("#outer").boundingBox();
@@ -405,27 +354,20 @@ test("selecting a nested child releases its ancestor", async (t) => {
 // the next request that says "make this bigger" has nothing to aim at.
 test("a restarted server gets the selection back", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-restart-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   await fs.writeFile(path.join(dir, "page.html"), assemble(template, documentCss, "BEFORE"));
 
   let server = await startServer({ dir, port: 0 });
   const port = Number(new URL(server.url).port);
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close().catch(() => {});
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await page.route("**://fonts.g*/**", (route) => route.abort());
-  await openPage(page, `${server.url}/page.html`);
+  const page = await openTab(browser);
+  await openPage(page,`${server.url}/page.html`);
   await page.dblclick("#probe");
   await page.waitForTimeout(SETTLE_MS);
   assert.match(await selection(server.url), /#probe/, "the first server knew — the premise");
@@ -447,19 +389,13 @@ test("a restarted server gets the selection back", async (t) => {
 // the user is looking at, or be told when they open another.
 test("the read covers every page, including ones made later", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-allpages-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   const write = (name, heading) =>
     fs.writeFile(path.join(dir, `${name}.html`), assemble(template, documentCss, heading));
   await Promise.all([write("alpha", "Alpha"), write("beta", "Beta")]);
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -467,8 +403,7 @@ test("the read covers every page, including ones made later", async (t) => {
   });
 
   const selectIn = async (name) => {
-    const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser, { viewport: { width: 1200, height: 800 } });
     await openPage(page, `${server.url}/${name}.html`);
     await page.dblclick("#probe");
     await page.waitForTimeout(SETTLE_MS);
@@ -509,14 +444,10 @@ test("the read covers every page, including ones made later", async (t) => {
 // which item is meant.
 test("an element among repeats says which one it is", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-index-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   await fs.writeFile(
     path.join(dir, "page.html"),
-    template.replace("/* @@DOCUMENT_CSS@@ */", documentCss).replace(
-      "<!-- CONTENT -->",
+    fillTemplate(template, documentCss,
       `<h1 id="only">Beef Bulgogi</h1>
        <ul><li>Divide beef into portions and season generously.</li>
            <li>Toast the buns until golden at the edges.</li>
@@ -525,19 +456,15 @@ test("an element among repeats says which one it is", async (t) => {
   );
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await page.route("**://fonts.g*/**", (route) => route.abort());
-  await openPage(page, `${server.url}/page.html`);
+  const page = await openTab(browser);
+  await openPage(page,`${server.url}/page.html`);
 
   await page.dblclick("li >> nth=1");
   await page.waitForTimeout(SETTLE_MS);
@@ -608,10 +535,7 @@ const NESTED_SHEET_CSS = `<style id="mp-nested-sheets">
 
 test("edit mode reaches every sheet, not just the first", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-sheets-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   const build = (body, extraHead = "") =>
     template
       .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
@@ -641,10 +565,7 @@ test("edit mode reaches every sheet, not just the first", async (t) => {
   }
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -652,8 +573,7 @@ test("edit mode reaches every sheet, not just the first", async (t) => {
   });
 
   const withPage = async (name, fn) => {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     try {
       await openPage(page, `${server.url}/${name}.html`);
       await fn(page);
@@ -666,8 +586,7 @@ test("edit mode reaches every sheet, not just the first", async (t) => {
   // authored flow — no continuation sheets, no shells. A selector that means
   // anything has to resolve here.
   const inFile = async (name, selector) => {
-    const page = await browser.newPage();
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     try {
       await page.setContent(await fs.readFile(path.join(dir, `${name}.html`), "utf-8"));
       return await page.evaluate((sel) => {

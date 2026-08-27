@@ -16,11 +16,8 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
-
-const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets");
+import { loadPageParts, fillTemplate, launchTestBrowser, openTab } from "./helpers.mjs";
 
 // Chromium writes the page count into the PDF's page-tree node. Cheaper and
 // steadier here than pulling in a PDF parser for one integer.
@@ -46,13 +43,8 @@ const BODIES = {
 
 test("content that outgrows a sheet continues onto more sheets", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-pagination-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
-  const assemble = (body) => template
-    .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace("<!-- CONTENT -->", body);
+  const { template, documentCss } = await loadPageParts();
+  const assemble = (body) => fillTemplate(template, documentCss, body);
 
   const files = {};
   for (const [name, body] of Object.entries(BODIES)) {
@@ -61,10 +53,7 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
   }
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -72,8 +61,7 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
 
   // One tab per shape, opened once and handed to every assertion below.
   const withPage = async (name, fn) => {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     try {
       await page.goto(`${server.url}/${name}.html`, { waitUntil: "networkidle" });
       await fn(page);

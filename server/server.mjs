@@ -67,6 +67,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderPdf, closeBrowser } from "./render.mjs";
+import { slugify, takeFlag, takeValue, realOrSelf } from "./lib.mjs";
 import {
   createLiveLog, postMessage, readMessages,
   setSelection, getSelections, setFit, getFits,
@@ -96,15 +97,6 @@ const MIME = {
 function safeJoin(root, urlPath) {
   const resolved = path.resolve(root, "." + path.posix.normalize("/" + urlPath));
   return resolved.startsWith(root + path.sep) || resolved === root ? resolved : null;
-}
-
-function slugify(title) {
-  return (
-    String(title || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "printable"
-  );
 }
 
 // Freshness signature for the shell's auto-reload poll and PUT's If-Match.
@@ -268,18 +260,6 @@ function hasPages(dir) {
 function isInside(parent, child) {
   const rel = path.relative(parent, child);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
-}
-
-// Node realpaths import.meta.url, so SKILL_DIR is the real install path — but
-// a skill is commonly reached through a symlink (.claude/skills/print -> the
-// repo), and a --dir typed against that path would compare as somewhere else
-// entirely. Compare real paths so the symlinked route is the same place.
-function realOrSelf(p) {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p; // doesn't exist yet — the caller's own existence check reports it
-  }
 }
 
 /**
@@ -721,13 +701,11 @@ const isMain = (() => {
 })();
 if (isMain) {
   const args = process.argv.slice(2);
-  const argValue = (flag, fallback) => {
-    const i = args.indexOf(flag);
-    return i !== -1 && args[i + 1] ? args[i + 1] : fallback;
-  };
+  const dirArg = takeValue(args, "--dir", null);
+  const portArg = takeValue(args, "--port", DEFAULT_PORT);
   let root, notes;
   try {
-    ({ root, notes } = resolveServeDir(argValue("--dir", null)));
+    ({ root, notes } = resolveServeDir(dirArg));
   } catch (err) {
     console.error(`print-skill server: ${err.message}`);
     process.exit(1);
@@ -735,8 +713,8 @@ if (isMain) {
   for (const note of notes) console.log(`print-skill server: ${note}`);
   const { url, close } = await startServer({
     dir: root,
-    port: Number(argValue("--port", DEFAULT_PORT)),
-    autoPort: args.includes("--auto-port"),
+    port: Number(portArg),
+    autoPort: takeFlag(args, "--auto-port") === true,
   });
   console.log(`print-skill server: ${url}  (serving ${root})`);
   // Addressed to the agent that just started this process. There is nothing

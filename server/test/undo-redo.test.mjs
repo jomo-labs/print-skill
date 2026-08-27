@@ -12,41 +12,15 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
-
-const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets");
-
-const CHROME = `document.getElementById("mp-chrome-root").shadowRoot`;
+import {
+  CHROME, loadPageParts, fillTemplate, launchTestBrowser, openTab,
+  openEditMode, fileBecomes,
+} from "./helpers.mjs";
 
 function assemble(template, documentCss) {
-  return template
-    .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace(
-      "<!-- CONTENT -->",
-      `<h1 id="probe">Chore Chart</h1><p id="other">Sweep the floor.</p>`
-    );
-}
-
-// The save is async and queued — poll the file until it says what the DOM
-// already does.
-async function fileBecomes(file, predicate, ms = 15000) {
-  const deadline = Date.now() + ms;
-  let text = "";
-  while (Date.now() < deadline) {
-    text = await fs.readFile(file, "utf-8");
-    if (predicate(text)) return text;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return text;
-}
-
-async function openPage(page, url) {
-  await page.goto(url);
-  await page.waitForFunction(`!!${CHROME}.getElementById("mp-btn-edit")`);
-  await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
-  await page.waitForFunction(`document.body.classList.contains("edit-active")`);
+  return fillTemplate(template, documentCss,
+    `<h1 id="probe">Chore Chart</h1><p id="other">Sweep the floor.</p>`);
 }
 
 const clickChrome = (page, id) =>
@@ -68,17 +42,11 @@ async function typeInto(page, sel, text) {
 
 test("undo and redo walk the user's own committed changes", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-undo-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   const file = path.join(dir, "page.html");
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -88,11 +56,10 @@ test("undo and redo walk the user's own committed changes", async (t) => {
   // Every subtest starts from a fresh page (and so a fresh, empty history).
   const withPage = async (fn) => {
     await fs.writeFile(file, assemble(template, documentCss));
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     page.on("dialog", (d) => d.accept());
     try {
-      await openPage(page, `${server.url}/page.html`);
+      await openEditMode(page, `${server.url}/page.html`);
       await fn(page);
     } finally {
       await page.close();
@@ -169,8 +136,7 @@ test("undo and redo walk the user's own committed changes", async (t) => {
 
   await t.test("the controls belong to edit mode", async () => {
     await fs.writeFile(file, assemble(template, documentCss));
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     try {
       await page.goto(`${server.url}/page.html`);
       await page.waitForFunction(`!!${CHROME}.getElementById("mp-history")`);

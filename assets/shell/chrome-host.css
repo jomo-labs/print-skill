@@ -21,7 +21,8 @@
 
 @layer mp-chrome {
   @media screen {
-    /* Room for the fixed toolbar. */
+    /* Room for the fixed toolbar. 56px is the toolbar height — a cross-file
+       constant; the list of every site is in chrome.css at #mp-toolbar. */
     body { padding-top: 56px !important; }
     body.edit-active { cursor: text !important; }
 

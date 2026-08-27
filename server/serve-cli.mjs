@@ -9,9 +9,9 @@
 // Prints the base URL on stdout. Exit 0 with a server up; 1 otherwise.
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolveServeDir } from "./server.mjs";
+import { takeValue, realOrSelf } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -19,8 +19,7 @@ const args = process.argv.slice(2);
 // than resolveServeDir's cwd heuristic: authoring leaves channel files
 // (content.html and friends) in the working directory, and a heuristic that
 // looks for "any .html here" would serve those instead of the pages.
-const dirFlag = (() => { const i = args.indexOf("--dir"); return i !== -1 ? args[i + 1] : null; })()
-  ?? path.join(process.cwd(), "out");
+const dirFlag = takeValue(args, "--dir", null) ?? path.join(process.cwd(), "out");
 
 let root;
 try {
@@ -29,7 +28,6 @@ try {
   console.error(`serve-cli: ${err.message}`);
   process.exit(1);
 }
-const realOrSelf = (p) => { try { return realpathSync(p); } catch { return p; } };
 const target = realOrSelf(root);
 
 const PORTS = Array.from({ length: 10 }, (_, i) => 4949 + i);

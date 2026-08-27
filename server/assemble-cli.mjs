@@ -33,35 +33,28 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { slugify, takeValue } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = path.resolve(HERE, "..");
 
-function parseArgs(argv) {
-  const out = { flags: {} };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a.startsWith("--")) out.flags[a.slice(2)] = argv[++i];
-    else return null;
-  }
-  return out;
+const argv = process.argv.slice(2);
+const flags = {};
+for (const name of ["content", "title", "css", "font-import", "paper",
+                    "orientation", "answer-key", "out-dir", "max-sheets"]) {
+  flags[name] = takeValue(argv, `--${name}`, undefined);
 }
-const parsed = parseArgs(process.argv.slice(2));
-if (!parsed || !parsed.flags.content || !parsed.flags.title) {
+// Anything left over is a bare positional or a flag this CLI doesn't know —
+// either way a mistake worth stopping on (a typo'd --max-sheets silently
+// ignored would assemble against the wrong page budget).
+if (argv.length || !flags.content || !flags.title) {
+  if (argv.length) console.error(`assemble-cli: unrecognized argument(s): ${argv.join(" ")}`);
   console.error(
     'usage: node assemble-cli.mjs --content <content.html> --title "<title>"\n' +
     "         [--css <overrides.css>] [--font-import <url>] [--paper a4|legal|half]\n" +
     "         [--orientation landscape] [--answer-key <key.html>] [--out-dir <dir>]\n" +
     "         [--max-sheets N]");
   process.exit(2);
-}
-const { flags } = parsed;
-
-function slugify(title) {
-  return (
-    String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
-    "printable"
-  );
 }
 
 const readOrDie = async (p, what) => {
