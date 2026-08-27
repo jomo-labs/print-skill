@@ -33,12 +33,6 @@ npx skills add jomo-labs/print-skill
 - **Theme-ready** — "…in the style of Dog Man" restyles fonts, palette, page
   chrome, even the writing voice — while the print rules hold.
 
-## Manual install
-
-```bash
-git clone https://github.com/jomo-labs/print-skill .claude/skills/print
-```
-
 ## License
 
 [Apache 2.0](LICENSE)
