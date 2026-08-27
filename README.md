@@ -1,79 +1,37 @@
-# print-skill
+# /print
 
-**Give your agent the ability to make beautiful printables.** One request in,
-one print-ready HTML file out.
+**Give your agent the ability to make beautiful printables.**
+
+Let your agent design for paper, not screens. Describe the page you want,
+and it comes back with a beautifully set sheet, ready for the printer.
 
 ```bash
 npx skills add jomo-labs/print-skill
 ```
 
-> make me a weekly chore chart for Maya (9) and Leo (6)
+## Example use cases
 
-## Why
+> /print a weekly chore chart for Maya (9) and Leo (6)
 
-Ask a model for "printable HTML" and you get a web page: ink-hungry fills,
-backgrounds that vanish in the print dialog, content clipped at the sheet
-edge. This skill packages print as a design discipline:
+> /print this recipe, big type, something for the kitchen wall
 
-- **Built for paper** — ink-friendly, grayscale-safe, inside the margins real
-  printers can reach.
-- **Interactive output** — served pages get a **Print / Save PDF** button,
-  PDF-viewer-style zoom controls (− / + / Fit to page),
-  and double-click text editing, with undo/redo over your own edits, all
-  injected by the
-  local server at view time (generated files stay pure printable documents).
-  Double-click anything and the page records it — the toolbar names what you
-  picked — so you can just say "make this bigger" in the session you're
-  already in, and your model looks up what you meant. And when a page stops
-  fitting its sheets — because the layout outgrew them, or because you typed
-  too much into it — the toolbar says so in red while you edit, with a FIX
-  button that hands
-  the problem to your model; the message clears itself when the fix lands.
-  Containers clip rather than overlap (overlap is never right on paper), and
-  content cut off inside one is caught the same way: a red dashed outline on
-  the container in edit mode, the same red notice and FIX button, and the clipped
-  elements' addresses ride along so the model goes straight to them.
-  That chrome renders in its own shadow root, so however wildly a page is
-  themed, the controls stay put.
-  Print is WYSIWYG: the on-screen sheet and the printed sheet are
-  dimension-identical, 1:1.
-- **Deterministic PDFs** — a bundled local server (Node + headless Chromium)
-  serves your pages and renders pixel-identical PDFs on every machine, no
-  dependence on the viewer's browser. Without it, pages still print fine via
-  the browser dialog.
-- **20+ page types** — worksheets with answer keys, chore charts,
-  certificates, calendars, meal plans, scorecards, word searches, comic
-  scaffolds, and a catch-all for anything else.
-- **Themeable in one phrase** — "…in the style of Dog Man" restyles fonts,
-  palette, page chrome, even the writing voice.
-- **Tiny footprint** — markdown instructions, a small page shell, and an
-  optional local Node server. No build step, no cloud. Works in any
-  [skills-compatible agent](https://agentskills.io).
+> /print a packing checklist for our camping trip
 
-## Headless / automation
+…and anything else you can describe. That's the whole workflow.
 
-No UI required end to end: the agent authors the page with its file tools, and
-the PDF renders without a browser or a click — ready for pipelines that format
-something printable and ship the file onward (email, cloud print, archive).
+## Features
 
-Generated pages land flat in a gitignored `out/` directory as single
-self-contained HTML files (styles inlined, no sidecar assets) — users reach
-them through the local server URL, which wraps them with the editing chrome;
-the raw file opened directly is a plain standalone printable.
-
-```bash
-# one-shot: writes weekly-chore-chart.pdf next to the page and exits
-node server/render-cli.mjs out/weekly-chore-chart.html
-
-# or against the running server
-curl -o chart.pdf http://127.0.0.1:4949/pdf/weekly-chore-chart.html
-```
-
-## Manual install
-
-```bash
-git clone https://github.com/jomo-labs/print-skill .claude/skills/print
-```
+- **Reliably print-ready** — Ink-friendly, grayscale-safe, inside the margins
+  real printers can reach. And WYSIWYG: the sheet on screen is exactly the
+  sheet that prints, identical on every machine.
+- **Easy edits** — Double-click any text to edit it, undo and redo, save an
+  exact PDF with one click — and when content outgrows its sheet, a FIX
+  button hands the layout straight back to your agent.
+- **Headless mode for your agents** — No clicks, no browser: pages author and
+  render to PDF entirely in the pipeline, ready to email, archive, or send
+  to print.
+- **Theme-ready** — "…in the style of Dog Man" restyles fonts, palette, page
+  chrome, even the writing voice — while the print rules hold.
 
 ## License
 
