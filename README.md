@@ -2,9 +2,8 @@
 
 **Give your agent the ability to make beautiful printables.**
 
-Use this skill when your agent needs to design for paper, not screens.
-Describe the page you want, and it comes back with a beautifully set sheet,
-ready for the printer.
+Let your agent design for paper, not screens. Describe the page you want,
+and it comes back with a beautifully set sheet, ready for the printer.
 
 ```bash
 npx skills add jomo-labs/print-skill
