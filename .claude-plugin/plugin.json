@@ -1,0 +1,29 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "print",
+  "version": "1.0.0",
+  "description": "Give your agent the ability to make beautiful printables. Converts anything — text, URLs, notes, data — into print-ready HTML pages using the magicprint design system: dashboards, calendars, worksheets, chore charts, certificates, word searches, mazes, comic strips, and more.",
+  "author": {
+    "name": "Jomo Labs",
+    "email": "will@jomolabs.co",
+    "url": "https://github.com/jomo-labs"
+  },
+  "homepage": "https://print.jomolabs.co",
+  "repository": "https://github.com/jomo-labs/print-skill",
+  "license": "Apache-2.0",
+  "keywords": [
+    "print",
+    "printable",
+    "pdf",
+    "html",
+    "design",
+    "worksheet",
+    "calendar",
+    "chore-chart",
+    "activity-page",
+    "certificate"
+  ],
+  "skills": [
+    "./"
+  ]
+}
