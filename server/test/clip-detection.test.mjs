@@ -23,13 +23,11 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
+import { CHROME, loadPageParts, fillTemplate, launchTestBrowser, openTab } from "./helpers.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ASSETS = path.join(HERE, "..", "..", "assets");
 const FIT_CLI = path.join(HERE, "..", "fit-cli.mjs");
-const CHROME = `document.getElementById("mp-chrome-root").shadowRoot`;
 const run = promisify(execFile);
 
 // A fixed-height box with several times its height in copy: the classic
@@ -90,13 +88,8 @@ async function waitForFit(serverUrl, ms = 15000) {
 
 test("content cut off inside a container is detected and handed over", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-clip-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
-  const assemble = (body) => template
-    .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace("<!-- CONTENT -->", body);
+  const { template, documentCss } = await loadPageParts();
+  const assemble = (body) => fillTemplate(template, documentCss, body);
   const write = (name, body) => fs.writeFile(path.join(dir, `${name}.html`), assemble(body));
 
   await write("clipped", CLIPPED);
@@ -105,10 +98,7 @@ test("content cut off inside a container is detected and handed over", async (t)
   await write("hoverable", HOVERABLE);
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -116,8 +106,7 @@ test("content cut off inside a container is detected and handed over", async (t)
   });
 
   const withPage = async (name, fn) => {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     try {
       await page.goto(`${server.url}/${name}.html`);
       await page.waitForFunction(`!!${CHROME}.getElementById("mp-btn-edit")`);

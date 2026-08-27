@@ -25,21 +25,16 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
+import {
+  CHROME, loadPageParts, fillTemplate, launchTestBrowser, openTab, openEditMode,
+} from "./helpers.mjs";
 
-const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets");
 const POLL_MS = 1500; // shell.js's auto-reload cadence
 const SETTLE_MS = 4 * POLL_MS; // long enough that a reload would have happened
 
-// Reach into the chrome's shadow root the way a user's click does.
-const CHROME = `document.getElementById("mp-chrome-root").shadowRoot`;
-
 function assemble(template, documentCss, heading) {
-  return template
-    .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace("<!-- CONTENT -->", `<h1 id="probe">${heading}</h1>`);
+  return fillTemplate(template, documentCss, `<h1 id="probe">${heading}</h1>`);
 }
 
 const headingOf = (page) => page.evaluate(() => document.getElementById("probe")?.textContent);
@@ -62,29 +57,15 @@ async function postStatus(serverUrl, state, text = "") {
   assert.equal(res.ok, true, `posting status ${state}`);
 }
 
-// Open the page, then open edit mode.
-async function openPage(page, url) {
-  await page.goto(url);
-  await page.waitForFunction(`!!${CHROME}.getElementById("mp-btn-edit")`);
-  await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
-  await page.waitForFunction(`document.getElementById("mp-chrome-root").hasAttribute("data-mp-edit-active")`);
-}
-
 test("a page edited on disk reaches the open tab", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-live-reload-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   const file = path.join(dir, "page.html");
   // What the model does when it applies a chat request: rewrite the file.
   const writePage = (heading) => fs.writeFile(file, assemble(template, documentCss, heading));
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -92,11 +73,9 @@ test("a page edited on disk reaches the open tab", async (t) => {
 
   const withPage = async (fn) => {
     await writePage("BEFORE");
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    // The template preloads Google Fonts; the test must not depend on them.
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     try {
-      await openPage(page, `${server.url}/page.html`);
+      await openEditMode(page, `${server.url}/page.html`);
       await fn(page);
     } finally {
       await page.close();

@@ -74,6 +74,11 @@ button, input, textarea, select {
 }
 
 /* ── Toolbar ── */
+/* The 56px toolbar height is a cross-file constant with no single source
+   (the chrome and the document load as separate assets, and the document
+   must also work with no chrome at all). Change it in all four places:
+   here, chrome-host.css (padding-top + canvas height), document.css
+   (.page-surround min-height), and shell.js currentScale(). */
 #mp-toolbar {
   position: fixed;
   top: 0; left: 0; right: 0;

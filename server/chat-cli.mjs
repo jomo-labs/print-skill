@@ -66,24 +66,12 @@
 //
 // --url <base> (or PRINT_SKILL_URL) overrides http://127.0.0.1:4949.
 
+import { takeFlag, takeValue } from "./lib.mjs";
+
 const argv = process.argv.slice(2);
 
-function takeFlag(name) {
-  const i = argv.indexOf(name);
-  if (i === -1) return undefined;
-  argv.splice(i, 1);
-  return true;
-}
-function takeValue(name, fallback) {
-  const i = argv.indexOf(name);
-  if (i === -1 || i === argv.length - 1) return fallback;
-  const v = argv[i + 1];
-  argv.splice(i, 2);
-  return v;
-}
-
-const BASE = (takeValue("--url", process.env.PRINT_SKILL_URL || "http://127.0.0.1:4949")).replace(/\/+$/, "");
-const full = takeFlag("--full");
+const BASE = (takeValue(argv, "--url", process.env.PRINT_SKILL_URL || "http://127.0.0.1:4949")).replace(/\/+$/, "");
+const full = takeFlag(argv, "--full");
 
 const [command, page, ...rest] = argv;
 

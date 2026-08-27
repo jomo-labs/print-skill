@@ -686,8 +686,10 @@ function currentScale(w) {
   if (typeof zoom === 'number') return zoom;
   const availW = window.innerWidth - 80;
   if (zoom === 'fit') {
-    // The height the canvas actually shows: the window minus the toolbar,
-    // less a little breathing room so the sheet edge isn't flush against it.
+    // The height the canvas actually shows: the window minus the toolbar
+    // (56px — a cross-file constant; the list of every site is in chrome.css
+    // at #mp-toolbar), less a little breathing room so the sheet edge isn't
+    // flush against it.
     const availH = window.innerHeight - 56 - 48;
     const s = Math.min(availW / w, availH / paperDims().h);
     return Math.min(Math.max(s, ZOOM_STEPS[0]), ZOOM_STEPS[ZOOM_STEPS.length - 1]);

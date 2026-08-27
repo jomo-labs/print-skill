@@ -108,6 +108,9 @@ body {
 
 /* ── Page canvas ── */
 .page-surround {
+  /* 56px = the chrome's toolbar height (a cross-file constant; the list of
+     every site is in chrome.css at #mp-toolbar). Reserved here too so a page
+     opened without the server still lays out where the served one does. */
   min-height: calc(100vh - 56px);
   display: flex;
   flex-direction: column;

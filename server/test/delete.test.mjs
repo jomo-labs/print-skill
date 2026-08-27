@@ -15,77 +15,27 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
+import {
+  CHROME, loadPageParts, fillTemplate, launchTestBrowser, openTab,
+  openEditMode as openPage, cliSelection as selection, selectionBecomes, fileBecomes,
+} from "./helpers.mjs";
 
-const run = promisify(execFile);
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "chat-cli.mjs");
-const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets");
 const NOTICE_MS = 400; // shell.js SELECT_NOTICE_MS
 const SETTLE_MS = 3 * NOTICE_MS;
 
-const CHROME = `document.getElementById("mp-chrome-root").shadowRoot`;
-
 function assemble(template, documentCss) {
-  return template
-    .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace(
-      "<!-- CONTENT -->",
-      `<h1 id="probe">Chore Chart</h1><p id="other">Sweep the floor.</p>`
-    );
-}
-
-async function selection(serverUrl) {
-  return (await run("node", [CLI, "selection", "--url", serverUrl])).stdout.trim();
-}
-
-async function selectionBecomes(serverUrl, want, ms = 15000) {
-  const deadline = Date.now() + ms;
-  let last = "";
-  while (Date.now() < deadline) {
-    last = await selection(serverUrl);
-    if (last === want) return last;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return last;
-}
-
-// The save is async and debounced by nothing but the network — poll the file
-// until it says what the DOM already does.
-async function fileBecomes(file, predicate, ms = 15000) {
-  const deadline = Date.now() + ms;
-  let text = "";
-  while (Date.now() < deadline) {
-    text = await fs.readFile(file, "utf-8");
-    if (predicate(text)) return text;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return text;
-}
-
-async function openPage(page, url) {
-  await page.goto(url);
-  await page.waitForFunction(`!!${CHROME}.getElementById("mp-btn-edit")`);
-  await page.evaluate(`${CHROME}.getElementById("mp-btn-edit").click()`);
-  await page.waitForFunction(`document.body.classList.contains("edit-active")`);
+  return fillTemplate(template, documentCss,
+    `<h1 id="probe">Chore Chart</h1><p id="other">Sweep the floor.</p>`);
 }
 
 test("Delete removes the selected element, with the user's say-so", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-delete-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   const file = path.join(dir, "page.html");
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -96,8 +46,7 @@ test("Delete removes the selected element, with the user's say-so", async (t) =>
   // what was asked matters as much as what happened.
   const withPage = async (answer, fn) => {
     await fs.writeFile(file, assemble(template, documentCss));
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     const asked = [];
     page.on("dialog", async (d) => {
       asked.push(d.message());

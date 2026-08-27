@@ -15,11 +15,8 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
-
-const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets");
+import { loadPageParts, fillTemplate, launchTestBrowser } from "./helpers.mjs";
 
 // Everything a generated page could throw at the chrome, in one stylesheet.
 const HOSTILE_CSS = `
@@ -109,10 +106,8 @@ const PROPS = [
 ];
 
 function assemble(documentCss, template, customCss) {
-  return template
-    .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace('<style id="content-overrides"></style>', `<style id="content-overrides">${customCss}</style>`)
-    .replace("<!-- CONTENT -->", '<h1>Chore chart</h1><p id="probe">Sweep the floor.</p>');
+  return fillTemplate(template, documentCss,
+    '<h1>Chore chart</h1><p id="probe">Sweep the floor.</p>', { customCss });
 }
 
 // Computed style + on-screen box of every chrome element, read from inside
@@ -192,18 +187,12 @@ async function inspect(browser, url) {
 
 test("page CSS cannot reach the server-managed chrome", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-isolation-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
+  const { template, documentCss } = await loadPageParts();
   await fs.writeFile(path.join(dir, "plain.html"), assemble(documentCss, template, ""));
   await fs.writeFile(path.join(dir, "hostile.html"), assemble(documentCss, template, HOSTILE_CSS));
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();

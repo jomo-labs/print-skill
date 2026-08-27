@@ -27,12 +27,9 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
 import { startServer } from "../server.mjs";
+import { CHROME, loadPageParts, fillTemplate, launchTestBrowser, openTab } from "./helpers.mjs";
 
-const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets");
-const CHROME = `document.getElementById("mp-chrome-root").shadowRoot`;
 const SETTLE_MS = 3000;   // several shell live-channel ticks (1.5s each)
 
 const LONG = Array.from({ length: 120 }, (_, i) =>
@@ -153,23 +150,15 @@ const pressFix = (page) => page.evaluate(`${CHROME}.getElementById("mp-fit-fix")
 
 test("a page that stops fitting offers itself to the model", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-fit-"));
-  const [template, documentCss] = await Promise.all([
-    fs.readFile(path.join(ASSETS, "page_template.html"), "utf-8"),
-    fs.readFile(path.join(ASSETS, "shell", "document.css"), "utf-8"),
-  ]);
-  const assemble = (body) => template
-    .replace("/* @@DOCUMENT_CSS@@ */", documentCss)
-    .replace("<!-- CONTENT -->", body);
+  const { template, documentCss } = await loadPageParts();
+  const assemble = (body) => fillTemplate(template, documentCss, body);
   const write = (name, body) => fs.writeFile(path.join(dir, `${name}.html`), assemble(body));
 
   await write("overflow", LONG);
   await write("fits", SHORT);
 
   const server = await startServer({ dir, port: 0 });
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PRINT_SKILL_CHROMIUM ? { executablePath: process.env.PRINT_SKILL_CHROMIUM } : {}),
-  });
+  const browser = await launchTestBrowser();
   t.after(async () => {
     await browser.close();
     await server.close();
@@ -177,8 +166,7 @@ test("a page that stops fitting offers itself to the model", async (t) => {
   });
 
   const withPage = async (name, fn) => {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.route("**://fonts.g*/**", (route) => route.abort());
+    const page = await openTab(browser);
     try {
       await page.goto(`${server.url}/${name}.html`);
       await page.waitForFunction(`!!${CHROME}.getElementById("mp-btn-edit")`);
