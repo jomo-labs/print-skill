@@ -60,7 +60,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 40px 20px 80px;
+  padding: 60px 20px;
 }
 .page {
   width: 816px;
@@ -263,10 +263,23 @@ h1 .slash { color: var(--color-accent); }
 }
 
 /* ── And of course, it prints ── */
+/* Same mechanism as the skill itself (assets/page_template.html): the .page
+   element IS the sheet, printed 1:1 into a zero-margin page box of the same
+   size. Without the @page rule, Chrome's default margins shrink the printable
+   area below the sheet's fixed 1056px height and the footer spills onto a
+   second page. */
+@page { size: letter; margin: 0; }
 @media print {
   body { background: white; }
   .page-surround { padding: 0; display: block; min-height: 0; }
-  .page { box-shadow: none; margin: 0 auto; min-height: 0; }
+  .page {
+    box-shadow: none;
+    margin: 0 auto;
+    min-height: 0;
+    break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   .copy-btn { display: none; }
   a { color: var(--color-ink); text-decoration: none; }
 }
