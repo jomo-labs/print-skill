@@ -139,20 +139,6 @@ test("content that outgrows a sheet continues onto more sheets", async (t) => {
       const s = await sheetsOf(page);
       assert.equal(s.count, 2, "the tall block should still get its own sheet");
       assert.equal(s.overflowing, 1, "and should still overflow it");
-      assert.equal(await page.evaluate(() => document.querySelectorAll(".page-break-guide").length), 0,
-        "no break guide should be drawn");
-    });
-  });
-
-  await t.test("a guide left in the DOM by an older shell is swept on load", async () => {
-    const guide = `<div class="page-break-guide" style="position:absolute;left:0;right:0;` +
-      `top:984px;height:2px;display:block;background:#999"></div>`;
-    await fs.writeFile(path.join(dir, "legacy.html"), assemble(BODIES.flat + guide));
-    await withPage("legacy", async (page) => {
-      assert.equal(await page.evaluate(() => document.querySelectorAll(".page-break-guide").length), 0,
-        "a legacy guide survived the load");
-      const saved = await page.evaluate(() => serializeForSave());
-      assert.ok(!saved.includes("page-break-guide"), "a legacy guide survived into the saved file");
     });
   });
 

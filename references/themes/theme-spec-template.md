@@ -99,7 +99,7 @@ the default rhythm says so in one line.
 ## 6. Components & Patterns
 
 - **Signature content blocks** — which of the standard content blocks (see
-  `references/page-types.md`) get theme-specific treatment, and how (e.g.
+  `references/page-types.md` and its `types/` spec files) get theme-specific treatment, and how (e.g.
   Comic's narrator box, a chapter heading with an accent stripe). Describe the
   construction concretely enough to rebuild: which tokens, which utilities,
   what proportions.

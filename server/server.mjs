@@ -8,7 +8,7 @@
 //                          (chrome-host.css + chrome.css + shell.js injected
 //                          at serve time — the file on disk is a pure
 //                          document)
-//   GET  /shell/*          shell assets (served dir first, skill assets as fallback)
+//   GET  /shell/*          shell assets, from the skill's own assets/
 //   GET  /                 index of served pages
 //   GET  /healthz          liveness + identity probe
 //   GET  /pdf/<page>.html  render a served page -> application/pdf (headless use)
@@ -68,8 +68,8 @@ import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderPdf, closeBrowser } from "./render.mjs";
 import {
-  createLiveLog, postMessage, awaitMessages,
-  setSelection, getSelections, setFit, getFits, closeAll,
+  createLiveLog, postMessage, readMessages,
+  setSelection, getSelections, setFit, getFits,
 } from "./chat-store.mjs";
 
 const DEFAULT_PORT = 4949;
@@ -139,8 +139,9 @@ function fileEtagPart(etag) {
 // printable HTML, no chrome references at all); serving one through this
 // server injects the chrome stylesheets and scripts so the toolbar/edit
 // functionality appears — always the skill's CURRENT chrome, since nothing
-// in the file can go stale. Legacy pages that still link shell.js themselves
-// are left alone (double-loading the shell would double the chrome).
+// in the file can go stale. A document that already carries the injected
+// script — the print pipeline's staged copy of a served page — is left alone
+// (double-loading the shell would double the chrome).
 // serializeForSave strips [data-mp-chrome] tags, so PUT round-trips stay pure.
 //
 // Two stylesheets, injected at two different points, because they play two
@@ -182,8 +183,8 @@ async function chromeAssets() {
 }
 
 // mtime+size of every asset a served page carries — the two inlined
-// stylesheets and the two scripts it links. Cheap enough to stat on each
-// request (four stats, no reads); a missing file just drops out of the
+// stylesheets and the script it links. Cheap enough to stat on each
+// request (three stats, no reads); a missing file just drops out of the
 // signature rather than failing the response.
 const CHROME_ASSET_FILES = ["chrome-host.css", "chrome.css", "shell.js"];
 async function chromeSignature() {
@@ -199,7 +200,7 @@ async function chromeSignature() {
 }
 
 function injectChromeTags(html, assets) {
-  if (html.includes("shell/shell.js")) return html; // legacy page: own links
+  if (html.includes("shell/shell.js")) return html; // already wrapped (print staging)
   let out = html;
   const headOpen = out.match(/<head(?:\s[^>]*)?>/i);
   const hostTag = `<style id="mp-chrome-host-css" data-mp-chrome>\n${assets.host}\n</style>`;
@@ -355,26 +356,18 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
   let baseUrl = null;
 
   async function serveStatic(req, res, urlPath) {
-    // Pages and their assets from the served directory. Shell assets (top
-    // level or one project dir deep) are served from the SKILL's own copy
-    // FIRST: the skill is the source of truth for chrome, so served pages
-    // always run the current shell even when the local copy next to the
-    // pages is stale (it exists only for file:// use). Local copy remains
-    // the fallback for files the skill doesn't ship.
-    const candidates = [];
+    // Pages and their assets come from the served directory. Shell assets
+    // (top level or one project dir deep, so nested pages resolve them too)
+    // come from the SKILL's own copy: the skill is the source of truth for
+    // chrome, so served pages always run the current shell.
     const shellMatch = urlPath.match(/^(?:\/[^/.][^/]*)?(\/shell\/[^/]+)$/);
-    if (shellMatch) {
-      const inAssets = safeJoin(SKILL_ASSETS, shellMatch[1]);
-      if (inAssets) candidates.push(inAssets);
-    }
-    const inRoot = safeJoin(ROOT, urlPath);
-    if (inRoot) candidates.push(inRoot);
-    for (const candidate of candidates) {
+    const target = shellMatch ? safeJoin(SKILL_ASSETS, shellMatch[1]) : safeJoin(ROOT, urlPath);
+    if (target) {
       try {
-        const stat = await fs.stat(candidate);
-        if (stat.isFile()) return await serveFile(req, res, candidate, stat, { wrapChrome: true });
+        const stat = await fs.stat(target);
+        if (stat.isFile()) return await serveFile(req, res, target, stat, { wrapChrome: true });
       } catch {
-        /* try next */
+        /* falls through to 404 */
       }
     }
     res.writeHead(404, { "Content-Type": "text/plain" });
@@ -518,14 +511,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
 
     if (req.method === "GET") {
       const after = query.has("after") ? Math.max(0, Number(query.get("after")) || 0) : 0;
-      const waitMs = Math.min(Math.max(Number(query.get("wait")) || 0, 0), 300) * 1000;
-      const messages = await awaitMessages(live, {
-        after,
-        page: pagePath,
-        waitMs,
-        onAbort: (drop) => req.on("close", drop),
-      });
-      if (res.writableEnded) return; // client went away mid-poll
+      const messages = readMessages(live, { after, page: pagePath });
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true, epoch: live.epoch, messages }));
     }
@@ -713,12 +699,7 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
           server,
           port: bound,
           url: baseUrl,
-          // Settle open chat long-polls first or close() waits out the longest
-          // poll (render-cli's one-shot server and SIGINT both come through here).
-          close: () => {
-            closeAll(live);
-            return new Promise((r) => server.close(r));
-          },
+          close: () => new Promise((r) => server.close(r)),
         });
       });
     };

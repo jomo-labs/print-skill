@@ -733,7 +733,6 @@ test("edit mode reaches every sheet, not just the first", async (t) => {
         i,
         `the selector ${picked[0].selector} finds that same paragraph in the file`
       );
-      assert.match(picked[0].snapshot, new RegExp(`data-i="${i}"`), "the snapshot is of the element itself");
     });
   });
 

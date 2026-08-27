@@ -35,7 +35,6 @@
   --mp-faint:   oklch(78% 0.006 78);  /* disabled icon ink — see .mp-btn-secondary */
   --mp-surface: oklch(94% 0.009 78);
   --mp-live:    oklch(52% 0.14 150);          /* recorded — a state, not a theme accent */
-  --mp-notice:  oklch(52% 0.13 65);           /* a decision is owed — not an error        */
   --mp-error:   oklch(52% 0.20 27);           /* the page does not fit — the one real error */
   --mp-select:  rgba(59, 130, 246, 0.7);      /* hover/selection blue, as an outline     */
   --mp-select-chip: rgba(59, 130, 246, 0.9);  /* ...and filled, behind the hover label   */
@@ -51,12 +50,6 @@
      boundary does not stop them); generic families cannot be redefined. */
   --mp-font-ui:   ui-sans-serif, system-ui, sans-serif;
   --mp-font-mono: ui-monospace, monospace;
-
-  /* The panel's slide. chrome-host.css restates these numbers for the
-     document side of the same motion (custom properties don't reach out of
-     the shadow root) — change them together. */
-  --mp-slide: 220ms;
-  --mp-ease:  cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 /* The shadow tree gets no UA-reset from the page's own `* { }` rule, and
@@ -138,36 +131,6 @@ button, input, textarea, select {
 #mp-btn-edit.active .mp-icon-x { display: inline; }
 
 #mp-toolbar .mp-sep { width: 1px; height: 22px; background: var(--mp-rule); flex-shrink: 0; }
-
-/* Variant nav — shell.js flips it to flex once it finds multiple variants. */
-#mp-variant-nav { display: none; align-items: center; gap: 8px; }
-#mp-variant-label {
-  font-size: 11px;
-  color: var(--mp-mid);
-  white-space: nowrap;
-  letter-spacing: 0.04em;
-}
-
-
-#mp-toolbar .mp-nav-btn {
-  width: 28px; height: 28px;
-  border: 1px solid var(--mp-rule);
-  background: transparent;
-  color: var(--mp-mid);
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  flex-shrink: 0;
-  line-height: 1;
-}
-#mp-toolbar .mp-nav-btn:hover {
-  background: var(--mp-bg);
-  color: var(--mp-ink);
-}
 
 /* ── Secondary buttons — quiet, circular icon controls ──
    For toolbar actions that support the document rather than act on it:
@@ -256,15 +219,6 @@ button, input, textarea, select {
 #mp-history-sep, #mp-history { display: none; }
 :host([data-mp-edit-active]) #mp-history-sep { display: block; }
 :host([data-mp-edit-active]) #mp-history { display: flex; align-items: center; gap: 2px; }
-
-/* ── Embedded (iframe) mode — strip chrome that the host page provides ──
-   Screen-only: the printed artifact keeps its themed chrome (borders) even
-   when printed from inside an embedding host like create.html. The matching
-   document-side trimming (.page-surround padding, sheet shadow) lives in
-   chrome-host.css. */
-@media screen {
-  :host([data-mp-embedded]) #mp-toolbar { display: none; }
-}
 
 /* ── Edit mode ── */
 

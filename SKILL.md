@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Node 18+ recommended for the bundled local PDF server (optional — without it, pages print via the browser dialog)
 allowed-tools: Read Write Edit Bash WebFetch AskUserQuestion
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
   argument-hint: "<text | URL | page type description>"
 ---
 
@@ -34,6 +34,13 @@ means you are also the design validator: the self-check in
 
 ## Workflow
 
+One habit pays for itself throughout: **batch independent tool calls into a
+single message.** Every tool call is an API round-trip that re-sends the
+whole conversation, so three Reads issued one at a time cost three
+round-trips — issued together in one message they cost one. The reference
+reads in Steps 1 and 3, and the channel-file Writes in Step 5, are all
+independent: always issue each group together.
+
 ### Step 0 — Input & server warm-up
 
 First, warm up the PDF server in the background so the one-time Chromium
@@ -60,7 +67,15 @@ afterwards. Two dialogs at most, and only for what is genuinely open:
 
 **Skip it** when there is no human to answer: headless / pipeline use (the
 triggers in "Headless / pipeline use" — output destined for an automated
-consumer, or the user asked for "a PDF file"). Skip any **question** whose
+consumer, or the user asked for "a PDF file"), and any **non-interactive
+invocation** — a one-shot programmatic run (`claude -p`, CI, a scheduled job,
+another agent driving this session), where ending the turn with a question
+means the run simply stops with no page and nobody ever answers. The
+reliable tell in Claude Code: `AskUserQuestion` missing from your tools
+means print/headless mode — see `references/harness-support.md` Part 3.
+When in doubt whether anyone can reply, don't ask: pick sensible defaults,
+generate, and state the choices in the report — a wrong default costs one
+regeneration, a stalled run costs the whole task. Skip any **question** whose
 answer the request or conversation already gives ("landscape A4 poster"
 settles two of them), and skip a whole dialog when nothing in it is open.
 Never re-ask on a regeneration or edit of an existing page — the earlier
@@ -103,8 +118,9 @@ question text noting checkout and contact info are included by default.
 
 **How answers bind.** Paper size and orientation land directly in the
 `paper` / `orientation` channels (Step 3); "let the model decide" means
-choose per page type as usual. Max pages caps the sheets you author in Step
-3 and is the count `fit-cli.mjs` must confirm in Step 6. Selected topics
+choose per page type as usual. Max pages becomes `--max-sheets` on the Step
+5 command (default 1) — the sheets you author in Step 3 must fit that budget,
+and assembly refuses more. Selected topics
 define the content scope for Steps 2–3.
 
 ### Step 1 — Classify
@@ -112,8 +128,12 @@ define the content scope for Steps 2–3.
 Two independent decisions:
 
 **Page type.** Match the request against the routing table at the top of
-`references/page-types.md` (first match wins), then read that type's section for
-its functional requirements and default styling.
+`references/page-types.md` (first match wins), then read **only that type's
+spec file** (`references/types/<slug>.md`, named in the index there) for its
+functional requirements and default styling. The other specs are other
+requests' context — every file read here rides along in every later turn.
+Read the spec together with Step 3's design docs in one batched message
+(classification needs only the routing table, which you have already read).
 
 **Themed?** The request is themed when it names a visual identity: "in the
 theme/style of X", "styled/themed like X", "X-themed", "in an X style", and the
@@ -126,8 +146,8 @@ any separate style instructions.
 If themed: open `references/themes/README.md`, match the trigger phrases, and
 load the **one** matching spec — or follow its ad-hoc theme checklist when
 nothing matches. A themed request **drops the page type's default styling
-entirely**; only its functional requirements survive (they're marked in each
-type's section). The theme, not the type, governs everything visual.
+entirely**; only its functional requirements survive (they're marked in the
+type's spec file). The theme, not the type, governs everything visual.
 
 ### Step 2 — Gather content
 
@@ -139,15 +159,17 @@ fetching and write it directly.
 If the page needs **line art derived from a photograph** (coloring page, image
 page, drawing prompt — and only those), produce it now: check for an image
 backend per `references/harness-support.md` Part 2, generate, then run the
-normalize pass and both checks from the **Image block** entry in
-`references/page-types.md`. With no backend available, hand-author the art as
+normalize pass and both checks from `references/types/image-block.md`. With no backend available, hand-author the art as
 stroked SVG (design rule 1a) and say so in the report — the page still gets
 made either way.
 
 ### Step 3 — Author
 
 Read `references/design-rules.md` — its platform invariants (what every page
-inherits and no theme overrides) and Part A — before writing any CSS,
+inherits and no theme overrides) and Part A — before writing any CSS
+(batch this Read with the others, and note the token quick reference in
+`page-types.md` already lists every design token and the base-layer styles —
+no need to grep the stylesheet for them),
 `references/principles.md` for the layout and typography craft (rank
 multi-item content, design empty states, set type properly, size the layout to
 the content), and `references/print-fundamentals.md` when physical exactness
@@ -163,9 +185,16 @@ matters (paper size, DPI, margins). Produce these channels:
 | `title` | Page title; also becomes the filename. |
 | `answer_key_html` | Worksheets with an answer key only; otherwise empty. Never author the key as a second page inside `content_html`. |
 
-**Fit one sheet.** Size the content to the paper before you write it (Principle
-VII, and the content-box dimensions in `references/page-types.md`): count the
-steps, items or rows and pick a layout that holds them. If the content genuinely
+**Fit one sheet — and do the arithmetic first.** Before writing any content,
+make a sizing ledger: the content box from the sheet geometry in
+`references/page-types.md` (≈ 680×912px letter portrait, less the ~41px
+footer), and each planned block's cost from the type's spec file — then check
+the sum fits. `header 60 + 2 sections × 300 + tracker 120 + footer 41 =
+821 ≤ 912` takes one line of thought and saves the fix rounds that eyeballing
+costs (Principle VII). Declare the sheet count while you're at it: one sheet
+unless the request genuinely needs more, and a multi-sheet page is authored
+as explicit `.page` sheets AND passed as `--max-sheets N` in Step 5 — never
+the accident of writing too much. If the content genuinely
 will not fit, author the further sheets **explicitly** — the two-sheet form in
 `references/assembly.md` — and decide what lands on each, so every sheet reads
 as complete.
@@ -193,64 +222,73 @@ say so in your report.
 
 ### Step 5 — Assemble
 
-Follow `references/assembly.md` exactly: produce `<slugified-title>.html`
-from `assets/page_template.html` with the step-1 sed (it inlines the document
-stylesheet — the generated file is fully self-contained, no sidecar), then
-make the anchored insertions — nested-sheet CSS (two-sheet only), font
-`<link>`, `custom_css` into `<style id="content-overrides">`, the `<body>`
-data attributes (`data-mp-paper`, `data-mp-orientation`) when
-paper/orientation are set, and finally replace
-`<!-- CONTENT -->` with your content. Use the given commands — never retype
-template or stylesheet.
+Write your channels to files — `content_html` (and `custom_css` /
+`answer_key_html` when set) — in a scratch location, **never inside `out/`**
+(stray `.html` files next to the pages confuse serving). Write them all in
+one batched message. Then assemble,
+verify, and check in ONE command:
+
+```
+node <skill-dir>/server/assemble-cli.mjs \
+  --content <scratch>/content.html --title "<Page Title>" \
+  [--css <scratch>/overrides.css] [--font-import <url>] \
+  [--paper a4|legal|half] [--orientation landscape] \
+  [--answer-key <scratch>/key.html] [--max-sheets N]
+```
+
+It executes the whole procedure in `references/assembly.md` — template copy
+with the document stylesheet inlined, multi-sheet wrapping, anchored
+insertions, `<body>` attributes, `@page` size — then always runs the
+structural verification list, the fit check, and the contrast check on the
+written file, exiting 0 only when everything passes. `--max-sheets` is the
+user's page budget (default 1; an answer key makes it 2): authoring more
+sheets than the budget fails the build, so a bigger page is an explicit
+choice, not a spill. One command instead of a chain
+of sed/grep round-trips, and the anchor mistakes the greps used to catch
+can't happen at all. The output lands in `<cwd>/out/<slugified-title>.html`
+(`--out-dir` overrides; an explicit output location from the user wins).
+Read `references/assembly.md` when you need the underlying anchors — for
+editing an existing page in place, or assembling by hand without Node.
 
 ### Step 6 — Verify
 
-Run the grep checks listed at the end of `references/assembly.md` against the
-written file (no leftover `<!-- CONTENT -->`, shell intact, anchors in order).
-Fix in place if anything fails.
+Step 5 already verified everything; this step is what its output means, and
+the fix loop for a non-zero exit.
 
-Then check that the content fits the sheets you laid out:
+**The fit check** (`fit-cli.mjs`) verifies the content fits the sheets you
+laid out, loading the page exactly as the browser and the PDF renderer do.
+Three outcomes:
 
-```
-node <skill-dir>/server/fit-cli.mjs out/<file>.html
-```
+- **Fits as authored** — done.
+- **Small miss, nothing clipped** — the check fixes it itself: it tightens
+  the page's spacing tokens (down to 75%) and, past that, its type tokens
+  (down to 92%), persists the result into the file as a
+  `<style id="mp-fit-squeeze">` block, re-verifies, and exits 0 with a line
+  like *"squeezed to fit: spacing −20%"*. Mention that in your report; if
+  the tightened look isn't right, cut content instead and re-run Step 5 —
+  a re-run always re-derives from the authored sizes, never compounds.
+- **Big miss, or content cut off inside a container** — exit 1, with the
+  per-sheet section table (what each block costs, what the footer reserves,
+  the exact px to cut) printed automatically. A *clipped* container does not
+  print what is past its edge, and no squeeze can fix it (tightening shrinks
+  container and content together) — shorten the content or size the
+  container for it. Fix your channels and re-run the Step 5 command; never
+  hand-tune around the numbers the table already gives you.
 
-It loads the page exactly as the browser and the PDF renderer do and reports
-what the shell had to do. Exit 0 means the content fits as authored. Exit 1
-means it does not, and says how:
+**The contrast check** (`contrast-cli.mjs`) verifies every piece of text
+clears its WCAG AA floor (4.5:1 body, 3:1 large or bold), measured at the
+sizes that actually print — squeeze included, which is why it runs after
+fit. Failures list each offending style with the size and weight that set
+its threshold. This is the one platform invariant the Part B self-check
+cannot verify by reading CSS — Part B greps for banned constructs, it never
+computes a ratio.
 
-- *authored N sheets, content needs M* — the shell had to continue the content
-  onto sheets you did not lay out. Nothing is lost and all M sheets print, but
-  the breaks are accidents. Cut or tighten the content to fit N, or author the
-  M sheets and place the breaks yourself. Re-run until it passes.
-- *content too tall to place on any sheet* — one block is taller than the paper.
-  It hangs past the edge and **prints clipped**. Always fix this: split the
-  block, shorten it, or give it its own sheet.
-- *content is cut off inside N containers* — content outgrew a fixed-size
-  container. Containers clip rather than overlap (the document stylesheet sets
-  `overflow: clip` on structural containers — on paper, overlap is never
-  right), so whatever is past the clip edge **does not print at all**. The
-  check lists each container's selector in the file's authored flow. Always
-  fix this: shorten the content, or size the container for it.
-
-Add `--sections` when it fails: it prints what each marked section costs, what
-the footer reserved, and the exact px to cut, instead of leaving you to guess
-and re-run. Remember the footer takes ~41px out of the content box on every
-sheet (`design-rules.md`, Platform invariants) — content that measures exactly
-the box height is already too tall.
-
-Then check that every piece of text clears its contrast floor:
+After any later in-place edit to the generated file, re-check both in one
+command:
 
 ```
-node <skill-dir>/server/contrast-cli.mjs out/<file>.html
+node <skill-dir>/server/fit-cli.mjs out/<file>.html && node <skill-dir>/server/contrast-cli.mjs out/<file>.html
 ```
-
-Exit 0 means every text style clears WCAG AA (4.5:1 body, 3:1 large or bold);
-exit 1 lists the ones that do not, with the size and weight that set each
-threshold. This is the one platform invariant the Part B self-check cannot
-verify by reading CSS — Part B greps for banned constructs, it never computes a
-ratio, so a theme accent that reads fine at 19px can ship at 9px unnoticed. Add
-`--all` to see every text style rather than only the failures.
 
 Both need Node 18+ and the Step 0 `npm install`; if Node is unavailable, say in
 the report that the fit and contrast checks could not run.
@@ -261,33 +299,34 @@ Make the page reachable at `http://127.0.0.1:<port>/<file>.html`. The served
 root is `<cwd>/out` — the assembly output directory — so one server covers
 every page this project generates.
 
-1. Probe ports 4949–4958 with `GET http://127.0.0.1:<port>/healthz`. An
-   answer naming `"print-skill-server"` whose `dir` equals `<cwd>/out` is
-   this project's server — reuse it (note its port); a healthy server with a
-   **different** `dir` belongs to another project — leave it alone and keep
-   probing.
-2. If none matched, start one **in the background** (never foreground — some
-   harnesses kill foreground commands at 30s, taking the server down):
-   `node <skill-dir>/server/server.mjs --dir <cwd>/out --port 4949 --auto-port`.
-   `--auto-port` walks to the next free port when 4949 is taken; the startup
-   line prints the URL it actually bound — read it, don't assume 4949.
+1. One command does the probe / reuse / start sequence and prints the URL:
+
+   ```
+   node <skill-dir>/server/serve-cli.mjs --dir <cwd>/out
+   ```
+
+   It finds a print-skill server already serving this exact directory on
+   ports 4949–4958 and reuses it, or starts one **detached** (it outlives
+   the command — never start `server.mjs` in the foreground yourself; some
+   harnesses kill foreground commands at 30s, taking the server down) and
+   reports the URL it actually bound — read it, don't assume 4949. A healthy
+   server on another `dir` belongs to another project and is left alone.
    Give `--dir` as an **absolute** path: a shell that ran the Step 0
    `npm install` is still sitting in `<skill-dir>/server`, and a relative
-   `out` resolves there instead of in the project. The server refuses to
-   start on a root inside the skill and says so — re-run with the absolute
-   path rather than reading the pages back out of the skill directory.
+   `out` resolves there instead of in the project. The server refuses a
+   root inside the skill and says so — re-run with the absolute path.
    If the Step 0 background `npm install` is still running, wait for it to
    finish first; if it was skipped or failed, run
    `npm install --prefix <skill-dir>/server` now (its postinstall fetches the
    Chromium build).
-3. A running server is all live editing needs — there is nothing to connect
+2. A running server is all live editing needs — there is nothing to connect
    or arm (see "Live mode"). Whether you started it just now or reused one
    that was already up, you are done. One exception, and it is about where
    YOU are running rather than anything you did: if the user's browser cannot
    reach your loopback (cloud sandboxes — see
    `references/harness-support.md` Part 1), the URL is useless to them. Report the
    file path instead, and say the page prints correctly opened directly.
-4. If Node is unavailable or the install fails, skip serving — the generated
+3. If Node is unavailable or the install fails, skip serving — the generated
    file still works opened directly in a browser as a **plain printable**
    (styled and print-exact via the browser dialog; no toolbar, editing, or
    live connection — those are server-injected chrome). Say so in the report
@@ -332,9 +371,11 @@ directly after Step 6:
 - **Against the running server** (Step 7 already done):
   `curl -fsS -o <file>.pdf http://127.0.0.1:<port>/pdf/<file>.html`
 
-`fit-cli.mjs` (Step 6) is the gate to run before either: it exits non-zero when
-the content did not fit the sheets the page lays out, so a pipeline can stop on
-an accidental page break instead of shipping it. (An open page checks the same
+The Step 5 `assemble-cli.mjs` exit code is the gate before either: it is
+non-zero when the content did not fit the sheets the page lays out (beyond
+what a bounded squeeze could absorb) or a text style fails its contrast
+floor, so a pipeline can stop on an accidental page break instead of
+shipping it. (An open page checks the same
 thing continuously, and in live mode offers the user a FIX button that sends
 you a `kind: "fit"` event — see "A fit problem arrives".)
 
@@ -369,14 +410,11 @@ Keep the same filename so the user's link stays valid, and re-run the Step 6
 verification greps after any edit. Never touch the shell's own script or css —
 only content and content-overrides.
 
-Pages generated by older skill versions may still contain baked-in chrome
-markup, injected `applySize` script lines, a `data-mp-live-edit` body
-attribute (a flag the shell no longer reads), or relative
-`shell/*` links — leave all of it alone: the server serves shell files from
-the skill's own assets, the current shell removes and replaces old chrome at
-load, and the next browser-edit save cleanses the file automatically. A
-leftover `<outdir>/shell/` directory from an older version can be deleted
-whenever no `file:`-opened legacy page still needs it.
+Pages generated by skill versions before 2.0 — recognizable by baked-in
+chrome markup, injected `applySize` script lines, or relative `shell/*`
+links — are not supported by the current server and shell: regenerate them
+from the current template instead of editing them in place. A leftover
+`<outdir>/shell/` directory from such a version can simply be deleted.
 
 A page open in the browser via the local server refreshes itself within a
 couple of seconds of the file changing on disk (the shell polls the server's
@@ -494,7 +532,8 @@ waiting to be asked again:
    fix, `status <page> done`. The `done` refreshes their tab, and the refreshed
    page re-measures itself: fixed means the red line disappears on its own and
    the page takes its own report back. Nothing else clears it.
-2. Fix it the way the page type wants it fixed (`references/page-types.md`,
+2. Fix it the way the page type wants it fixed (the type's spec in
+   `references/types/`,
    `principles.md` VII): tighten the content back onto the sheet it was
    authored for, or lay the further sheets out **on purpose** — the problem is
    never the extra sheet itself, it is a break nobody designed. `overflowing`
