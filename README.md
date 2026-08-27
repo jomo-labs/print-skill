@@ -30,7 +30,7 @@ npx skills add jomo-labs/print-skill
 - **Headless mode for your agents** — No clicks, no browser: pages author and
   render to PDF entirely in the pipeline, ready to email, archive, or send
   to print.
-- **Theme-ready** — "…in the style of Dog Man" restyles fonts, palette, page
+- **Themeable** — "…in the style of Dog Man" restyles fonts, palette, page
   chrome, even the writing voice — while the print rules hold.
 
 ## License
