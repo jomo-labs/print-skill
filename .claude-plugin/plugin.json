@@ -15,13 +15,17 @@
     "print",
     "printable",
     "pdf",
-    "html",
-    "design",
-    "worksheet",
-    "calendar",
-    "chore-chart",
-    "activity-page",
-    "certificate"
+    "paper",
+    "education",
+    "teacher",
+    "parents",
+    "kids",
+    "family",
+    "homeschool",
+    "classroom",
+    "planner",
+    "household",
+    "offline"
   ],
   "skills": [
     "./"
