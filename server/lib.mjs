@@ -38,6 +38,55 @@ export function takeValue(argv, name, fallback) {
 }
 
 /**
+ * Custom-property references in `html` that nothing in `html` defines.
+ *
+ * An undefined `var(--x)` is not an error the browser reports: the whole
+ * declaration becomes invalid at computed-value time, so a margin or gap
+ * silently collapses to 0 and the page renders subtly broken. Models writing
+ * custom css guess token names (the spacing scale is non-contiguous, so
+ * `--space-7` is a natural wrong guess between `--space-6` and `--space-8`),
+ * which makes this worth failing at assembly rather than trusting the eye.
+ *
+ * A reference with a fallback (`var(--x, 4px)`) resolves by definition and is
+ * not flagged. Returns [{ name, count, suggestion }] sorted by name;
+ * `suggestion` lists the nearest defined tokens sharing the name's stem
+ * (e.g. `--space-6, --space-8` for `--space-7`), or "" when none match.
+ */
+export function findUndefinedTokenRefs(html) {
+  const defined = new Set(
+    [...html.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]),
+  );
+  const counts = new Map();
+  for (const [, name, next] of html.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*([),])/g)) {
+    if (next === ",") continue; // carries a fallback — resolves regardless
+    if (!defined.has(name)) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const suggest = (name) => {
+    const m = name.match(/^(.*?)(\d+)$/);
+    if (!m) return "";
+    const [, stem, numStr] = m;
+    const num = parseInt(numStr, 10);
+    const peers = [...defined]
+      .map((d) => {
+        const dm = d.match(/^(.*?)(\d+)$/);
+        return dm && dm[1] === stem ? parseInt(dm[2], 10) : null;
+      })
+      .filter((n) => n !== null)
+      .sort((a, b) => a - b);
+    if (!peers.length) return "";
+    const below = peers.filter((n) => n < num).pop();
+    const above = peers.find((n) => n > num);
+    return [below, above]
+      .filter((n) => n !== undefined)
+      .map((n) => `${stem}${n}`)
+      .join(", ");
+  };
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => ({ name, count, suggestion: suggest(name) }));
+}
+
+/**
  * realpath, or the path unchanged when it doesn't exist yet — the caller's
  * own existence check reports that. Paths are compared realpath-to-realpath
  * because a skill is commonly reached through a symlink
