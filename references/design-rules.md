@@ -100,6 +100,13 @@ must not restate them and cannot opt out — it describes only what it changes.
    `:root { --color-accent: oklch(35% 0.12 240); --font-display: 'Bangers', cursive; }`
    — never inlined again elsewhere.
 
+   NEVER infer a token name. The only valid `var()` names are the ones
+   `assets/shell/document.css` actually defines — that file is the canonical
+   token list — plus any your own `:root` override defines. Do not extrapolate
+   from the names you've seen (`--space-6` existing does not mean `--space-7`
+   does): an undefined `var()` silently drops its whole declaration, and
+   assembly fails on it.
+
 3. **Ad-hoc theming is wide open, except paper.** Freely define your own accent,
    ink, rule, and subtle-tone colors, your own headline/body/label fonts, and your
    own page chrome — border weight, corner treatment, frame inset — to

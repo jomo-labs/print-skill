@@ -33,7 +33,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { slugify, takeValue } from "./lib.mjs";
+import { findUndefinedTokenRefs, slugify, takeValue } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = path.resolve(HERE, "..");
@@ -193,6 +193,17 @@ if (flags["font-import"] && !warnings.length) {
   check(idx('<link rel="stylesheet"') < idx('id="content-overrides"'),
     "font link must precede content-overrides");
 }
+// Every var(--…) must name a token something in the file defines — an
+// undefined reference invalidates its whole declaration silently, so a
+// margin or gap collapses to 0 with no visible error (the spacing scale is
+// non-contiguous, so guessed names like --space-7 are the common case).
+for (const { name, count: uses, suggestion } of findUndefinedTokenRefs(html)) {
+  check(false,
+    `var(${name}) resolves to nothing (${uses} use${uses === 1 ? "" : "s"}; ` +
+    (suggestion ? `nearest defined: ${suggestion}` : "no token of that name is defined") +
+    `) — the declaration is silently dropped and its spacing collapses to 0`);
+}
+
 const nestedSheets = count(/<div class="page">/g);
 if (answerKey.trim() || preWrapped) {
   check(idx('id="mp-nested-sheets"') !== -1 && idx('id="mp-nested-sheets"') < idx('id="content-overrides"'),
