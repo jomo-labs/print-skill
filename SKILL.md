@@ -29,7 +29,9 @@ machine, driven by the page's Print button or fully headless for automated
 pipelines (see "Headless / pipeline use").
 
 The design work runs in your head and your tools. The bundled commands verify
-what is mechanical — structure, fit, contrast — but they cannot judge design,
+what is mechanical — structure, fit and per-sheet fill, contrast — so never
+measure fit or fill with your own scripts: react to the numbers the fit check
+prints. But they cannot judge design,
 so you are also the design validator: the self-check in
 `references/design-rules.md` is mandatory, not advisory.
 
