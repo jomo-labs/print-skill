@@ -41,6 +41,7 @@ const SQUEEZE_ID = "mp-fit-squeeze";
 // (spacing multiplier, type multiplier) — least aggressive first; the last
 // entries are the floors.
 const LADDER = [[0.9, 1], [0.8, 1], [0.75, 1], [0.75, 0.96], [0.75, 0.92]];
+const UNDERFILL_FLOOR = 70; // percent — below this, reportFill warns
 
 const pageArg = process.argv[2];
 if (!pageArg || pageArg.startsWith("--") || process.argv[3]) {
@@ -137,6 +138,7 @@ try {
     } else {
       console.log(`fits: ${fit.authored} sheet${fit.authored === 1 ? "" : "s"}, as authored`);
     }
+    await reportFill(page);
     process.exitCode = 0;
   } else if (fit.clipped === 0) {
     let applied = null;
@@ -155,6 +157,7 @@ try {
         (applied.typeK < 1 ? `, type −${pct(applied.typeK)}` : "") +
         " — persisted into the page.");
       console.log(`fits: ${applied.fit.authored} sheet${applied.fit.authored === 1 ? "" : "s"}, squeezed`);
+      await reportFill(page);
       process.exitCode = 0;
     } else {
       await page.evaluate((id) => {
@@ -177,6 +180,47 @@ try {
 } finally {
   await browser.close();
   await close();
+}
+
+/** Per-sheet fill, printed on every passing run. Overflow already fails
+ *  loudly; without this line the tooling's whole gradient points toward
+ *  "shorter", and underfill (principles.md VII) stays a judgment call the
+ *  author never gets a number for — so authors hand-roll this exact
+ *  measurement with their own browser scripts, or skip it and ship a
+ *  half-empty sheet. Measured on the page's current state (squeeze
+ *  included): content span over the space the sheet offers its content
+ *  (box minus padding minus footer). A warning, never a failure — a page
+ *  can be sparse on purpose, but that must survive seeing the number. */
+async function reportFill(page) {
+  const fills = await page.evaluate(() => {
+    const leaves = [...document.querySelectorAll(".page")]
+      .filter((el) => !el.querySelector(".page"));
+    return leaves.map((sheet) => {
+      const cs = getComputedStyle(sheet);
+      const avail = sheet.clientHeight
+        - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const kids = [...sheet.children];
+      const span = (els) => {
+        if (!els.length) return 0;
+        const top = Math.min(...els.map((e) => e.getBoundingClientRect().top));
+        const bot = Math.max(...els.map((e) => e.getBoundingClientRect().bottom));
+        return bot - top;
+      };
+      const usable = avail - span(kids.filter((el) => el.tagName === "FOOTER"));
+      const content = span(kids.filter((el) => el.tagName !== "FOOTER"));
+      return usable > 0 ? Math.min(100, Math.round((content / usable) * 100)) : 100;
+    });
+  });
+  console.log("fill: " + fills.map((p, i) =>
+    fills.length === 1 ? `${p}%` : `sheet ${i + 1} ${p}%`).join(" · "));
+  for (const [i, p] of fills.entries()) {
+    if (p < UNDERFILL_FLOOR) {
+      console.log(
+        `sheet ${i + 1} is only ${p}% filled — underfill: scale type, spacing, or the ` +
+        "functional blank areas (writing lines, boxes) up so the page feels complete " +
+        "(principles.md VII), or leave it sparse as a deliberate choice.");
+    }
+  }
 }
 
 /** The failure report: what went wrong, then the per-sheet section table —
