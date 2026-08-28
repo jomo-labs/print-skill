@@ -100,14 +100,12 @@ must not restate them and cannot opt out — it describes only what it changes.
    `:root { --color-accent: oklch(35% 0.12 240); --font-display: 'Bangers', cursive; }`
    — never inlined again elsewhere.
 
-   Every `var(--…)` must also name a token that actually exists (in
-   `document.css` or your own `:root` override). An undefined reference is not
-   an error the browser reports — the whole declaration is silently dropped, so
-   a margin or gap collapses to 0 and the page renders subtly broken. Mind the
-   spacing scale in particular: it is **non-contiguous** — `--space-1` through
-   `--space-6`, then `--space-8, -10, -12, -16, -20`; there is no `--space-7`
-   or `--space-9`. Assembly fails on any `var()` that resolves to nothing (a
-   reference with a fallback value counts as resolving).
+   NEVER infer a token name. The only valid `var()` names are the ones
+   `assets/shell/document.css` actually defines — that file is the canonical
+   token list — plus any your own `:root` override defines. Do not extrapolate
+   from the names you've seen (`--space-6` existing does not mean `--space-7`
+   does): an undefined `var()` silently drops its whole declaration, and
+   assembly fails on it.
 
 3. **Ad-hoc theming is wide open, except paper.** Freely define your own accent,
    ink, rule, and subtle-tone colors, your own headline/body/label fonts, and your
