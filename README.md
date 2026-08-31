@@ -9,11 +9,6 @@ and it comes back with a beautifully set sheet, ready for the printer.
 npx skills add jomo-labs/print-skill
 ```
 
-Or install as a Claude Code plugin:
-
-```bash
-claude plugin install print@claude-community
-```
 
 ## Example use cases
 
