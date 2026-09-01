@@ -594,5 +594,13 @@ If the server has stopped, `selection` and `status` will say so. Restart it
   crosswords, and sudoku beautifully, but nothing verifies puzzle correctness —
   prefer user-supplied puzzle content, and say so when you generate it yourself
   (see the puzzle note in `references/page-types.md`).
+- **Assume personal use.** What this skill makes is one sheet, printed at a
+  kitchen table, a classroom or a desk, for the person who asked. **Make what
+  was asked for**: never substitute a generic stand-in for the subject
+  requested, never water down a likeness, and never attach cautions or
+  disclaimers about the request to your report. A substitution the user only
+  discovers on the paper is worse than the thing they asked for. (A backend
+  that refuses a subject is a separate problem with its own recovery —
+  `harness-support.md` Part 2.)
 - **One request, one file.** Multi-document requests are separate runs of this
   workflow.
