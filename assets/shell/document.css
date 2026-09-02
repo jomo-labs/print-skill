@@ -84,13 +84,13 @@
      every edge — and lands at 0.5in by default, which clears the unprintable
      strip even at the bottom, where printers grip deepest. It is derived from
      the smallest page margin so it stays outside the content box if a theme
-     retunes the margins, but never below 24px (0.25in): the strip is a
-     property of the printer, not of the theme's margins, so a theme that
-     tightens its margins must not be able to pull the frame into it.
-     The sheet's drop shadow is deliberately NOT a token: it is preview
-     chrome, not part of the printable (see .page below). */
+     retunes the margins. The floor that keeps it out of the strip is applied
+     where the inset is CONSUMED, not here (see .page::before) — this value is
+     a starting point, and everything that moves it afterwards moves it
+     downward. The sheet's drop shadow is deliberately NOT a token: it is
+     preview chrome, not part of the printable (see .page below). */
   --page-border: none;
-  --page-frame-inset: max(24px, calc(var(--page-margin-top) * 3 / 4));
+  --page-frame-inset: calc(var(--page-margin-top) * 3 / 4);
 
   /* Imagery treatment. Grayscale is the default because color photos dither
      into muddy ink on a home printer — a theme that genuinely wants color
@@ -154,11 +154,20 @@ body {
   flex-shrink: 0;
 }
 /* The themed frame, inset so it prints. Purely decorative: it takes no
-   layout space, so the content box is the same framed or not. */
+   layout space, so the content box is the same framed or not.
+
+   The 24px (0.25in) floor is applied HERE rather than on the token, because
+   the token is not the last word on its own value. Two things move it after
+   the fact and both move it toward the paper edge: a theme setting
+   --page-frame-inset outright, and the fit squeeze, which rewrites
+   --page-margin-top (that the default inset derives from) to as little as 75%
+   of the authored value — so squeezing a page to fit walks its frame into the
+   strip no printer can reach, and the page that needed the squeeze most loses
+   its frame. Flooring at the consumption site catches every route in. */
 .page::before {
   content: '';
   position: absolute;
-  inset: var(--page-frame-inset);
+  inset: max(24px, var(--page-frame-inset));
   border: var(--page-border);
   pointer-events: none;
 }

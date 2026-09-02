@@ -121,7 +121,7 @@ running content. Don't collapse them.
 | `--border-thin` | 1.5px — boxed components, utility outlines |
 | `--border-hair` | 1px — table rules, `hr`, footer rule |
 | `--page-border` | `none` |
-| `--page-frame-inset` | 48px (0.5in) on every edge — derived from the page margin, floored at 24px (0.25in) so it always clears the unprintable edge |
+| `--page-frame-inset` | 48px (0.5in) on every edge — derived from the page margin; the shell floors what it paints at 24px (0.25in), so neither a theme override nor a fit squeeze can put the frame in the unprintable edge |
 | `--image-filter` | `grayscale(100%)` |
 
 - **Page chrome:** no border. Newspaper's sheet carries no frame onto paper —
