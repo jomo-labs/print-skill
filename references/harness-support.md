@@ -103,6 +103,17 @@ machine where that plugin is not installed.
   non-zero limit and a retry delay worth honouring.
 - **`503 UNAVAILABLE`** — transient load. Retry with backoff; it usually
   clears on the first retry.
+- **`finishReason: PROHIBITED_CONTENT`** — HTTP 200, a candidate with an
+  empty parts array: no image and no text. A content filter, not quota and
+  not load, so retrying the same prompt unchanged rarely helps. On this
+  skill's requests the usual trigger is a **named character, franchise or
+  brand** in the prompt. Re-issue once with the proper noun removed and every
+  *describable* feature kept — the costume, the markings, the one signature
+  detail that makes the character recognizable. That normally passes and
+  still delivers what was asked for. **Never quietly substitute a different
+  subject:** a swap the user discovers in the report, or on the paper, is
+  worse than a refusal they were simply told about. Say what was refused and
+  what you sent instead.
 - **A web UI generating images while the API refuses** is normal — they are
   separate entitlements on the same account.
 
