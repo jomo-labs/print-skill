@@ -75,6 +75,11 @@ try {
   await guardFonts(page);
   await page.goto(`${url}/${encodeURIComponent(path.basename(pagePath))}`,
     { waitUntil: "networkidle", timeout: 30_000 });
+  // Web-font metrics decide line wrapping and so decide the sheet count; the
+  // shell runs its own fit pass when they settle. Wait for that here too, or
+  // a page that needs no squeeze at all gets its verdict read off the
+  // fallback-metrics pass.
+  await page.evaluate(() => document.fonts?.ready?.then(() => {}));
 
   // Strip any persisted squeeze and re-measure: the baseline is always the
   // authored state, so a squeeze reflects today's content, not yesterday's.
@@ -94,21 +99,31 @@ try {
   const broken = (f) => f.rendered > f.authored || f.overflowing > 0 || f.clipped > 0;
 
   // The tokens the squeeze may scale: the document stylesheet's spacing and
-  // type scales, plus the page margins. Their *computed* values (theme
-  // overrides included) are read in the page; scaled copies land in the
-  // squeeze block, which sits after content-overrides and wins the cascade.
-  const squeeze = async (spaceK, typeK) => page.evaluate(([id, spaceK, typeK]) => {
+  // type scales, plus the page margins. Read ONCE, here, while the page is in
+  // its authored state (the strip above has already removed any persisted
+  // squeeze) — theme overrides in #content-overrides included, since these are
+  // computed values. Reading them inside the ladder instead would read the
+  // PREVIOUS rung's squeeze block, so the factors would multiply rather than
+  // replace: [0.9, 0.8, 0.75] would land on 0.54, a −46% squeeze reported as
+  // −25%. Every rung must scale this fixed baseline.
+  const baseline = await page.evaluate(() => {
     const docCss = document.getElementById("mp-document-css")?.textContent || "";
     const names = [...new Set(
       (docCss.match(/--(?:space-[a-z0-9]+|text-[a-z0-9]+|page-margin-[a-z]+)\s*:/g) || [])
         .map((m) => m.replace(/\s*:$/, "")))];
     const cs = getComputedStyle(document.documentElement);
-    const rules = names.map((n) => {
-      const v = parseFloat(cs.getPropertyValue(n));
-      if (Number.isNaN(v)) return null;
+    return names
+      .map((n) => [n, parseFloat(cs.getPropertyValue(n))])
+      .filter(([, v]) => !Number.isNaN(v));
+  });
+
+  // Scaled copies land in the squeeze block, which sits after
+  // content-overrides and wins the cascade.
+  const squeeze = async (spaceK, typeK) => page.evaluate(([id, spaceK, typeK, baseline]) => {
+    const rules = baseline.map(([n, v]) => {
       const k = n.startsWith("--text-") ? typeK : spaceK;
       return `  ${n}: ${(v * k).toFixed(2)}px;`;
-    }).filter(Boolean);
+    });
     let el = document.getElementById(id);
     if (!el) {
       el = document.createElement("style");
@@ -120,7 +135,7 @@ try {
     applySize(document.body.dataset.mpPaper || "letter",
               document.body.dataset.mpOrientation);
     return { css: el.outerHTML, fit: window.mpFit };
-  }, [SQUEEZE_ID, spaceK, typeK]);
+  }, [SQUEEZE_ID, spaceK, typeK, baseline]);
 
   const persist = async (squeezeHtml) => {
     // hadSqueeze or not, rewrite from the on-disk text: strip any previous
@@ -133,6 +148,20 @@ try {
       text = text.replace('<style id="dynamic-page-css">', `${squeezeHtml}\n<style id="dynamic-page-css">`);
     }
     await fs.writeFile(pagePath, text);
+  };
+
+  // The verdict this tool reports is a promise about the FILE, so take the
+  // deciding measurement on the file: reload it and let it paginate from
+  // scratch, the way the PDF renderer and the user's tab will. Everything
+  // above is measured on a DOM that has been re-split in place, and an
+  // in-place re-split can disagree with a fresh load — that gap is exactly
+  // how a load-time pagination race reaches a PDF as a spurious extra sheet
+  // while the check still says "fits". Fonts are awaited because they move
+  // the answer (see shell.js's fit pass on document.fonts.ready).
+  const verifyOnDisk = async () => {
+    await page.reload({ waitUntil: "networkidle", timeout: 30_000 });
+    await page.evaluate(() => document.fonts?.ready?.then(() => {}));
+    return page.evaluate(() => window.mpFit);
   };
 
   if (!broken(fit)) {
@@ -156,17 +185,30 @@ try {
     }
     if (applied) {
       await persist(applied.css);
-      const pct = (k) => `${Math.round((1 - k) * 100)}%`;
-      console.log(
-        `did not fit as authored (${fit.rendered > fit.authored
-          ? `content ran onto ${fit.rendered} sheets`
-          : "content past the paper edge"}); ` +
-        `squeezed to fit: spacing −${pct(applied.spaceK)}` +
-        (applied.typeK < 1 ? `, type −${pct(applied.typeK)}` : "") +
-        " — persisted into the page.");
-      console.log(`fits: ${applied.fit.authored} sheet${applied.fit.authored === 1 ? "" : "s"}, squeezed`);
-      await reportFill(page);
-      process.exitCode = 0;
+      const onDisk = await verifyOnDisk();
+      if (broken(onDisk)) {
+        // The squeeze measured as enough in the DOM but the persisted file
+        // does not agree. Take the squeeze back out rather than leave the
+        // author a page that is both tightened and still broken, and fail.
+        await persist(null);
+        console.error(
+          "the squeeze measured as enough in place, but the persisted page " +
+          "does not fit on a fresh load — squeeze removed.");
+        await reportFailure(page, await verifyOnDisk(), true);
+        process.exitCode = 1;
+      } else {
+        const pct = (k) => `${Math.round((1 - k) * 100)}%`;
+        console.log(
+          `did not fit as authored (${fit.rendered > fit.authored
+            ? `content ran onto ${fit.rendered} sheets`
+            : "content past the paper edge"}); ` +
+          `squeezed to fit: spacing −${pct(applied.spaceK)}` +
+          (applied.typeK < 1 ? `, type −${pct(applied.typeK)}` : "") +
+          " — persisted into the page.");
+        console.log(`fits: ${onDisk.authored} sheet${onDisk.authored === 1 ? "" : "s"}, squeezed`);
+        await reportFill(page);
+        process.exitCode = 0;
+      }
     } else {
       await page.evaluate((id) => {
         document.getElementById(id)?.remove();
