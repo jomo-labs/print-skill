@@ -76,6 +76,28 @@
   --tracking-label:   0.08em;   /* section headings (h3)                       */
   --tracking-kicker:  0.32em;   /* .kicker, uppercase metadata rows            */
 
+  /* How far display ink hangs outside its own line box — the clearance a
+     heading carries as padding (h1/h2 below, and anything else you set
+     display leading on). At --leading-display the line box is TIGHTER than
+     the face's content area (Playfair Display's is 1.33em against 1.1
+     leading), so the glyphs paint above and below the heading's border box.
+     Something has to hold that ink clear of a container's clip edge, and it
+     has to be LAYOUT: layout is what the container measures, what pagination
+     counts, and what a theme's tighter leading scales along with the ink —
+     the overflow-clip-margin further down is a fixed length that does none of
+     those (see the overflow policy for what it is actually for). Padding
+     rather than margin because a generated rule composing a tight masthead
+     zeroes a heading's margin freely, and because a last child's bottom
+     margin collapses through its parent and buys the heading nothing.
+     Measured across the preloaded trio plus the display faces the themes
+     reach for (Playfair Display upright and italic, Source Serif 4, Inter,
+     Caveat): ink lands within (1.22em - leading)/2 of the box at every step
+     of the type scale — 0.06em at 1.1 leading, 0.135em at a themed 0.95 —
+     and the expression floors at 0 for leading loose enough to hold its own
+     ink. A poster face that paints past even that needs the room given to it
+     explicitly; see design-rules.md. */
+  --display-overhang: max(0em, calc((1.22em - var(--leading-display) * 1em) / 2));
+
   /* Page chrome — the theme spec's Surface section sets these instead of
      rewriting the .page rule. The frame is drawn INSET from the paper edge:
      a border on the sheet's own edge lands in the strip no desktop printer
@@ -196,8 +218,8 @@ body[data-mp-paper="half"][data-mp-orientation="landscape"] .page  { width: 816p
    theme retunes the document by setting tokens, not by restating these rules.
    The theme spec's section-to-token map (references/themes/
    theme-spec-template.md) is the contract these defaults consume. */
-h1 { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; line-height: var(--leading-display); letter-spacing: var(--tracking-display); margin-bottom: 0.2em; }
-h2 { font-family: var(--font-display); font-size: var(--text-xl);  font-weight: 700; line-height: var(--leading-display); letter-spacing: var(--tracking-display); margin: 1em 0 0.25em; }
+h1 { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; line-height: var(--leading-display); letter-spacing: var(--tracking-display); margin-bottom: 0.2em; padding-block: var(--display-overhang); }
+h2 { font-family: var(--font-display); font-size: var(--text-xl);  font-weight: 700; line-height: var(--leading-display); letter-spacing: var(--tracking-display); margin: 1em 0 0.25em; padding-block: var(--display-overhang); }
 /* h3 is a section heading, not a kicker — the wide-tracked kicker convention
    is .kicker below. The two are deliberately different roles. */
 h3 { font-family: var(--font-label);   font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-label); line-height: var(--leading-label); margin: 0.8em 0 0.2em; color: var(--color-mid); }
@@ -265,14 +287,26 @@ footer { margin-top: var(--space-8); padding-top: var(--space-2); border-top: va
    margins collapse exactly as before and pagination measures the same boxes),
    it creates no scroll container (find-in-page or a caret can never silently
    scroll a fixed box's content out of the printed view), and it takes
-   overflow-clip-margin — the few px of slack that lets glyph ink from tight
-   display leading, tilted motifs, and print-flat shadows breathe at a flush
-   edge without permitting real overlap. 6px covers the worst honest case
-   (display type at tight --leading-display ink-overhangs ~0.075em, which is
-   6px at the 80px display step) while staying far under the one-line-height
-   quantum real overflow arrives in — and the shell's clip detector reads the
-   computed value back per element, so CSS and detector never disagree about
-   where the edge is.
+   overflow-clip-margin — the few px of slack that lets a tilted motif and a
+   print-flat shadow breathe at a flush edge without permitting real overlap.
+   6px is enough for those and stays far under the one-line-height quantum
+   real overflow arrives in — and the shell's clip detector reads the computed
+   value back per element, so CSS and detector never disagree about where the
+   edge is. What comes back from getComputedStyle is the SPECIFIED length,
+   though, and getBoundingClientRect under a CSS `zoom` is in zoomed units:
+   measure a clip edge by adding one to the other and the slack appears to
+   shrink as the zoom rises, which is a unit mismatch and not a real cut.
+   Paint stops a true 6px past the box at every zoom (measured 1x through 2x).
+
+   What the slack is NOT is the descender budget for display type. It is a
+   fixed length: it does not grow with the type or with a theme's tighter
+   leading, while glyph overhang is a fraction of the font size (measured:
+   ink lands 0.04-0.06em below the box at 1.1 leading, 0.12-0.13em at 0.95).
+   So it covers a 38px heading's descenders three times over and a themed
+   80px one at tight leading not at all — 10px of ink against 6px of slack,
+   and the sheared g prints. Display headings therefore carry their own
+   clearance in padding, sized by --display-overhang up in the tokens, and
+   anything else set at display leading has to do the same.
 
    The cut is the lesser evil, not a fix: the shell detects content past a
    clip edge on every layout pass and reports it through the same FIX path as

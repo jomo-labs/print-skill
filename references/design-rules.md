@@ -50,9 +50,20 @@ must not restate them and cannot opt out — it describes only what it changes.
   purpose. Design content to fit its box (Principle VII); a container that
   genuinely must bleed (rare — an intentional full-bleed motif) opts out with
   `overflow: visible` and owns the overlap it allows. Text elements
-  (headings, p, span) are exempt so glyph ink is never sheared; a 6px
-  `overflow-clip-margin` gives tilted motifs and print-flat shadows room at a
-  flush edge.
+  (headings, p, span) are never clipped themselves — but the container around
+  them is, and glyph ink paints outside the text element's own box: at
+  `--leading-display` the line box is tighter than the face, so a heading's
+  descenders (and at tight leading its ascenders) hang past its border box
+  into the container's clip. **That clearance must come from layout**, never
+  from the 6px `overflow-clip-margin` — the slack is a fixed length meant for
+  tilted motifs and print-flat shadows, it does not grow with the type, and
+  at the top of the display scale the ink outgrows it and prints sheared. The
+  element defaults carry the clearance as `padding-block:
+  var(--display-overhang)` on `h1`/`h2`; put the same padding on anything
+  else you set `--leading-display` on. Zeroing a display heading's *margin*
+  is fine — that is what the padding is for — but never zero its padding, and
+  never count on its bottom margin instead: a last child's margin collapses
+  through its parent and buys the heading nothing.
 - **Contrast and type floors.** WCAG AA: 4.5:1 body, 3:1 large or bold accent.
   Body copy >=13.5px, 16px+ for kids'. Label-font metadata (dateline, table
   text, table headers, footer) runs 9-10.5px and is never body copy. A theme
@@ -171,8 +182,8 @@ whole whenever it fits on a sheet of its own.
 ## Part B — Self-check (run before every assembly)
 
 Check your `custom_css` and `font_import` against every item, in this order — it
-runs most-fundamental-first. Empty `custom_css` passes items 1–7 trivially; empty
-`font_import` passes item 8.
+runs most-fundamental-first. Empty `custom_css` passes items 1–7 and 9 trivially;
+empty `font_import` passes item 8.
 
 1. **No markup breakout, no remote loads.** `custom_css` contains no `<` followed
    by a letter or `/` (nothing that could close the page's `<style>` tag), no
@@ -216,6 +227,14 @@ runs most-fundamental-first. Empty `custom_css` passes items 1–7 trivially; em
    the characters `/ ? = & + : , . @ ; _ -`. No other host, no protocol-relative
    URL, no whitespace, no backslash. If any of that fails, drop the `font_import`
    and pick a font from the preloaded trio instead.
+
+9. **Display type keeps its own clearance.** Every rule that sets
+   `line-height: var(--leading-display)` — or any leading below ~1.2 — on an
+   element also gives that element `padding-block: var(--display-overhang)`,
+   and no rule of yours zeroes the padding of an `h1`/`h2` (which already
+   carry it). Ink from tight display leading paints outside the element's own
+   box and the container it sits in cuts at its edge, so the room has to be in
+   layout. Zeroing the heading's *margin* is fine.
 
 ---
 
