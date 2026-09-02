@@ -41,7 +41,15 @@ const SQUEEZE_ID = "mp-fit-squeeze";
 // (spacing multiplier, type multiplier) — least aggressive first; the last
 // entries are the floors.
 const LADDER = [[0.9, 1], [0.8, 1], [0.75, 1], [0.75, 0.96], [0.75, 0.92]];
-const UNDERFILL_FLOOR = 70; // percent — below this, reportFill warns
+// Underfill floors, both in percent, both warn-only (see reportFill).
+// HEIGHT is how far down the sheet the content reaches; INK is how much of
+// that space it covers. The ink floor is calibrated against measured pages
+// rather than chosen: a packed single-column article and a week-grid chore
+// chart both land near 60, a two-column news page near 40, and the loosely
+// set pages this check exists to catch cluster in the low 20s — so 30
+// separates them with room on both sides.
+const HEIGHT_FLOOR = 70;
+const INK_FLOOR = 30;
 
 const pageArg = process.argv[2];
 if (!pageArg || pageArg.startsWith("--") || process.argv[3]) {
@@ -187,18 +195,45 @@ try {
  *  "shorter", and underfill (principles.md VII) stays a judgment call the
  *  author never gets a number for — so authors hand-roll this exact
  *  measurement with their own browser scripts, or skip it and ship a
- *  half-empty sheet. Measured on the page's current state (squeeze
- *  included): content span over the space the sheet offers its content
- *  (box minus padding minus footer). A warning, never a failure — a page
- *  can be sparse on purpose, but that must survive seeing the number. */
+ *  half-empty sheet.
+ *
+ *  Two numbers, because one of them is a lie on its own. HEIGHT is the
+ *  content's vertical span over the space the sheet offers it (box minus
+ *  padding minus footer): does the content reach the bottom. INK is the
+ *  share of that space something actually covers: is it there when it
+ *  arrives. Height alone cannot tell a dense page from a sparse one
+ *  stretched to the same extent, and it points the wrong way while it does
+ *  — adding vertical spacing raises it, so an author reading only that
+ *  number is told to spread the page out further, which is the underfill
+ *  this check exists to catch. Ink is invariant to whitespace: it moves only
+ *  when content does.
+ *
+ *  Ink is measured DOM-side, not rasterised — glyph bands (each text line's
+ *  rects reduced to the em box, so loose leading cannot inflate the number)
+ *  plus what the boxes paint: a fill or an image covers its rect, a rule its
+ *  stroke, and an empty bordered box its whole area — a chore chart's cells
+ *  are functional blank areas (principles.md VII), so a page of them is full
+ *  even though almost no toner lands inside them. A bordered box that holds
+ *  other elements is a wrapper rather than a blank, and contributes only the
+ *  strokes it prints.
+ *
+ *  Measured on the page's current state, squeeze included. Warnings, never
+ *  failures — a page can be sparse on purpose, but that must survive seeing
+ *  the number. */
 async function reportFill(page) {
   const fills = await page.evaluate(() => {
+    // Coverage is accumulated into a coarse grid rather than a rect union:
+    // overlapping boxes (a bordered table over its own text) must count once,
+    // and 4px cells over a letter content box is ~37k of them — exact enough
+    // at percent resolution, and cheap.
+    const CELL = 4;
     const leaves = [...document.querySelectorAll(".page")]
       .filter((el) => !el.querySelector(".page"));
     return leaves.map((sheet) => {
       const cs = getComputedStyle(sheet);
-      const avail = sheet.clientHeight
-        - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const box = sheet.getBoundingClientRect();
+      const padT = parseFloat(cs.paddingTop), padB = parseFloat(cs.paddingBottom);
+      const padL = parseFloat(cs.paddingLeft), padR = parseFloat(cs.paddingRight);
       const kids = [...sheet.children];
       const span = (els) => {
         if (!els.length) return 0;
@@ -206,19 +241,113 @@ async function reportFill(page) {
         const bot = Math.max(...els.map((e) => e.getBoundingClientRect().bottom));
         return bot - top;
       };
-      const usable = avail - span(kids.filter((el) => el.tagName === "FOOTER"));
+      const footers = kids.filter((el) => el.tagName === "FOOTER");
+      const usableH = sheet.clientHeight - padT - padB - span(footers);
+      const usableW = sheet.clientWidth - padL - padR;
       const content = span(kids.filter((el) => el.tagName !== "FOOTER"));
-      return usable > 0 ? Math.min(100, Math.round((content / usable) * 100)) : 100;
+      const height = usableH > 0
+        ? Math.min(100, Math.round((content / usableH) * 100)) : 100;
+      if (usableH <= 0 || usableW <= 0) return { height, ink: 100 };
+
+      const area = { x: box.left + padL, y: box.top + padT, w: usableW, h: usableH };
+      const cols = Math.ceil(area.w / CELL), rows = Math.ceil(area.h / CELL);
+      const grid = new Uint8Array(cols * rows);
+      const mark = (left, top, right, bottom) => {
+        const x0 = Math.max(0, Math.floor((left - area.x) / CELL));
+        const x1 = Math.min(cols - 1, Math.floor((right - area.x) / CELL));
+        const y0 = Math.max(0, Math.floor((top - area.y) / CELL));
+        const y1 = Math.min(rows - 1, Math.floor((bottom - area.y) / CELL));
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) grid[y * cols + x] = 1;
+      };
+      // The sheet's own background is paper, not ink; a child repeating it
+      // (a white band over white) is not coverage either.
+      const paper = cs.backgroundColor;
+      const opaque = (c) => c && c !== "transparent" && !/,\s*0\s*\)$/.test(c);
+      const fills = (el, s) =>
+        /^(IMG|SVG|CANVAS)$/.test(el.tagName) ||
+        s.backgroundImage !== "none" ||
+        (opaque(s.backgroundColor) && s.backgroundColor !== paper);
+      const edges = (el, s) => {
+        const sides = [];
+        for (const side of ["Top", "Right", "Bottom", "Left"]) {
+          const w = parseFloat(s[`border${side}Width`]);
+          if (w > 0 && s[`border${side}Style`] !== "none" &&
+              opaque(s[`border${side}Color`])) sides.push([side.toLowerCase(), w]);
+        }
+        return sides;
+      };
+      // A bordered box counts as covered when it is a box you write IN — a
+      // chore chart's empty cells are functional blank areas (principles.md
+      // VII) and the page of them is full. A bordered box with element
+      // children is a wrapper, not a blank: its own contribution is the four
+      // strokes it prints, and what it holds is counted on its own terms.
+      // Without that split, one hairline div around the content would report
+      // any page, however empty, as completely covered.
+      const markBox = (el, s) => {
+        const r = el.getBoundingClientRect();
+        if (fills(el, s) || el.tagName === "HR") {
+          mark(r.left, r.top, r.right, r.bottom);
+          return;
+        }
+        const sides = edges(el, s);
+        if (!sides.length) return;
+        if (!el.firstElementChild) {
+          mark(r.left, r.top, r.right, r.bottom);
+          return;
+        }
+        for (const [side, w] of sides) {
+          if (side === "top") mark(r.left, r.top, r.right, r.top + w);
+          else if (side === "bottom") mark(r.left, r.bottom - w, r.right, r.bottom);
+          else if (side === "left") mark(r.left, r.top, r.left + w, r.bottom);
+          else mark(r.right - w, r.top, r.right, r.bottom);
+        }
+      };
+      const walk = (node) => {
+        for (const child of node.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            if (!child.data.trim()) continue;
+            // Line rects are line boxes — leading included. Reduced to the em
+            // box around each line's centre so leading changes the page's
+            // extent (height, above) without moving its ink.
+            const em = parseFloat(getComputedStyle(child.parentElement).fontSize);
+            const range = document.createRange();
+            range.selectNodeContents(child);
+            for (const r of range.getClientRects()) {
+              const mid = (r.top + r.bottom) / 2;
+              mark(r.left, mid - em / 2, r.right, mid + em / 2);
+            }
+          } else if (child.nodeType === Node.ELEMENT_NODE) {
+            if (child.tagName === "FOOTER" && child.parentElement === sheet) continue;
+            const s = getComputedStyle(child);
+            if (s.display === "none" || s.visibility === "hidden") continue;
+            markBox(child, s);
+            walk(child);
+          }
+        }
+      };
+      walk(sheet);
+      let covered = 0;
+      for (const v of grid) covered += v;
+      return { height, ink: Math.min(100, Math.round((covered / grid.length) * 100)) };
     });
   });
-  console.log("fill: " + fills.map((p, i) =>
-    fills.length === 1 ? `${p}%` : `sheet ${i + 1} ${p}%`).join(" · "));
-  for (const [i, p] of fills.entries()) {
-    if (p < UNDERFILL_FLOOR) {
+  console.log("fill: " + fills.map((f, i) =>
+    (fills.length === 1 ? "" : `sheet ${i + 1} `) + `${f.height}% height, ${f.ink}% ink`)
+    .join(" · "));
+  for (const [i, f] of fills.entries()) {
+    const sheet = fills.length === 1 ? "the sheet" : `sheet ${i + 1}`;
+    if (f.height < HEIGHT_FLOOR) {
       console.log(
-        `sheet ${i + 1} is only ${p}% filled — underfill: scale type, spacing, or the ` +
-        "functional blank areas (writing lines, boxes) up so the page feels complete " +
-        "(principles.md VII), or leave it sparse as a deliberate choice.");
+        `${sheet} uses only ${f.height}% of its height — underfill: the content stops ` +
+        "short of the bottom margin. Scale type, spacing, or the functional blank areas " +
+        "(writing lines, boxes) up so the page feels complete (principles.md VII), or " +
+        "leave it sparse as a deliberate choice.");
+    } else if (f.ink < INK_FLOOR) {
+      console.log(
+        `${sheet} runs to ${f.height}% of its height but covers only ${f.ink}% of it — ` +
+        "underfill: the page is stretched, not filled. Spacing is already carrying the " +
+        "height, so more of it will not help — add content, or widen the functional " +
+        "blank areas (principles.md VII), or leave it sparse as a deliberate choice.");
     }
   }
 }

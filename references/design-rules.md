@@ -25,13 +25,21 @@ must not restate them and cannot opt out — it describes only what it changes.
 - **Empty, overflow, and underfill.** An empty block keeps its frame and label
   (Principle IV). Overflow drops the body type-scale one step, then shortens or
   splits — never truncate, never spill past the sheet edge. Underfill is the
-  mirror: content filling well under the content box (rule 5) — roughly two
-  thirds of its height or less — reads as unfinished and wastes the paper.
-  Scale up rather than pad: body type a step larger, wider spacing, bigger
-  fillable areas (writing lines, drawing frames, cells), or a roomier layout —
-  never filler content. Blank space left intentionally for the user to fill in
-  — by pen or on screen — counts as filled; only purposeless emptiness is
-  underfill.
+  mirror, and a page can underfill two ways. It can stop short: content
+  reaching roughly two thirds of the content box (rule 5) or less reads as
+  unfinished. Or it can be stretched: content spread with spacing until it
+  reaches the bottom margin while covering almost none of the sheet — which
+  looks composed and is the harder one to see, because every measure of extent
+  calls it full. The fit check reports both (`fill: N% height, N% ink`) and
+  warns below 70% height or 30% ink.
+  The remedies are not interchangeable. A page that stops short can be scaled
+  up: body type a step larger, wider spacing, bigger fillable areas (writing
+  lines, drawing frames, cells), or a roomier layout. A page that is stretched
+  has already spent its spacing — more of it makes the page emptier, not
+  fuller — so it needs more content, or larger functional blank areas. Never
+  filler content, either way. Blank space left intentionally for the user to
+  fill in — by pen or on screen — counts as filled; only purposeless emptiness
+  is underfill.
 - **Containers clip, they never overlap.** Structural containers (div,
   section, li's list, table cells, …) carry `overflow: clip` from the document
   stylesheet: on paper, content painted over a neighbouring block is never
