@@ -2126,5 +2126,19 @@ function injectChrome() {
   const configuredOrient = document.body.dataset.mpOrientation === 'landscape' ? 'landscape' : undefined;
 
   applySize(savedPaper, configuredOrient);
+  // Web fonts decide line wrapping, and line wrapping decides how many sheets
+  // the content needs — so the pass above answers that question with whatever
+  // metrics happen to be loaded when it runs. A page whose font files are
+  // still in flight is measured in FALLBACK metrics, which are the wrong ones
+  // and usually the taller ones: content that fits its sheet in the font it
+  // was designed for gets split onto a sheet it does not need. Pagination
+  // happens once, so nothing would ever take that sheet back — the extra
+  // sheet is still in the DOM when the PDF renderer prints it, and every
+  // later fit pass (fit-cli strips its squeeze and re-splits) silently
+  // disagrees with the artifact. Re-split when the fonts land. Already-
+  // resolved in the common case (fonts cached, or a page that names none),
+  // where this is one no-op pass; `catch` because a document with no
+  // FontFaceSet is not an error, it just has nothing to wait for.
+  document.fonts?.ready?.then(() => refit()).catch(() => {});
   window.addEventListener('resize', () => scaleToFit(paperDims().w));
 })();

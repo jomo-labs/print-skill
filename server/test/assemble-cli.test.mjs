@@ -36,8 +36,12 @@ async function assemble(dir, extra = [], { content = CONTENT, title = "CLI Test 
   return r;
 }
 
-// Enough token-margined rows to overflow one letter sheet by a squeezable
-// margin (~5-10%); the 60-row variant is beyond any squeeze.
+// Token-margined rows, counted against the DOCUMENTED squeeze floors (spacing
+// to 75%, type to 92%): 17 fit as authored, 19 need a spacing-only squeeze, 22
+// is past the floors, and the 60-row variant is beyond any squeeze. The counts
+// were once higher, tuned against a ladder whose rungs multiplied instead of
+// replacing — an effective 0.54 spacing, which rescued far more than the
+// floors allow.
 const overflowRows = (n) => `<div data-mp-section="hero"><h1>Overflow</h1></div>\n` +
   Array.from({ length: n }, (_, i) =>
     `<div data-mp-section="row-${i}" style="margin-bottom: var(--space-4);">` +
@@ -122,7 +126,7 @@ test("the page budget: 3 authored sheets fail by default, pass with --max-sheets
 test("a small overflow is squeezed into fitting and persisted; re-runs don't compound", async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), "asm-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const r = await assemble(dir, [], { content: overflowRows(22), title: "Squeeze Me" });
+  const r = await assemble(dir, [], { content: overflowRows(19), title: "Squeeze Me" });
   assert.equal(r.code, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /squeezed to fit: spacing/);
   assert.match(r.stdout, /fits: 1 sheet, squeezed/);
@@ -154,7 +158,7 @@ test("an overflow beyond the squeeze floors fails with the section table", async
 test("editing content down removes a stale squeeze on the next fit run", async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), "asm-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const r = await assemble(dir, [], { content: overflowRows(22), title: "Shrinking" });
+  const r = await assemble(dir, [], { content: overflowRows(19), title: "Shrinking" });
   assert.equal(r.code, 0, r.stderr);
   // cut the content way down, in place, as an edit would
   let html = await fs.readFile(r.file, "utf-8");
