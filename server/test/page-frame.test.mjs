@@ -73,32 +73,70 @@ test("a border on the sheet fails assembly, and names --page-border", async (t) 
   assert.match(r.stderr, /--page-border/);
 });
 
-test("the frame stays clear of the strip even when a theme tightens margins", async (t) => {
-  const dir = mkdtempSync(path.join(tmpdir(), "frame-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  // 16px margins would put the derived inset at 12px — inside the strip.
-  const { r, out } = await assemble(dir,
-    ":root { --page-margin-top: 16px; --page-border: 3px solid var(--color-ink); }");
-  assert.equal(r.code, 0, r.stderr);
-
+// The three routes that walk the frame toward the paper edge, all measured on
+// a rendered page. The third is the one that actually fired in the eval: the
+// fit squeeze rewrites --page-margin-top, the default inset derives from it,
+// so the page that needed the squeeze most was the one that lost its frame.
+const frameOf = async (t, out) => {
   const { url, close } = await startServer({ dir: path.dirname(out), port: 0 });
   const browser = await launchBrowser();
   t.after(async () => { await browser.close(); await close(); });
   const page = await browser.newPage();
   await guardFonts(page);
   await page.goto(`${url}/${path.basename(out)}`, { waitUntil: "networkidle" });
-
-  const frame = await page.evaluate(() => {
-    const sheet = document.querySelector(".page");
-    const box = sheet.getBoundingClientRect();
-    const cs = getComputedStyle(sheet, "::before");
+  return page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector(".page"), "::before");
     return {
       inset: parseFloat(cs.insetBlockStart || cs.top),
       borderWidth: parseFloat(cs.borderTopWidth),
-      width: box.width,
     };
   });
+};
+
+test("a theme tightening its margins cannot pull the frame into the strip", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "frame-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // 16px margins put the derived inset at 12px — inside the strip.
+  const { r, out } = await assemble(dir,
+    ":root { --page-margin-top: 16px; --page-border: 3px solid var(--color-ink); }");
+  assert.equal(r.code, 0, r.stderr);
+  const frame = await frameOf(t, out);
   assert.ok(frame.borderWidth > 0, "the themed frame is drawn: " + JSON.stringify(frame));
-  assert.ok(frame.inset >= 24,
-    `frame inset ${frame.inset}px must clear the 24px unprintable strip`);
+  assert.ok(frame.inset >= STRIP_PX,
+    `frame inset ${frame.inset}px must clear the ${STRIP_PX}px unprintable strip`);
+});
+
+test("a theme setting the inset outright cannot either", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "frame-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const { r, out } = await assemble(dir,
+    ":root { --page-frame-inset: 22px; --page-border: 3px solid var(--color-ink); }");
+  assert.equal(r.code, 0, r.stderr);
+  const frame = await frameOf(t, out);
+  assert.ok(frame.inset >= STRIP_PX,
+    `an explicit 22px inset must still be floored, got ${frame.inset}px`);
+});
+
+test("nor does the squeeze, which shrinks the margin the inset derives from", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "frame-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // Enough content to overflow: the fit check squeezes spacing to its floor,
+  // --page-margin-top with it, and the derived inset follows it down.
+  const para = "The valley road climbs for four miles before it levels out, " +
+    "and the last of the orchards give way to scrub oak and then to nothing " +
+    "much at all. Drivers who take it for the view stop at the second pullout.";
+  const contentFile = path.join(dir, "content.html");
+  await fs.writeFile(contentFile,
+    `<div data-mp-section="body">${`<p>${para}</p>`.repeat(22)}</div>`);
+  const cssFile = path.join(dir, "overrides.css");
+  await fs.writeFile(cssFile,
+    ":root { --page-margin-top: 32px; --page-border: 3px solid var(--color-ink); }");
+  const r = await run([CLI, "--content", contentFile, "--title", "Frame Test",
+                       "--css", cssFile, "--out-dir", path.join(dir, "out")]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /squeezed to fit/, "the page must actually squeeze: " + r.stdout);
+  const frame = await frameOf(t, path.join(dir, "out", "frame-test.html"));
+  assert.ok(frame.borderWidth > 0, "the frame survives the squeeze");
+  assert.ok(frame.inset >= STRIP_PX,
+    `a squeezed page's frame must still clear the strip, got ${frame.inset}px`);
 });
