@@ -75,10 +75,13 @@
      every edge — and lands at 0.5in by default, which clears the unprintable
      strip even at the bottom, where printers grip deepest. It is derived from
      the smallest page margin so it stays outside the content box if a theme
-     retunes the margins. The sheet's drop shadow is deliberately NOT a token:
-     it is preview chrome, not part of the printable (see .page below). */
+     retunes the margins, but never below 24px (0.25in): the strip is a
+     property of the printer, not of the theme's margins, so a theme that
+     tightens its margins must not be able to pull the frame into it.
+     The sheet's drop shadow is deliberately NOT a token: it is preview
+     chrome, not part of the printable (see .page below). */
   --page-border: none;
-  --page-frame-inset: calc(var(--page-margin-top) * 3 / 4);
+  --page-frame-inset: max(24px, calc(var(--page-margin-top) * 3 / 4));
 
   /* Imagery treatment. Grayscale is the default because color photos dither
      into muddy ink on a home printer — a theme that genuinely wants color

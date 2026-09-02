@@ -87,6 +87,47 @@ export function findUndefinedTokenRefs(html) {
 }
 
 /**
+ * Border and outline declarations in `css` whose subject is the sheet itself
+ * (`.page` / `#page`), returned as [{ selector, declaration }].
+ *
+ * The sheet box is the paper: its edge is flush with the sheet edge, inside
+ * the ~0.25in strip no desktop printer can reach. A border drawn there is
+ * drawn in the strip, so it clips on paper while looking correct on screen
+ * and in any viewport screenshot — the failure is invisible everywhere
+ * except the printed page. The shell has a mechanism for exactly this
+ * (`--page-border`, painted by `.page::before` at `--page-frame-inset`),
+ * so a direct border is never the way in; it is the way around.
+ *
+ * Only the selector's SUBJECT counts — `.page h1`, `.page > .card` and
+ * `.page-surround` all style something other than the sheet and are left
+ * alone. `border-radius`, `border-collapse` and bare `*-color` declarations
+ * paint no edge of their own and are not flagged, nor is an explicit
+ * `none` / `0`, which is how a theme turns a frame off.
+ */
+export function findSheetEdgeBorders(css) {
+  const body = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const found = [];
+  for (const [, selectors, decls] of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const subject = selectors.split(",").some((sel) => {
+      const last = sel.trim().split(/[\s>+~]+/).pop() || "";
+      const bare = last.replace(/::?[A-Za-z-]+(\([^)]*\))?/g, "");
+      return bare !== "" && /^(\.page|#page)+$/.test(bare);
+    });
+    if (!subject) continue;
+    for (const [, prop, value] of decls.matchAll(/([A-Za-z-]+)\s*:\s*([^;}]+)/g)) {
+      const name = prop.toLowerCase();
+      if (!/^(border|outline)(-|$)/.test(name)) continue;
+      if (/^border-(radius|collapse|spacing|image)/.test(name)) continue;
+      if (/-color$/.test(name)) continue;
+      const v = value.trim().toLowerCase();
+      if (v === "none" || v === "hidden" || /^0(px|pt|in|mm|em|rem)?$/.test(v)) continue;
+      found.push({ selector: selectors.trim().replace(/\s+/g, " "), declaration: `${prop.trim()}: ${value.trim()}` });
+    }
+  }
+  return found;
+}
+
+/**
  * realpath, or the path unchanged when it doesn't exist yet — the caller's
  * own existence check reports that. Paths are compared realpath-to-realpath
  * because a skill is commonly reached through a symlink

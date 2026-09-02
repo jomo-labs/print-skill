@@ -33,7 +33,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { findUndefinedTokenRefs, slugify, takeValue } from "./lib.mjs";
+import { findSheetEdgeBorders, findUndefinedTokenRefs, slugify, takeValue } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = path.resolve(HERE, "..");
@@ -202,6 +202,18 @@ for (const { name, count: uses, suggestion } of findUndefinedTokenRefs(html)) {
     `var(${name}) resolves to nothing (${uses} use${uses === 1 ? "" : "s"}; ` +
     (suggestion ? `nearest defined: ${suggestion}` : "no token of that name is defined") +
     `) — the declaration is silently dropped and its spacing collapses to 0`);
+}
+
+// A border on the sheet element itself is drawn on the paper edge, inside the
+// strip no printer can reach — it clips on paper while looking right on
+// screen and in every screenshot, which is why it survives review. The frame
+// the theme spec sanctions is --page-border, painted inset by .page::before;
+// this is the declaration that goes around it.
+for (const { selector, declaration } of findSheetEdgeBorders(customCss)) {
+  check(false,
+    `\`${selector} { ${declaration} }\` draws on the sheet's own edge, which prints ` +
+    "inside the unprintable margin and clips — set --page-border instead (the shell " +
+    "paints it inset from the paper edge at --page-frame-inset)");
 }
 
 const nestedSheets = count(/<div class="page">/g);
