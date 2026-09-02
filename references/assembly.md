@@ -239,6 +239,13 @@ do not add another.
 - If paper and/or orientation set: `dynamic-page-css` carries the matching
   `@page` size from the table in step 5.
 - `data-mp-live-edit` appears nowhere — the attribute no longer exists.
+- No custom-css rule draws a border or outline on the sheet itself (`.page` /
+  `#page` as the selector's subject). The sheet box *is* the paper, so a border
+  on it lands in the ~0.25in strip no desktop printer can reach: it clips on
+  paper while looking correct on screen and in every screenshot. A themed frame
+  is set with `--page-border`, which the shell paints inset at
+  `--page-frame-inset`. Rules *inside* the sheet (`.page h1`, `.page > .card`)
+  are untouched by this.
 
 If any check fails, fix the copy — don't start over from a blank file.
 

@@ -55,7 +55,7 @@ them is wrong. Platform invariants live in `design-rules.md`.
 | Token | Value | Role |
 |---|---|---|
 | `--leading-display` | 1.1 | h1, h2 |
-| `--leading-body` | 1.65 | body copy |
+| `--leading-body` | 1.35 | body copy — newsprint leading, not web-article leading |
 | `--leading-label` | 1.4 | labels, kickers, headings in the label font |
 | `--tracking-display` | 0 | display type sets at normal tracking |
 | `--tracking-label` | 0.08em | section headings (h3) |
@@ -100,8 +100,17 @@ running content. Don't collapse them.
 - Page margin: the default `--page-margin-top` 64px / `--page-margin-x` 72px /
   `--page-margin-bottom` 72px, i.e. a ~672x920px content box on letter
   portrait (~879px of height usable after the shell's footer).
-- Section rhythm: generous — sections are separated by a rule plus
-  `--space-6`-`--space-10` of vertical space, never crowded.
+- Section rhythm: close-set — sections are separated by a rule plus
+  `--space-4`-`--space-6` of vertical space. Newspaper's restraint lives in
+  rule weight and type, **not** in empty space: the form being evoked is a
+  dense one, and a broadsheet reads as a broadsheet because it is crowded.
+- Density expectation: the sheet carries content to the bottom margin, and
+  carries it the whole way down. Height and ink are different questions —
+  spacing buys the first without buying the second, so a page that runs to
+  the bottom on air is underfilled, not composed (principles.md VII). Fit it
+  by writing more of what was asked for, or by scaling type and functional
+  blank areas up; never by opening the rhythm. The fit check reports both
+  numbers, and warns below 30% ink.
 
 ## 5. Surface & Motifs
 
@@ -112,7 +121,7 @@ running content. Don't collapse them.
 | `--border-thin` | 1.5px — boxed components, utility outlines |
 | `--border-hair` | 1px — table rules, `hr`, footer rule |
 | `--page-border` | `none` |
-| `--page-frame-inset` | 48px (0.5in) on every edge — derived from the page margin, clear of the unprintable edge |
+| `--page-frame-inset` | 48px (0.5in) on every edge — derived from the page margin, floored at 24px (0.25in) so it always clears the unprintable edge |
 | `--image-filter` | `grayscale(100%)` |
 
 - **Page chrome:** no border. Newspaper's sheet carries no frame onto paper —

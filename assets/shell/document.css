@@ -59,9 +59,18 @@
 
   /* Per-role leading and tracking. The theme spec's Typography section sets
      these; the element defaults below are the only consumers, so a theme
-     never needs to restate h1/h2/h3 rules just to retune its type. */
+     never needs to restate h1/h2/h3 rules just to retune its type.
+
+     Body leading is set for print, not for a web article. Newsprint body copy
+     runs about 1.2-1.35, and the base layer is Newspaper: a page reads as a
+     publication largely because it is dense. Loose leading costs the sheet
+     twice — it buys height without buying content, so the page reaches the
+     bottom margin on air and the sheet is underfilled while every extent
+     measure calls it full (see reportFill's ink number in fit-cli.mjs). A
+     theme whose body face needs more air says so in its own spec; Comic does
+     exactly that at 1.55. */
   --leading-display: 1.1;
-  --leading-body:    1.65;
+  --leading-body:    1.35;
   --leading-label:   1.4;
   --tracking-display: 0;
   --tracking-label:   0.08em;   /* section headings (h3)                       */
@@ -75,10 +84,13 @@
      every edge — and lands at 0.5in by default, which clears the unprintable
      strip even at the bottom, where printers grip deepest. It is derived from
      the smallest page margin so it stays outside the content box if a theme
-     retunes the margins. The sheet's drop shadow is deliberately NOT a token:
-     it is preview chrome, not part of the printable (see .page below). */
+     retunes the margins, but never below 24px (0.25in): the strip is a
+     property of the printer, not of the theme's margins, so a theme that
+     tightens its margins must not be able to pull the frame into it.
+     The sheet's drop shadow is deliberately NOT a token: it is preview
+     chrome, not part of the printable (see .page below). */
   --page-border: none;
-  --page-frame-inset: calc(var(--page-margin-top) * 3 / 4);
+  --page-frame-inset: max(24px, calc(var(--page-margin-top) * 3 / 4));
 
   /* Imagery treatment. Grayscale is the default because color photos dither
      into muddy ink on a home printer — a theme that genuinely wants color
