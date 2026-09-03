@@ -131,10 +131,17 @@ them:
 | Ink | `--color-ink` oklch(11% .005 78) · `--color-mid` oklch(44% .008 78) · `--color-dim` oklch(67% .006 78) · `--color-ghost` oklch(87% .005 78) · `--color-rule` = ink · `--color-rule-light` oklch(83% .005 78) · `--color-pull-bg` oklch(94% .009 78) · `--color-accent` oklch(52% .15 78) · `--color-paper` white |
 | Fonts | `--font-display` (Playfair) · `--font-body` (Source Serif 4) · `--font-label` (Inter) |
 | Type scale | `--text-2xs` 9 · `--text-xs` 10.5 · `--text-body` 13.5 · `--text-md` 15.5 · `--text-lg` 19 · `--text-xl` 26 · `--text-2xl` 38 · `--text-3xl` 48 · `--text-4xl` 80 (px) |
-| Spacing | `--space-1..20`: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80 (px) |
+| Spacing | `--space-1` 4 · `--space-2` 8 · `--space-3` 12 · `--space-4` 16 · `--space-5` 20 · `--space-6` 24 · `--space-8` 32 · `--space-10` 40 · `--space-12` 48 · `--space-16` 64 · `--space-20` 80 (px) |
 | Borders | `--border-fat` 5 · `--border-mid` 3 · `--border-thin` 1.5 · `--border-hair` 1 (px) |
-| Leading / tracking | `--leading-display` 1.1 · `--leading-body` 1.35 · `--leading-label` 1.4 · `--tracking-label` 0.08em · `--tracking-kicker` 0.32em · `--display-overhang` (the padding display type needs to keep its ink out of a container's clip — see design-rules.md) |
+| Leading / tracking | `--leading-display` 1.1 · `--leading-body` 1.35 · `--leading-label` 1.4 · `--tracking-display` 0 · `--tracking-label` 0.08em · `--tracking-kicker` 0.32em · `--display-overhang` max(0em, calc((1.22em - var(--leading-display) * 1em) / 2)) |
 | Page margins | `--page-margin-top` 64 · `--page-margin-x` 72 · `--page-margin-bottom` 72 (px) |
+
+The spacing scale is **non-contiguous**: it is the eleven steps listed above
+and nothing else — there is no `--space-7`, `--space-9`, `--space-11`, or any
+step past 20. `var()` on a name that isn't there resolves to nothing and
+silently voids the whole declaration, so assembly fails the build rather than
+shipping it. `--display-overhang` is the padding display type needs to keep
+its ink out of a container's clip (see design-rules.md).
 
 Already styled by the base layer (use as-is, don't restyle): **tables**
 (label font, tabular figures, ink-on-paper uppercase `th` row, hairline row

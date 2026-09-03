@@ -4,7 +4,7 @@
 // this project's directory and reuses it; otherwise starts one detached (the
 // server outlives this command) and reports the URL it bound.
 //
-// Usage: node serve-cli.mjs [--dir <pages-dir>]
+// Usage: node serve-cli.mjs [--dir <pages-dir>] [--help]
 //   --dir defaults to <cwd>/out (resolved exactly as server.mjs resolves it).
 // Prints the base URL on stdout. Exit 0 with a server up; 1 otherwise.
 import path from "node:path";
@@ -15,6 +15,25 @@ import { takeValue, realOrSelf } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
+
+const USAGE = `usage: node serve-cli.mjs [--dir <pages-dir>] [--help]
+
+Serves the generated pages over loopback and prints the base URL on stdout.
+Reuses a print-skill server already serving the same directory on ports
+4949-4958; otherwise starts one detached, so it outlives this command.
+
+  --dir <pages-dir>  directory of pages to serve. Give it as an ABSOLUTE
+                     path. Default: <cwd>/out. A root inside the skill
+                     directory is refused.
+  --help             print this and exit 0.
+
+Health route: GET /healthz -> {"name":"print-skill-server","dir":...}.
+Exit: 0 with a server up and its URL printed; 1 otherwise.`;
+
+if (args.includes("--help")) {
+  console.log(USAGE);
+  process.exit(0);
+}
 // Default is explicitly <cwd>/out — the assembly output directory — rather
 // than resolveServeDir's cwd heuristic: authoring leaves channel files
 // (content.html and friends) in the working directory, and a heuristic that

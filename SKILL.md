@@ -46,6 +46,17 @@ independent: always issue each group together.
 
 ### Step 0 — Input & server warm-up
 
+**Resolve `<skill-dir>` first, once.** Every `<skill-dir>/…` path in this file
+(Steps 0, 5, 6 and 7, plus "Headless / pipeline use" and "Live mode") and in
+the reference files means the **absolute** path of the directory holding this
+`SKILL.md` — the one with `server/` and `assets/` in it. Work it out at the
+start of the run, confirm it with
+`ls <skill-dir>/server/assemble-cli.mjs`, and paste that same absolute string
+into every later command. Never substitute a relative path: authoring writes
+its channel files in a scratch directory, and a relative `<skill-dir>` stops
+resolving the moment you `cd` there — assembly then dies with
+`Cannot find module`.
+
 First, warm up the PDF server in the background so the one-time Chromium
 download overlaps with authoring instead of stalling Step 7: if
 `<skill-dir>/server/node_modules` does not exist and Node is available, start

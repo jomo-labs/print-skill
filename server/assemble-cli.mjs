@@ -15,6 +15,7 @@
 //        [--css <overrides.css>] [--font-import <googlefonts-url>]
 //        [--paper a4|legal|half] [--orientation landscape]
 //        [--answer-key <key.html>] [--out-dir <dir>] [--max-sheets N]
+//   node assemble-cli.mjs --help   prints the same flag list and exits 0.
 //
 // Writes <out-dir>/<slugified-title>.html (out-dir defaults to <cwd>/out),
 // runs the full structural verification from assembly.md, then ALWAYS runs
@@ -39,6 +40,34 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = path.resolve(HERE, "..");
 
 const argv = process.argv.slice(2);
+
+const USAGE =
+  'usage: node assemble-cli.mjs --content <content.html> --title "<title>"\n' +
+  "         [--css <overrides.css>] [--font-import <url>] [--paper a4|legal|half]\n" +
+  "         [--orientation landscape] [--answer-key <key.html>] [--out-dir <dir>]\n" +
+  "         [--max-sheets N] [--help]\n" +
+  "\n" +
+  "  --content <file>       required. The authored content_html channel.\n" +
+  '  --title "<title>"      required. Also the output filename, slugified.\n' +
+  "  --css <file>           the authored custom_css channel.\n" +
+  "  --font-import <url>    a fonts.googleapis.com stylesheet URL.\n" +
+  "  --paper a4|legal|half  sheet size. Default: letter.\n" +
+  "  --orientation landscape  rotate the sheet. Default: portrait.\n" +
+  "  --answer-key <file>    answer_key_html, assembled as a second sheet.\n" +
+  "  --out-dir <dir>        where the page is written. Default: <cwd>/out.\n" +
+  "  --max-sheets N         the page budget. Default: 1 (2 with --answer-key).\n" +
+  "  --help                 print this and exit 0.\n" +
+  "\n" +
+  "Writes <out-dir>/<slugified-title>.html, then runs structural verification,\n" +
+  "the fit check (which may squeeze a near miss into fitting) and the contrast\n" +
+  "check on it.\n" +
+  "Exit: 0 assembled and every check passed · 1 something failed · 2 bad usage";
+
+if (argv.includes("--help")) {
+  console.log(USAGE);
+  process.exit(0);
+}
+
 const flags = {};
 for (const name of ["content", "title", "css", "font-import", "paper",
                     "orientation", "answer-key", "out-dir", "max-sheets"]) {
@@ -49,11 +78,7 @@ for (const name of ["content", "title", "css", "font-import", "paper",
 // ignored would assemble against the wrong page budget).
 if (argv.length || !flags.content || !flags.title) {
   if (argv.length) console.error(`assemble-cli: unrecognized argument(s): ${argv.join(" ")}`);
-  console.error(
-    'usage: node assemble-cli.mjs --content <content.html> --title "<title>"\n' +
-    "         [--css <overrides.css>] [--font-import <url>] [--paper a4|legal|half]\n" +
-    "         [--orientation landscape] [--answer-key <key.html>] [--out-dir <dir>]\n" +
-    "         [--max-sheets N]");
+  console.error(USAGE);
   process.exit(2);
 }
 
