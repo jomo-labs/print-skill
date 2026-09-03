@@ -18,10 +18,12 @@
 //   node assemble-cli.mjs --help   prints the same flag list and exits 0.
 //
 // Writes <out-dir>/<slugified-title>.html (out-dir defaults to <cwd>/out),
-// runs the full structural verification from assembly.md, then ALWAYS runs
-// the fit check (which may squeeze a near-miss into fitting — see
-// fit-cli.mjs) and the contrast check on the written file, in that order
-// (fit may rewrite the file; contrast validates the result).
+// runs the full structural verification from assembly.md, then the Part B CSS
+// lint over the AUTHORED channels (lint-cli.mjs — a hard short-circuit, so bad
+// CSS never pays for a browser launch), then ALWAYS runs the fit check (which
+// may squeeze a near-miss into fitting — see fit-cli.mjs) and the contrast
+// check on the written file, in that order (fit may rewrite the file; contrast
+// validates the result).
 //
 // --max-sheets is the user's page budget, default 1 (2 when --answer-key is
 // given — the key is the one sanctioned second sheet). Authoring more sheets
@@ -34,7 +36,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { findSheetEdgeBorders, findUndefinedTokenRefs, slugify, takeValue } from "./lib.mjs";
+import { findSheetEdgeBorders, findUndefinedTokenRefs, isGoogleFontsUrl, slugify, takeValue } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = path.resolve(HERE, "..");
@@ -59,8 +61,8 @@ const USAGE =
   "  --help                 print this and exit 0.\n" +
   "\n" +
   "Writes <out-dir>/<slugified-title>.html, then runs structural verification,\n" +
-  "the fit check (which may squeeze a near miss into fitting) and the contrast\n" +
-  "check on it.\n" +
+  "the Part B CSS lint over the authored channels, the fit check (which may\n" +
+  "squeeze a near miss into fitting) and the contrast check on it.\n" +
   "Exit: 0 assembled and every check passed · 1 something failed · 2 bad usage";
 
 if (argv.includes("--help")) {
@@ -161,9 +163,13 @@ if (answerKey.trim() || preWrapped) {
 }
 
 // ── Step 3: font link (validated; unsafe URLs are dropped, not fixed) ──────
+// Part B item 8, and deliberately LENIENT: the rule's own remedy is to drop
+// the import and fall back to the preloaded trio, so a bad URL warns and the
+// page still assembles. lint-cli reports the same finding as a warning, from
+// the same predicate, so the two cannot drift.
 if (flags["font-import"]) {
   const url = flags["font-import"];
-  if (/^https:\/\/fonts\.googleapis\.com\/[A-Za-z0-9/?&=+:;,@._%-]*$/.test(url)) {
+  if (isGoogleFontsUrl(url)) {
     html = html.replace(OVERRIDES_TAG, `<link rel="stylesheet" href="${url}">\n${OVERRIDES_TAG}`);
   } else {
     warnings.push(`font-import dropped (not a plain fonts.googleapis.com URL): ${url}`);
@@ -284,8 +290,8 @@ if (failures.length) {
 }
 console.log("structural verification: ok");
 
-const runCheck = (cli) => new Promise((resolve) => {
-  execFile(process.execPath, [path.join(HERE, cli), outFile],
+const runCheck = (cli, args = [outFile]) => new Promise((resolve) => {
+  execFile(process.execPath, [path.join(HERE, cli), ...args],
     { maxBuffer: 4 * 1024 * 1024 },
     (err, stdout, stderr) => {
       if (stdout.trim()) process.stdout.write(stdout);
@@ -293,6 +299,19 @@ const runCheck = (cli) => new Promise((resolve) => {
       resolve(!err);
     });
 });
+
+// ── The Part B lint, ahead of anything that launches a browser ─────────────
+// Its own short-circuit rather than a third member of the pair below: fit and
+// contrast run unconditionally by design (both reports are wanted even when
+// one fails), whereas CSS that was never going to ship should not pay for a
+// Chromium launch. It reads the AUTHORED channels, never this assembled page —
+// document.css is inlined above and breaks half these rules by right; see
+// lint-cli.mjs's input contract.
+const lintArgs = ["--content", path.resolve(flags.content)];
+if (flags.css) lintArgs.push("--css", path.resolve(flags.css));
+if (flags["font-import"]) lintArgs.push("--font-import", flags["font-import"]);
+if (!(await runCheck("lint-cli.mjs", lintArgs))) process.exit(1);
+
 const fitOk = await runCheck("fit-cli.mjs");
 const contrastOk = await runCheck("contrast-cli.mjs");
 process.exit(fitOk && contrastOk ? 0 : 1);

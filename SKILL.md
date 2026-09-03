@@ -31,9 +31,8 @@ pipelines (see "Headless / pipeline use").
 The design work runs in your head and your tools. The bundled commands verify
 what is mechanical — structure, fit and per-sheet fill, contrast — so never
 measure fit or fill with your own scripts: react to the numbers the fit check
-prints. But they cannot judge design,
-so you are also the design validator: the self-check in
-`references/design-rules.md` is mandatory, not advisory.
+prints. But they cannot judge design, so `references/design-rules.md` is
+mandatory, not advisory: Part A is yours, Part B the assemble command enforces.
 
 ## Workflow
 
@@ -226,13 +225,12 @@ overflow, and underfill"). Blank space left intentionally for the user to
 fill in — by pen on the printed page, or on screen — counts as filled; only
 purposeless emptiness is underfill.
 
-### Step 4 — Self-check
+### Step 4 — Self-check (automatic)
 
-Run the full Part B checklist in `references/design-rules.md` against your
-`custom_css`, `font_import`, and inline styles. Fix everything it catches and
-re-run the whole list. If it still fails after two fix passes, **degrade** per
-Part C: drop `custom_css` + `font_import` (keep content, paper, answer key) and
-say so in your report.
+Part B of `references/design-rules.md` runs inside Step 5's assemble command,
+over your authored channels. Never grep your own CSS for it. It names every
+violation at once: fix them all in one pass and re-run Step 5, and **degrade**
+per Part C if two passes don't clear it.
 
 ### Step 5 — Assemble
 
@@ -293,9 +291,9 @@ Three outcomes:
 clears its WCAG AA floor (4.5:1 body, 3:1 large or bold), measured at the
 sizes that actually print — squeeze included, which is why it runs after
 fit. Failures list each offending style with the size and weight that set
-its threshold. This is the one platform invariant the Part B self-check
-cannot verify by reading CSS — Part B greps for banned constructs, it never
-computes a ratio.
+its threshold. This is the one platform invariant the Part B lint cannot
+verify by reading CSS — it matches banned constructs, it never computes a
+ratio.
 
 After any later in-place edit to the generated file, re-check both in one
 command:
@@ -413,9 +411,8 @@ place — don't regenerate from scratch:
 - **Text or layout tweaks**: Edit the content inside `<div class="page">`
   directly.
 - **Style changes**: edit the CSS inside `<style id="content-overrides">` (and
-  the font `<link>` if the font changes). Any CSS change means re-running the
-  full self-check (design-rules.md Part B) against the updated styles before
-  saving.
+  the font `<link>` if the font changes). Step 5 is not re-run here, so lint the
+  updated block yourself: `node <skill-dir>/server/lint-cli.mjs --css <file>`.
 - **Structural changes** (different page type, different orientation,
   rethinking the layout): re-author the content channels and re-assemble from
   the shell instead of patching.
@@ -585,7 +582,7 @@ doesn't show a half-written file:
    browser edits and their `data-mp-edited` markers live in it, and the
    selector points into it. For a sweep of everything they edited:
    `edits <file>.html`.
-3. Apply the change (same self-check rules for CSS, same Step 6 checks), and
+3. Apply the change (same CSS lint, same Step 6 checks), and
    strip the `data-mp-edited` markers you addressed — the marker means "not yet
    seen by the model".
 4. `status <file>.html done` — always, and only once the file is final: that is

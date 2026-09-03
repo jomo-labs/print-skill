@@ -1,16 +1,15 @@
-# Design Rules and Self-Check
+# Design Rules
 
-The design invariants every generated page must satisfy, and the checklist you run
-against your own `custom_css` / `font_import` before assembly. Read this in full
-before writing any CSS. In the original server pipeline these rules were enforced
-mechanically by a validator that rejected the CSS and forced a retry; here **you are
-the validator** — run Part B honestly, every time.
+The design invariants every generated page must satisfy. Read this in full before
+writing any CSS. Part A is judgement and is yours to hold. Part B is the
+mechanical half and assembly runs it for you — write CSS that obeys Part A and
+the lint will have nothing to say.
 
 ---
 
 ## Platform invariants — inherited by every theme
 
-Enforced by `assets/shell/document.css` or the checklist below. A theme spec
+Enforced by `assets/shell/document.css` or the Part B lint. A theme spec
 must not restate them and cannot opt out — it describes only what it changes.
 
 - **Sheet and margin.** The sheet is a fixed physical size and its padding
@@ -83,7 +82,7 @@ must not restate them and cannot opt out — it describes only what it changes.
    zero blur radius, solid var() color: `box-shadow: 8px 8px 0 var(--color-accent)`
    is legal, `box-shadow: 0 4px 12px ...` is not, and the same applies to
    text-shadow. A blurred shadow is a gradient, and gradients print as muddy
-   dithered ink (checked in the self-check below). The sheet's own drop shadow is
+   dithered ink (the Part B lint catches it). The sheet's own drop shadow is
    the viewer's chrome, not yours — it is fixed, it never prints, and no token or
    rule of yours changes it, so never rely on any shadow for printed identity.
    The only backgrounds ever allowed are
@@ -102,7 +101,7 @@ must not restate them and cannot opt out — it describes only what it changes.
    (`stroke="currentColor"` or a `var(--color-*)` token), never by compositing CSS
    backgrounds (radial/conic/linear gradients), pseudo-element fills, or inset
    box-shadows — every one of those is a fill in disguise and fails the same
-   self-check as rule 1. Stroke-outline SVG also prints crisply and stays colorable
+   Part B lint as rule 1. Stroke-outline SVG also prints crisply and stays colorable
    by hand, which fills never are. This rule governs artwork you **draw**, not
    artwork you **place**: a sourced SVG or a normalized raster spot may carry its
    own fills, and rule 1's background allowlist still applies to both. For how to
@@ -179,76 +178,43 @@ whole whenever it fits on a sheet of its own.
 
 ---
 
-## Part B — Self-check (run before every assembly)
+## Part B — Enforced at assembly, by machine
 
-Check your `custom_css` and `font_import` against every item, in this order — it
-runs most-fundamental-first. Empty `custom_css` passes items 1–7 and 9 trivially;
-empty `font_import` passes item 8.
+These nine checks are not yours to run. `server/lint-cli.mjs` executes them over
+your authored `custom_css`, the inline `style="..."` attributes in
+`content_html`, and `font_import` — automatically, inside the Step 5 assemble
+command, ahead of anything that renders. It reports **every** violation in one
+pass, each with its line and the offending declaration. Never grep your own CSS
+for them.
 
-1. **No markup breakout, no remote loads.** `custom_css` contains no `<` followed
-   by a letter or `/` (nothing that could close the page's `<style>` tag), no
-   `@import`, and no `url(` anywhere. Fonts are the `font_import` field's job;
-   nothing else may load a remote resource.
-
-2. **No backslashes.** `custom_css` contains no `\` character at all. CSS escape
-   sequences (`\62 ackground` is `background`, `@\69mport` is `@import`) can smuggle
-   banned constructs past a text check, and model-authored CSS never legitimately
-   needs them — so they are banned outright.
-
-3. **Paper stays white.** Every `--color-paper:` declaration (if any) has the value
-   `white`, `#fff`, or `#ffffff` — nothing else. Best: don't override it at all.
-
-4. **Backgrounds from the allowlist only.** Every `background:` /
-   `background-color:` value is exactly one of `var(--color-ink)`,
-   `var(--color-paper)`, `var(--color-pull-bg)`, `transparent`,
-   `none`, `inherit` — *exactly*: no `!important` suffix, no multi-part shorthand;
-   the bare keyword or var() is the whole value. Every `background-image:` value
-   is `none`. The properties `filter`, `backdrop-filter`, and `mix-blend-mode`
-   appear nowhere, except defining `--image-filter` inside `:root`. No `box-shadow` contains `inset` (an inset shadow is a
-   disguised full-element fill).
-
-5. **Shadows are print-flat.** In every `box-shadow` and `text-shadow` layer
-   (layers are comma-separated), the third length — the blur radius — is `0` or
-   absent. `8px 8px 0 var(--color-accent)` passes; `0 4px 12px ...` fails.
-
-6. **No literal colors outside `:root { }`.** Outside your `:root` token block
-   there is no `#hex` color, no color function (`rgb()`, `rgba()`, `hsl()`,
-   `hsla()`, `oklch()`, `oklab()`, `lab()`, `lch()`, `color()`), and no CSS named
-   color keyword — including `white`; even white goes through a token outside
-   `:root`. The keywords `transparent` and `currentColor` are fine — they're
-   functional, not brand color.
-
-7. **Inline styles obey the same color rules.** Rules 1–6 apply to `style="..."`
-   attributes inside `content_html` too: `var(--color-*)` tokens only, allowlisted
-   backgrounds, no blurred or inset shadows.
-
-8. **`font_import` is a Google Fonts URL and nothing else.** It must literally
-   start with `https://fonts.googleapis.com/` and contain only letters, digits, and
-   the characters `/ ? = & + : , . @ ; _ -`. No other host, no protocol-relative
-   URL, no whitespace, no backslash. If any of that fails, drop the `font_import`
-   and pick a font from the preloaded trio instead.
-
-9. **Display type keeps its own clearance.** Every rule that sets
-   `line-height: var(--leading-display)` — or any leading below ~1.2 — on an
-   element also gives that element `padding-block: var(--display-overhang)`,
-   and no rule of yours zeroes the padding of an `h1`/`h2` (which already
-   carry it). Ink from tight display leading paints outside the element's own
-   box and the container it sits in cuts at its edge, so the room has to be in
-   layout. Zeroing the heading's *margin* is fine.
+What it enforces: (1) no markup breakout or remote load — no `<` followed by a
+letter or `/`, no `@import`, no `url(`; fonts are `font_import`'s job. (2) No `\`
+anywhere in `custom_css`: a CSS escape (`@\69mport` is `@import`) smuggles banned
+constructs past a text check, and authored CSS never needs one. (3) Paper stays
+white — `--color-paper` is `white`/`#fff`/`#ffffff` or left alone. (4) The
+background allowlist, the `filter`/`backdrop-filter`/`mix-blend-mode` ban (the
+one exception is defining `--image-filter` inside `:root`) and no `inset`
+shadow — Part A rule 1. (5) A blur radius of `0` or absent in every shadow
+layer — Part A rule 1. (6) No literal color outside `:root`, `white` included;
+`transparent` and `currentColor` are fine — Part A rule 2. (7) The same six over
+inline styles. (8) `font_import` is a plain `https://fonts.googleapis.com/` URL;
+anything else is **dropped with a warning**, not a failure, so pick a font from
+the preloaded trio when that happens. (9) Display leading (`var(--leading-display)`
+or anything under ~1.2) comes with `padding-block: var(--display-overhang)`, and
+no rule zeroes an `h1`/`h2`'s padding — the clip invariant above.
 
 ---
 
-## Part C — If a check fails: fix, then degrade
+## Part C — If the lint fails: fix, then degrade
 
-- **Fix pass:** correct every violation you found and re-run the full checklist
-  (a fix can introduce a new violation — e.g. removing a gradient but adding an
-  inset shadow — which is exactly why you re-run all of Part B, not just the item
-  that failed).
-- **Degrade:** if after **two** fix passes the CSS still fails any check, stop
-  polishing: drop `custom_css` and `font_import` entirely and assemble with the
-  shell's default theme. Keep `content_html`, `paper`, and `answer_key_html` — an
-  answer key is pedagogical content and must survive. Tell the user in your report
-  that the custom styling was dropped and the page uses the default theme.
+- **Fix pass:** the report is complete — every violation, with its line. Fix all
+  of them in one pass and re-run the Step 5 command. There is nothing to
+  re-audit by hand.
+- **Degrade:** if the lint still fails after **two** fix passes, stop polishing:
+  drop `custom_css` and `font_import` entirely and assemble with the shell's
+  default theme. Keep `content_html`, `paper`, and `answer_key_html` — an answer
+  key is pedagogical content and must survive. Tell the user in your report that
+  the custom styling was dropped and the page uses the default theme.
 - Because degrade is always possible, put **layout-critical styling inline** on the
   elements themselves (using `var()` tokens) for page types whose identity depends
   on structure — a certificate must still read as a certificate with `custom_css`
