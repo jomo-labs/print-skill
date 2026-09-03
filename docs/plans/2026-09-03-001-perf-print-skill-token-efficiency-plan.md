@@ -69,12 +69,23 @@ The model then binds a free port above the range — which is exactly what
 route guesses (`/__health`, `/healthz`, `/__mp/health`, the last found by
 reading `server.mjs` source) are recovery behaviour, not waste.
 
-**How much of this transfers to real use is uncertain.** The eval runs four
-cells concurrently across 35 cells, all racing for the same ten ports, so
-orphaned servers accumulate quickly. A single user on one machine would hit
-exhaustion far less often. The defects are real at any concurrency — failing
-instead of falling back is wrong regardless — but the turn saving measured here
-is an upper bound, and U10's contribution to the budget should be read as such.
+**How much of this transfers to real use is uncertain, and the reason is
+awkward.** Implementation found that the orphans were largely self-inflicted:
+`serve-cli.test.mjs` cleaned up with a `pkill` pattern that never matched
+(`mkdtemp` returns `/var/...`, the server realpaths to `/private/var/...`), so
+every test run since that file was written leaked a server, and with
+`--auto-port` walking upward those leaks are what filled the range. That is
+fixed, which means the exhaustion this unit was measured against will recur
+more slowly from here.
+
+The defects are real at any concurrency — failing instead of falling back is
+wrong regardless, and the eval's own four-way concurrency across 35 distinct
+workspaces exhausts ten ports without any help from leaks. But a single user
+who never runs the test suite accumulates servers pointing at directories that
+still exist, which are legitimate reuse targets rather than zombies. **Treat
+the ~5 turns per run as an upper bound measured under conditions partly created
+by a bug this branch also fixes.** If the gate comes in short of the turn
+target, U10's contribution is the first place to look, not U3's or U8's.
 
 **2. An undefined path placeholder kills 8 of 65 assemble invocations.** They
 die with
