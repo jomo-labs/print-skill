@@ -197,7 +197,11 @@ one exception is defining `--image-filter` inside `:root`) and no `inset`
 shadow — Part A rule 1. (5) A blur radius of `0` or absent in every shadow
 layer — Part A rule 1. (6) No literal color outside `:root`, `white` included;
 `transparent` and `currentColor` are fine — Part A rule 2. (7) The same six over
-inline styles. (8) `font_import` is a plain `https://fonts.googleapis.com/` URL;
+inline styles, quoted or unquoted — plus no HTML character reference
+(`&#117;`, `&#x75;`, `&amp;`) inside a `style` attribute: the browser decodes
+one before CSS sees the value, so an encoded payload would slip every check
+above. Write the character itself. (`custom_css` is exempt — nothing is
+decoded inside `<style>`.) (8) `font_import` is a plain `https://fonts.googleapis.com/` URL;
 anything else is **dropped with a warning**, not a failure, so pick a font from
 the preloaded trio when that happens. (9) Display leading comes with
 `padding-block: var(--display-overhang)`, and no rule zeroes an `h1`/`h2`'s

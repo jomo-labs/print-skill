@@ -51,8 +51,11 @@ breaks half of these by design. Use --page for that.
 
   --css <file>         the authored custom_css channel. Optional — a page with
                        no custom_css lints clean.
-  --content <file>     the authored content_html channel; its inline style=""
-                       attributes are linted under the same rules (item 7).
+  --content <file>     the authored content_html channel; its inline style
+                       attributes — quoted or unquoted — are linted under the
+                       same rules (item 7), and an HTML character reference
+                       inside one is itself a violation, since the browser
+                       decodes it before CSS sees the value.
   --font-import <url>  the authored font_import channel (item 8).
   --page <file>        an ASSEMBLED page edited in place. Lints only the body of
                        <style id="content-overrides">, the content inside
@@ -541,11 +544,47 @@ if (css.trim()) {
 }
 
 // ── Run: inline style attributes in the content (item 7) ───────────────────
+// Two attribute shapes, and both are real. HTML lets a value go unquoted when
+// it carries no whitespace, quotes, `=`, `<`, `>` or backtick, so
+// `<div style=color:red>` is a style attribute to every browser; a
+// quoted-only regex is a hole, not a simplification.
+//
+// The value is then scanned RAW, and the character-reference check below is
+// what makes that sound. HTML decodes an attribute value before CSS ever sees
+// it, so `style="background:&#117;rl(evil)"` arrives at the browser as
+// `url(evil)` while the source text this linter reads says `&#117;rl(` and
+// matches nothing — the same trick re-encodes the backslash of item 2
+// (`&#92;`) and the `<` of item 1. The fix is NOT to decode: the named
+// reference table is two thousand entries with semicolon-less legacy cases,
+// and a decoder that is merely close is a second bypass wearing the first
+// one's clothes. Instead any character reference at all inside a style
+// attribute is itself the violation. That costs no legitimate page anything —
+// there is no CSS declaration that needs `&#...;` or `&name;` to be written,
+// `&` has no role in a declaration list at all, and prose entities like
+// `Tom &amp; Jerry` live in text nodes, which this loop never looks at.
+//
+// It belongs to the attribute layer alone. Inside `<style>` the browser does
+// no entity decoding, so custom_css is delivered exactly as written and
+// deliberately does not get this check.
+const CHAR_REF = /&(?:#\d+|#[xX][\dA-Fa-f]+|[A-Za-z][A-Za-z\d]*);?/g;
 const contentSource = pageSource || (contentArg ? path.basename(contentArg) : "content_html");
-for (const m of content.matchAll(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
-  const value = m[1] !== undefined ? m[1] : m[2];
+for (const m of content.matchAll(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi)) {
+  const value = m[1] ?? m[2] ?? m[3];
   if (!value.trim()) continue;
-  const at = m.index + m[0].indexOf(value);
+  // lastIndexOf, not indexOf: in `style=style` the value's own text also
+  // matches the attribute NAME, and the reported offset has to be the value's.
+  const at = m.index + m[0].lastIndexOf(value);
+  const refs = [...value.matchAll(CHAR_REF)];
+  if (refs.length) {
+    const more = refs.length > 1 ? ` (${refs.length} occurrences)` : "";
+    flag(7, "no character references in a style attribute",
+      `${contentSource}:${lineOf(content, at + refs[0].index)}`,
+      `${clip(refs[0][0], 40)}${more} in ${clip(value, 60)}`,
+      "an HTML character reference is decoded before CSS sees this value, so " +
+      "`&#117;rl(evil)` reaches the browser as `url(evil)` and walks past every text check " +
+      "above. It is not decoded here on purpose — matching a browser closely enough would " +
+      "just be a new bypass. Write the character itself; authored CSS never needs one");
+  }
   rawScan(value, contentSource, at, content);
   lintBlock({
     decls: value, base: at, text: content, source: contentSource,

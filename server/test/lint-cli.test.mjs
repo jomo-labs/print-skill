@@ -235,6 +235,89 @@ test("item 7: token-only inline styles pass", async (t) => {
   assert.equal(r.code, 0, r.stderr);
 });
 
+// ── Item 7: the two shapes the raw-source scan used to miss ────────────────
+// The value is read out of HTML source, so the six CSS checks only see what
+// the attribute regex captured and what the browser had not yet decoded.
+// Both gaps let a payload through with the declaration itself untouched.
+
+test("item 7: an UNQUOTED style attribute is linted", async (t) => {
+  // HTML permits an unquoted value with no whitespace or quotes in it, and
+  // every browser honours it — a quoted-only regex never saw this at all.
+  const r = await lint(t, { content: `<div style=color:crimson>x</div>` });
+  assert.equal(r.code, 1, `the unquoted style attribute was never scanned:\n${r.stdout}`);
+  assert.match(r.stderr, /item 6,/, "the literal color in an unquoted value is caught");
+  assert.match(r.stderr, /content\.html:1/);
+});
+
+test("item 7: an unquoted style attribute is scanned raw, too", async (t) => {
+  const r = await lint(t, { content: `<p style=background-image:url(x.png)>x</p>` });
+  assert.equal(r.code, 1, r.stdout);
+  assert.match(r.stderr, /item 1,/, "url() in an unquoted value must still be a remote load");
+});
+
+test("item 7: an entity-encoded url( payload is caught", async (t) => {
+  // `&#117;rl(evil)` reaches the browser as `url(evil)`; the raw source says
+  // `&#117;rl(` and matches nothing. The reference itself is the violation.
+  const r = await lint(t, {
+    content: `<div style="background:&#117;rl(https://evil.example/x.png)">x</div>`,
+  });
+  assert.equal(r.code, 1, `the entity-encoded url() walked straight past:\n${r.stdout}`);
+  assert.match(r.stderr, /item 7,/);
+  assert.match(r.stderr, /character reference/);
+  assert.match(r.stderr, /content\.html:1/);
+});
+
+test("item 7: hex and named references are caught the same way", async (t) => {
+  // The same trick re-encodes item 2's backslash (`&#92;`) and item 1's `<`.
+  for (const payload of ["color:&#92;72ed", "content:&#x3C;/style&gt;", "color:&lt;red"]) {
+    const r = await lint(t, { content: `<b style="${payload}">x</b>` });
+    assert.equal(r.code, 1, `\`${payload}\` passed clean:\n${r.stdout}`);
+    assert.match(r.stderr, /item 7,/, `no character-reference finding for \`${payload}\``);
+  }
+});
+
+test("item 7: a character reference in an unquoted value is caught", async (t) => {
+  const r = await lint(t, { content: `<div style=background:&#117;rl(x.png)>y</div>` });
+  assert.equal(r.code, 1, `both bypasses combined passed clean:\n${r.stdout}`);
+  assert.match(r.stderr, /item 7,/);
+});
+
+// The false-positive guard, which matters more than the catches above: a
+// two-pass lint failure routes Part C's degrade path and drops custom_css
+// wholesale, so an over-broad rule silently strips a page that was fine.
+test("item 7: realistic themed inline styles still pass", async (t) => {
+  const r = await lint(t, {
+    content:
+      `<div data-mp-section="hero" style="display: grid; grid-template-columns: repeat(3, 1fr); ` +
+      `gap: var(--space-4); border-bottom: 2px solid var(--color-rule)">\n` +
+      `  <h1 style="font-family: var(--font-display); font-size: var(--text-3xl); ` +
+      `line-height: var(--leading-display); padding-block: var(--display-overhang); ` +
+      `letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-ink)">Field Guide</h1>\n` +
+      `  <p style='max-width: 42ch; margin-block: 0; color: var(--color-mid)'>Body copy.</p>\n` +
+      `  <span style="opacity: 0.6">&#8212; 2026</span>\n` +
+      `</div>`,
+  });
+  assert.equal(r.code, 0, `a legitimate themed page was failed:\n${r.stderr}`);
+  assert.match(r.stdout, /css lint: ok/);
+});
+
+test("item 7: entities in TEXT are none of this rule's business", async (t) => {
+  // Prose entities are ordinary content — the rule is about the attribute
+  // layer, where decoding happens before CSS sees the value.
+  const r = await lint(t, {
+    content: `<p style="color: var(--color-ink)">Tom &amp; Jerry &mdash; 5 &lt; 6</p>`,
+  });
+  assert.equal(r.code, 0, `a prose entity was read as a style-attribute payload:\n${r.stderr}`);
+});
+
+test("item 7: custom_css does NOT get the character-reference check", async (t) => {
+  // Inside <style> the browser decodes nothing, so the stylesheet arrives
+  // exactly as written and `content: "&amp;"` is a real ampersand, not a
+  // smuggled construct.
+  const r = await lint(t, { css: `.x::after { content: "&amp;"; color: var(--color-ink) }` });
+  assert.equal(r.code, 0, `the attribute-layer rule leaked into custom_css:\n${r.stderr}`);
+});
+
 // ── One pass, every violation ──────────────────────────────────────────────
 
 test("multiple simultaneous violations all report in one pass", async (t) => {
@@ -392,6 +475,51 @@ test("--page: an inline style in the page content is linted too", async (t) => {
   const r = await run([LINT, "--page", page]);
   assert.equal(r.code, 1, `the inline literal color in the content was not linted:\n${r.stdout}`);
   assert.match(r.stderr, /item 6,/);
+});
+
+test("--page: the unquoted and entity-encoded shapes are caught there too", async (t) => {
+  // --page carves the content out of an assembled file and masks the rest, so
+  // it must reach the SAME inline scan --content does. The in-place edit path
+  // writes these attributes straight into the page, where nothing else sees
+  // them first.
+  const { asm, page } = await assemble(t, {
+    title: "Page Sneaky",
+    content: `<div data-mp-section="hero"><h1>Sneaky</h1>` +
+             `<p style="color: var(--color-mid)">Body.</p></div>`,
+  });
+  assert.equal(asm.code, 0, asm.stderr);
+  const before = await fs.readFile(page, "utf-8");
+
+  const unquoted = before.replace(`style="color: var(--color-mid)"`, `style=color:crimson`);
+  assert.notEqual(unquoted, before, "the unquoted edit did not land");
+  await fs.writeFile(page, unquoted);
+  const raw = await run([LINT, "--page", page]);
+  assert.equal(raw.code, 1, `an unquoted style attribute in the page passed clean:\n${raw.stdout}`);
+  assert.match(raw.stderr, /item 6,/);
+
+  const encoded = before.replace(`style="color: var(--color-mid)"`,
+    `style="background:&#117;rl(https://evil.example/x.png)"`);
+  assert.notEqual(encoded, before, "the entity edit did not land");
+  await fs.writeFile(page, encoded);
+  const ent = await run([LINT, "--page", page]);
+  assert.equal(ent.code, 1, `an entity-encoded payload in the page passed clean:\n${ent.stdout}`);
+  assert.match(ent.stderr, /item 7,/);
+  assert.match(ent.stderr, new RegExp(`${path.basename(page)}:\\d+ `),
+    `the finding must carry a page-absolute line:\n${ent.stderr}`);
+});
+
+test("--page: the shell's own markup carries no style-attribute findings", async (t) => {
+  // The false-positive guard for --page: the shell around the content is full
+  // of attributes and entities, and every one of them is masked out.
+  const { asm, page } = await assemble(t, {
+    title: "Page Shell Clean",
+    content: `<div data-mp-section="hero"><h1>Clean</h1>` +
+             `<p style="color: var(--color-mid)">Tom &amp; Jerry.</p></div>`,
+  });
+  assert.equal(asm.code, 0, asm.stderr);
+  const r = await run([LINT, "--page", page]);
+  assert.equal(r.code, 0, `the shell or a prose entity leaked into the lint:\n${r.stderr}`);
+  assert.match(r.stdout, /css lint: ok/);
 });
 
 test("--page: no content-overrides block is a clean page, not an error", async (t) => {
