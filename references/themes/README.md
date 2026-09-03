@@ -1,31 +1,11 @@
 # Themes
 
-How to match a themed request to a named theme spec, and how to execute a theme
-— named or invented. Read this only when the request is themed (the theme
-detection rule lives in `SKILL.md`). Then load **only** the one matching spec
-file; reading every spec defeats on-demand loading.
+How to execute a theme — named or invented. Read this only when the request is
+themed; the trigger-phrase index that names the spec to load, and the theme
+detection rule, live in `routing.md` and `SKILL.md` Step 1.
 
 Every theme sits on the platform invariants in `design-rules.md` and changes
 only what sits on top of them.
-
-## Index and trigger phrases
-
-| Theme | File | Trigger phrases |
-|---|---|---|
-| Newspaper | `newspaper.md` | *(default — no triggers; it is the base layer, used whenever no style is named, which is not a themed request)* |
-| Comic | `comic.md` | "Dog Man", "comic book", "comic strip", "Captain Underpants", "kids comic" |
-
-**Matching is forgiving about punctuation and spacing**: compare trigger
-phrases and the request with everything lowercased and non-alphanumerics
-stripped, so "dogman" = "Dog Man" = "dog-man".
-
-**A trigger must match whole words, not any substring** — "comic" matches "a
-comic-strip layout" but NOT "economic", so check for a word boundary either
-side. First match wins. Ignore trigger phrases shorter than 4 characters.
-
-If a trigger matches → follow **Executing a matched spec**. If the request is
-themed but nothing matches ("in the style of Batman") → follow **Ad-hoc
-theme**.
 
 ## Executing a matched spec
 
@@ -165,5 +145,5 @@ spec instead of a fresh improvisation.
 Copy `theme-spec-template.md`, fill out every section including the
 section-to-token tables, and save it here as `<name>.md` with a
 `**Trigger phrases:**` line right under the title — that exact form is what
-matching scans for — then add a row to the index above. Pick trigger phrases
-that are whole words unlikely to sit inside unrelated ones.
+matching scans for — then add a row to the theme index in `routing.md`. Pick
+trigger phrases that are whole words unlikely to sit inside unrelated ones.

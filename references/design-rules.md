@@ -219,4 +219,4 @@ no rule zeroes an `h1`/`h2`'s padding — the clip invariant above.
   elements themselves (using `var()` tokens) for page types whose identity depends
   on structure — a certificate must still read as a certificate with `custom_css`
   gone. Reserve `custom_css` for the `:root` token block and typographic
-  refinement. (See the per-type notes in the `types/` spec files, via `page-types.md`.)
+  refinement. (See the per-type notes in the `types/` spec files, indexed in `routing.md`.)

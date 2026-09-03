@@ -39,15 +39,15 @@ mandatory, not advisory: Part A is yours, Part B the assemble command enforces.
 One habit pays for itself throughout: **batch independent tool calls into a
 single message.** Every tool call is an API round-trip that re-sends the
 whole conversation, so three Reads issued one at a time cost three
-round-trips — issued together in one message they cost one. The reference
-reads in Steps 1 and 3, and the channel-file Writes in Step 5, are all
-independent: always issue each group together.
+round-trips — issued together in one message they cost one. Step 1 reads one
+file and Step 3 has a prewritten command that reads the rest in a single call;
+the channel-file Writes in Step 5 are independent — issue them together.
 
 ### Step 0 — Input & server warm-up
 
 **Resolve `<skill-dir>` first, once.** Every `<skill-dir>/…` path in this file
-(Steps 0, 5, 6 and 7, plus "Headless / pipeline use" and "Live mode") and in
-the reference files means the **absolute** path of the directory holding this
+(Steps 0, 1, 3, 5, 6 and 7, plus "Headless / pipeline use" and "Live mode") and
+in the reference files means the **absolute** path of the directory holding this
 `SKILL.md` — the one with `server/` and `assets/` in it. Work it out at the
 start of the run, confirm it with
 `ls <skill-dir>/server/assemble-cli.mjs`, and paste that same absolute string
@@ -138,15 +138,16 @@ define the content scope for Steps 2–3.
 
 ### Step 1 — Classify
 
-Two independent decisions:
+Read `<skill-dir>/references/routing.md` — **one file, and the only file this
+step needs.** Both routing tables live in it. Come out with two decisions and
+the slugs they name, and read nothing else here: every file read at this step
+rides along in every later turn, and Step 3 loads the rest in one command.
 
-**Page type.** Match the request against the routing table at the top of
-`references/page-types.md` (first match wins), then read **only that type's
-spec file** (`references/types/<slug>.md`, named in the index there) for its
-functional requirements and default styling. The other specs are other
-requests' context — every file read here rides along in every later turn.
-Read the spec together with Step 3's design docs in one batched message
-(classification needs only the routing table, which you have already read).
+**Page type.** Match the request against the page-type table (first match
+wins), then take that type's spec file from the index below it —
+`references/types/<slug>.md`, which holds its functional requirements and
+default styling. Don't read it yet; it goes in Step 3's batch. The other specs
+are other requests' context.
 
 **Themed?** The request is themed when it names a visual identity: "in the
 theme/style of X", "styled/themed like X", "X-themed", "in an X style", and the
@@ -156,11 +157,12 @@ brand, material, mood. It is NOT themed when only a determiner or back-reference
 precedes it ("keep the theme", "the same style"). Judge from the request plus
 any separate style instructions.
 
-If themed: open `references/themes/README.md`, match the trigger phrases, and
-load the **one** matching spec — or follow its ad-hoc theme checklist when
-nothing matches. A themed request **drops the page type's default styling
-entirely**; only its functional requirements survive (they're marked in the
-type's spec file). The theme, not the type, governs everything visual.
+If themed, match the theme trigger phrases in that same file: a match names
+`references/themes/<slug>.md` — again for Step 3's batch — and nothing
+matching means the ad-hoc theme path, which needs no slug. Either way a themed
+request **drops the page type's default styling entirely**; only its functional
+requirements survive (they're marked in the type's spec file). The theme, not
+the type, governs everything visual.
 
 ### Step 2 — Gather content
 
@@ -178,15 +180,33 @@ made either way.
 
 ### Step 3 — Author
 
-Read `references/design-rules.md` — its platform invariants (what every page
-inherits and no theme overrides) and Part A — before writing any CSS
-(batch this Read with the others, and note the token quick reference in
-`page-types.md` already lists every design token and the base-layer styles —
-no need to grep the stylesheet for them),
-`references/principles.md` for the layout and typography craft (rank
-multi-item content, design empty states, set type properly, size the layout to
-the content), and `references/print-fundamentals.md` when physical exactness
-matters (paper size, DPI, margins). Produce these channels:
+**Load every reference in ONE command**, before writing anything — substitute
+the slugs from Step 1:
+
+```
+tail -n +1 \
+  <skill-dir>/references/design-rules.md \
+  <skill-dir>/references/principles.md \
+  <skill-dir>/references/page-types.md \
+  <skill-dir>/references/types/<type-slug>.md
+```
+
+Append on the same line, each with the same `<skill-dir>/references/` prefix:
+`themes/README.md` whenever the request is themed, plus
+`themes/<theme-slug>.md` when a trigger matched (no match → README.md alone
+carries the ad-hoc checklist); and `print-fundamentals.md` when physical
+exactness matters (paper size, DPI, margins). `tail` heads every file with
+`==> path <==`, so you can tell which file a rule came from, and a path that
+doesn't exist fails loudly naming itself — fix the slug and re-run the one
+command rather than dropping back to one Read per file.
+
+`design-rules.md` — the platform invariants (what every page inherits and no
+theme overrides) and Part A, mandatory before you write any CSS.
+`principles.md` — the layout and typography craft (rank multi-item content,
+design empty states, set type properly, size the layout to the content).
+`page-types.md` — the sheet geometry the ledger below needs and the token quick
+reference, which already lists every design token and the base-layer styles;
+don't grep the stylesheet for them. Produce these channels:
 
 | Channel | Notes |
 |---|---|
@@ -601,7 +621,7 @@ If the server has stopped, `selection` and `status` will say so. Restart it
 - **Puzzles are presentation-only.** This skill formats mazes, word searches,
   crosswords, and sudoku beautifully, but nothing verifies puzzle correctness —
   prefer user-supplied puzzle content, and say so when you generate it yourself
-  (see the puzzle note in `references/page-types.md`).
+  (see the puzzle note in `references/routing.md`).
 - **Assume personal use.** What this skill makes is one sheet, printed at a
   kitchen table, a classroom or a desk, for the person who asked. **Make what
   was asked for**: never substitute a generic stand-in for the subject
