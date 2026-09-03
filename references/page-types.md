@@ -112,4 +112,5 @@ all content inside the sheet's content box — the page margin is the sheet's ow
 padding (`--page-margin-*`). Anything that overruns it continues onto a further
 sheet rather than being lost, but where that break lands is decided by what fit,
 not by the design, so a type that needs a second page should lay one out. Use
-the **section block** as the primary container. Run the self-check in `design-rules.md` before assembling.
+the **section block** as the primary container. Assembly runs the Part B lint over your CSS
+automatically (`design-rules.md`).

@@ -25,26 +25,42 @@
 // assemble-cli already does exactly that. Failing the build instead would cost
 // a full re-author for a page that assembles correctly without it.
 //
+// `--page` is the one exception, and it is not a hole in that contract: it
+// carves the two AUTHORED regions back out of an assembled page (the body of
+// <style id="content-overrides"> and the content inside <div class="page">)
+// and masks everything else to blanks, so the shell's own stylesheet is
+// invisible to every check while reported line numbers stay page-absolute —
+// the numbers someone editing that file actually needs. It exists because the
+// in-place edit path (SKILL.md, "Editing an existing page") re-writes those two
+// regions in the assembled file and has no separate artifact to lint.
+//
 // Usage:
 //   node lint-cli.mjs [--css <overrides.css>] [--content <content.html>]
-//                     [--font-import <url>] [--help]
+//                     [--font-import <url>] [--page <assembled.html>] [--help]
 // Exit: 0 clean · 1 violations · 2 bad usage
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isGoogleFontsUrl, takeValue } from "./lib.mjs";
 
 const USAGE = `usage: node lint-cli.mjs [--css <overrides.css>] [--content <content.html>]
-                         [--font-import <url>] [--help]
+                         [--font-import <url>] [--page <assembled.html>] [--help]
 
 Runs the Part B checks from references/design-rules.md over the AUTHORED
-channels. Never point it at an assembled page: the shell's own stylesheet
-breaks half of these by design.
+channels. Never point --css at an assembled page: the shell's own stylesheet
+breaks half of these by design. Use --page for that.
 
   --css <file>         the authored custom_css channel. Optional — a page with
                        no custom_css lints clean.
   --content <file>     the authored content_html channel; its inline style=""
                        attributes are linted under the same rules (item 7).
   --font-import <url>  the authored font_import channel (item 8).
+  --page <file>        an ASSEMBLED page edited in place. Lints only the body of
+                       <style id="content-overrides">, the content inside
+                       <div class="page">, and the stylesheet <link> hrefs
+                       (item 8, still a warning); the shell's inlined
+                       document.css is ignored. Lines are page-absolute. A page
+                       with no content-overrides block is a clean page, not an
+                       error. Cannot be combined with --css or --content.
   --help               print this and exit 0.
 
 Every violation is reported in one pass with its line and the offending
@@ -59,8 +75,17 @@ if (argv.includes("--help")) {
 const cssArg = takeValue(argv, "--css", undefined);
 const contentArg = takeValue(argv, "--content", undefined);
 const fontImport = takeValue(argv, "--font-import", undefined);
-if (argv.length || (cssArg === undefined && contentArg === undefined && fontImport === undefined)) {
+const pageArg = takeValue(argv, "--page", undefined);
+if (argv.length ||
+    (cssArg === undefined && contentArg === undefined && fontImport === undefined &&
+     pageArg === undefined)) {
   if (argv.length) console.error(`lint-cli: unrecognized argument(s): ${argv.join(" ")}`);
+  console.error(USAGE);
+  process.exit(2);
+}
+if (pageArg !== undefined && (cssArg !== undefined || contentArg !== undefined)) {
+  console.error("lint-cli: --page carries both authored channels itself — it cannot be " +
+    "combined with --css or --content.");
   console.error(USAGE);
   process.exit(2);
 }
@@ -74,8 +99,71 @@ const readOrDie = async (p, what) => {
   }
 };
 
-const css = cssArg === undefined ? "" : await readOrDie(cssArg, "--css");
-const content = contentArg === undefined ? "" : await readOrDie(contentArg, "--content");
+/**
+ * `text` with everything outside [start, end) replaced by spaces, newlines
+ * kept. Same length as the original, so every index — and therefore every
+ * reported line number — still points at the original file.
+ */
+const maskExcept = (text, range) => {
+  const blank = (s) => s.replace(/[^\n]/g, " ");
+  if (!range) return blank(text);
+  const [start, end] = range;
+  return blank(text.slice(0, start)) + text.slice(start, end) + blank(text.slice(end));
+};
+
+/** The inside of `<style id="content-overrides">…</style>`, as [start, end). */
+function overridesRange(page) {
+  const open = /<style\s+id=["']content-overrides["']\s*>/i.exec(page);
+  if (!open) return null;
+  const start = open.index + open[0].length;
+  const end = page.indexOf("</style>", start);
+  return end === -1 ? [start, page.length] : [start, end];
+}
+
+/**
+ * Every `<link rel="stylesheet">` href in the page — the third authored
+ * channel as it survives assembly. The page always carries the preloaded
+ * trio's link, and a font_import adds a second one; the in-place edit path
+ * swaps either, so item 8 has to see both.
+ */
+function stylesheetLinks(page) {
+  const hrefs = [];
+  for (const m of page.matchAll(/<link\b[^>]*>/gi)) {
+    if (!/\brel\s*=\s*["']?stylesheet\b/i.test(m[0])) continue;
+    const href = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(m[0]);
+    if (href) hrefs.push(href[1] ?? href[2] ?? href[3]);
+  }
+  return [...new Set(hrefs)];
+}
+
+/** The inside of the outermost `<div class="page"…>`, as [start, end). */
+function pageContentRange(page) {
+  const open = /<div\s+class=["']page["'][^>]*>/i.exec(page);
+  if (!open) return null;
+  const start = open.index + open[0].length;
+  let depth = 1;
+  const scan = /<div\b[^>]*>|<\/div\s*>/gi;
+  scan.lastIndex = start;
+  for (let m = scan.exec(page); m; m = scan.exec(page)) {
+    depth += m[0][1] === "/" ? -1 : 1;
+    if (depth === 0) return [start, m.index];
+  }
+  return [start, page.length];
+}
+
+let css = cssArg === undefined ? "" : await readOrDie(cssArg, "--css");
+let content = contentArg === undefined ? "" : await readOrDie(contentArg, "--content");
+let pageSource = "";
+let pageFontLinks = [];
+if (pageArg !== undefined) {
+  const page = await readOrDie(pageArg, "--page");
+  pageSource = path.basename(pageArg);
+  // Both channels keep the page's own coordinates: a finding cites the line in
+  // the file the author is editing, not a line inside some extracted block.
+  css = maskExcept(page, overridesRange(page));
+  content = maskExcept(page, pageContentRange(page));
+  pageFontLinks = stylesheetLinks(page);
+}
 
 // ── Findings ───────────────────────────────────────────────────────────────
 
@@ -92,10 +180,51 @@ const clip = (s, n = 120) => {
 const lineOf = (text, index) => text.slice(0, Math.max(0, index)).split("\n").length;
 
 // ── CSS shredding ──────────────────────────────────────────────────────────
-// Comments are blanked rather than removed so every index still maps to the
-// original text and reported line numbers are the author's own.
-const blankComments = (text) =>
-  text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+// Comments and string bodies are blanked rather than removed so every index
+// still maps to the original text and reported line numbers are the author's
+// own.
+//
+// This is one state machine rather than two regex passes, and that is the
+// whole point. `content: "/*"` is not a comment, and `/* don't */` is not a
+// string — either pass run alone on the other's territory blanks the rest of
+// the file, and a blanked file passes EVERY remaining Part B check silently.
+// For a component whose job is enforcement, checking nothing must never look
+// like a clean bill of health, so an unterminated `/*` is reported instead.
+//
+// Returns { text, unterminated } — `unterminated` is the index of a `/*` with
+// no `*/`, or null.
+function shred(text) {
+  const out = [...text];
+  const n = text.length;
+  let unterminated = null;
+  let i = 0;
+  const blank = (from, to) => {
+    for (let j = from; j < to; j++) if (out[j] !== "\n") out[j] = " ";
+  };
+  while (i < n) {
+    const c = text[i];
+    if (c === "/" && text[i + 1] === "*") {
+      const close = text.indexOf("*/", i + 2);
+      if (close === -1 && unterminated === null) unterminated = i;
+      const stop = close === -1 ? n : close + 2;
+      blank(i, stop);                       // delimiters included
+      i = stop;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      // A CSS string ends at its matching quote; an unescaped newline ends it
+      // too (and makes it a parse error, which is not this check's business).
+      let j = i + 1;
+      while (j < n && text[j] !== c && text[j] !== "\n") j += text[j] === "\\" ? 2 : 1;
+      const closed = j < n && text[j] === c;
+      blank(i + 1, Math.min(j, n));         // quotes kept, body blanked
+      i = closed ? j + 1 : j;
+      continue;
+    }
+    i++;
+  }
+  return { text: out.join(""), unterminated };
+}
 
 // Flat rule scan, same shape as findSheetEdgeBorders: `[^{}]` cannot cross a
 // brace, so a nested at-rule's prelude is skipped and its inner rules are
@@ -231,14 +360,54 @@ function blurRadius(layer) {
 }
 
 // ── Item 9: display leading needs its own clearance ────────────────────────
-const isDisplayLeading = (value) => {
+// The rule is about DISPLAY type: at a tight leading the line box is narrower
+// than the face, so a big glyph's ink hangs outside its own border box and the
+// container's `overflow: clip` shears it. Small text at `line-height: 1` has no
+// such overhang — a stat number, a label, a table cell — and flagging it was
+// worse than a nuisance: two failed lint passes route Part C's degrade path,
+// which drops custom_css entirely, so an over-broad rule silently strips the
+// styling off a page that was fine.
+//
+// So a bare number under 1.2 only counts when the SAME rule also sets
+// display-scale type; an explicit `var(--leading-display)` counts on its own,
+// because naming that token is the author saying "display" out loud. A rule
+// that sets no font-size at all (`.score { line-height: 1 }` over an inherited
+// size) is not judgeable from the text and is left alone.
+/** "token" for an explicit var(--leading-display), "numeric" for a tight number. */
+const displayLeadingKind = (value) => {
   const v = value.trim().toLowerCase();
-  if (v.includes("var(--leading-display)")) return true;
-  if (/^\d*\.?\d+$/.test(v)) return parseFloat(v) < 1.2;        // unitless
-  if (/^\d*\.?\d+(em|rem)$/.test(v)) return parseFloat(v) < 1.2;
-  if (/^\d*\.?\d+%$/.test(v)) return parseFloat(v) < 120;
-  return false; // px, normal, an unknown var() — not judgeable from the text
+  if (v.includes("var(--leading-display)")) return "token";
+  const tight =
+    (/^\d*\.?\d+$/.test(v) && parseFloat(v) < 1.2) ||          // unitless
+    (/^\d*\.?\d+(em|rem)$/.test(v) && parseFloat(v) < 1.2) ||
+    (/^\d*\.?\d+%$/.test(v) && parseFloat(v) < 120);
+  return tight ? "numeric" : null;        // px, normal, an unknown var(): no
 };
+
+// --text-xl is 26px, above the 24px literal threshold below: leaving it out
+// made the token path and the literal path disagree across the same line. The
+// shell settles it — `h2` is --text-xl + --leading-display + padding-block, so
+// the platform already treats 26px as needing the overhang.
+const DISPLAY_SIZE_TOKEN = /var\(\s*--text-(?:xl|2xl|3xl|4xl)\s*[,)]/i;
+const DISPLAY_FAMILY_TOKEN = /var\(\s*--font-display\s*[,)]/i;
+const PX_PER_UNIT = { px: 1, pt: 96 / 72, pc: 16, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, rem: 16 };
+const DISPLAY_PX = 24;
+/** Does this font-size (or `font` shorthand) name a length at or above 24px? */
+const hasDisplayLength = (value) => {
+  for (const m of value.matchAll(/(\d+\.?\d*|\.\d+)(px|pt|pc|in|cm|mm|rem)\b/gi)) {
+    // `em` and `%` are relative to an unknown parent and are not judged here.
+    if (parseFloat(m[1]) * PX_PER_UNIT[m[2].toLowerCase()] >= DISPLAY_PX) return true;
+  }
+  return false;
+};
+const setsFontSize = (d) =>
+  d.prop === "font-size" ||
+  (d.prop === "font" && /var\(\s*--text-|\d/.test(d.value));
+const setsDisplayType = (seen) =>
+  seen.some(setsFontSize) &&
+  (seen.some((d) => setsFontSize(d) &&
+      (DISPLAY_SIZE_TOKEN.test(d.value) || hasDisplayLength(d.value))) ||
+   seen.some((d) => /^font(-family)?$/.test(d.prop) && DISPLAY_FAMILY_TOKEN.test(d.value)));
 const PADDING_PROPS = /^padding(-block(-start|-end)?|-top|-bottom)?$/;
 /** The block-axis parts of a padding declaration, or [] if it sets none. */
 const blockPadding = (prop, value) => {
@@ -293,8 +462,12 @@ function lintBlock({ decls, base, text, source, selectors, isRoot, inline }) {
         "shadow or a border");
     }
 
-    // 5. Shadows are print-flat.
-    if (prop === "box-shadow" || prop === "text-shadow") {
+    // 5. Shadows are print-flat. Any property whose name says "shadow",
+    // custom properties included: `--card-shadow: 0 4px 12px rgba(0,0,0,.3)`
+    // is consumed by a real box-shadow further down and prints as the same
+    // mud, so checking only the two real shadow properties reads the blur
+    // right past the linter.
+    if (/shadow/.test(prop)) {
       for (const layer of splitLayers(value)) {
         const blur = blurRadius(layer);
         if (blur !== null && parseFloat(blur) !== 0) {
@@ -325,11 +498,13 @@ function lintBlock({ decls, base, text, source, selectors, isRoot, inline }) {
   // "never zero it" half below.
   const tags = subjectTags(selectors);
   const headings = tags.length > 0 && tags.every((t) => t === "h1" || t === "h2");
-  const leading = seen.find((d) => d.prop === "line-height" && isDisplayLeading(d.value));
+  const leading = seen.find((d) => d.prop === "line-height" && displayLeadingKind(d.value));
+  const isDisplay = leading &&
+    (displayLeadingKind(leading.value) === "token" || setsDisplayType(seen));
   const padded = seen.some(
     (d) => PADDING_PROPS.test(d.prop) && blockPadding(d.prop, d.value).some((p) => !isZeroLength(p)),
   );
-  if (leading && !padded && !headings) {
+  if (isDisplay && !padded && !headings) {
     flag(9, "display type keeps its clearance", leading.where, `${selectors} { ${leading.snippet} }`,
       "an element set to display leading also needs `padding-block: var(--display-overhang)` — " +
       "the ink hangs outside its box and the container around it clips at its edge");
@@ -346,10 +521,17 @@ function lintBlock({ decls, base, text, source, selectors, isRoot, inline }) {
 }
 
 // ── Run: the stylesheet ────────────────────────────────────────────────────
-const cssSource = cssArg ? path.basename(cssArg) : "custom_css";
+const cssSource = pageSource || (cssArg ? path.basename(cssArg) : "custom_css");
 if (css.trim()) {
   rawScan(css, cssSource);
-  const shredded = blankComments(css);
+  const { text: shredded, unterminated } = shred(css);
+  if (unterminated !== null) {
+    flag(null, "unterminated comment", `${cssSource}:${lineOf(css, unterminated)}`,
+      clip(css.slice(unterminated, unterminated + 60)),
+      "a `/*` with no closing `*/` comments out everything after it — the rest of the " +
+      "stylesheet is dead to the browser and could not be checked here. Close it, then " +
+      "re-run: findings below this point are missing, not absent");
+  }
   for (const { selectors, decls, declsAt } of rulesOf(shredded)) {
     lintBlock({
       decls, base: declsAt, text: css, source: cssSource, selectors,
@@ -359,7 +541,7 @@ if (css.trim()) {
 }
 
 // ── Run: inline style attributes in the content (item 7) ───────────────────
-const contentSource = contentArg ? path.basename(contentArg) : "content_html";
+const contentSource = pageSource || (contentArg ? path.basename(contentArg) : "content_html");
 for (const m of content.matchAll(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
   const value = m[1] !== undefined ? m[1] : m[2];
   if (!value.trim()) continue;
@@ -378,6 +560,17 @@ if (fontImport !== undefined && !isGoogleFontsUrl(fontImport)) {
     `dropped — pick a font from the preloaded trio (Playfair Display, Source Serif 4, ` +
     `Inter) or fix the URL: ${clip(fontImport, 90)}`);
 }
+// In --page mode the import is already in the file as a <link>, so nothing is
+// "dropped" — but it stays a WARNING, exactly as lenient as assemble-cli is
+// about the same URL. Two enforcers of one rule that disagree on severity is
+// how a model learns the rule is negotiable.
+for (const href of pageFontLinks) {
+  if (isGoogleFontsUrl(href)) continue;
+  warnings.push(
+    `item 8: this page loads a stylesheet that is not a plain ` +
+    `https://fonts.googleapis.com/ URL — delete the <link> and use the preloaded trio ` +
+    `(Playfair Display, Source Serif 4, Inter), or fix it: ${clip(href, 90)}`);
+}
 
 // ── Report ─────────────────────────────────────────────────────────────────
 for (const w of warnings) console.error(`warning: ${w}`);
@@ -390,11 +583,13 @@ if (!violations.length) {
 // One pass, sorted the way the author reads the file, so a single round of
 // edits closes every finding.
 violations.sort((a, b) => a.where.localeCompare(b.where, undefined, { numeric: true }) ||
-                          a.item - b.item);
+                          (a.item ?? 0) - (b.item ?? 0));
 console.error(`css lint FAILED: ${violations.length} violation${violations.length === 1 ? "" : "s"} ` +
   "(references/design-rules.md Part B)");
 for (const { item, rule, where, snippet, why } of violations) {
-  console.error(`  - ${where} · item ${item}, ${rule}`);
+  // A malformed stylesheet is not a numbered item — it is the reason the
+  // numbered items could not be trusted.
+  console.error(`  - ${where} · ${item === null ? rule : `item ${item}, ${rule}`}`);
   console.error(`      ${snippet}`);
   console.error(`      ${why}`);
 }

@@ -24,6 +24,13 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, "..", "serve-cli.mjs");
 const run = promisify(execFile);
 const LEGACY = Array.from({ length: 10 }, (_, i) => 4949 + i);
+// The same fixed path serve-cli.mjs hardcodes: there is no override for it,
+// so these registry-behavior tests reach into the real one rather than a
+// fixture. It is process-wide shared state (other invocations, including a
+// developer's own servers, read and write it too), so every test below that
+// touches its permissions restores them in t.after() before doing anything
+// else, and touches only the directory's own mode bit — never its contents.
+const REGISTRY = path.join(tmpdir(), "print-skill-servers");
 
 async function project(prefix) {
   const dir = mkdtempSync(path.join(tmpdir(), prefix));
@@ -48,6 +55,28 @@ async function stopServersFor(dir) {
 
 const firstLine = (stdout) => stdout.split("\n")[0].trim();
 const portOf = (url) => Number(url.split(":")[2]);
+
+// The registry file name is just the port, and PREFERRED_PORT (4949) is
+// free between isolated test runs often enough that consecutive runs land
+// on the very same file name — so a "new file appeared" check keyed on the
+// name misses an update to a file that was already there from a previous
+// run. Keyed on content instead: `dir` is the exact --dir this test passed,
+// unique to this mkdtemp'd project every time, so a match can only be the
+// record this invocation itself just wrote. `dir` must already be the
+// REALPATH — serve-cli computes it from the spawned server's own
+// process.cwd(), which (like fs.realpath, and unlike the mkdtemp path a
+// test starts from) resolves the tmpdir() symlink on macOS, so a raw
+// mkdtemp path never matches.
+async function findRecordFor(realDir) {
+  const names = await fs.readdir(REGISTRY).catch(() => []);
+  for (const name of names) {
+    try {
+      const rec = JSON.parse(await fs.readFile(path.join(REGISTRY, name), "utf-8"));
+      if (rec.dir === realDir) return name;
+    } catch { /* mid-write or already gone; the next poll tries again */ }
+  }
+  return null;
+}
 
 test("serves out/ by default, reuses on the second call, survives exit", async (t) => {
   const dir = await project("serve-");
@@ -89,7 +118,16 @@ test("binds outside 4949-4958 when the whole range is held, and finds it again",
     // at the moment serve-cli runs whether or not orphans are present.
     const held = [];
     for (const p of LEGACY) {
-      const s = net.createServer();
+      // Destroys whatever connects: serve-cli's own probes (and survey()'s
+      // retry) connect to every held port, and a bare net.createServer()
+      // with no connection handler still accepts each one — leaving a
+      // socket nothing ever closes. server.close() then waits forever for
+      // it, hanging this test's own cleanup below. The short delay (rather
+      // than destroying inline, synchronously, in the 'connection' handler)
+      // avoids resolving every one of the ten probes on the same tick, which
+      // was observed to starve serve-cli's own top-level await of the event
+      // loop turn it needed and exit it early (code 13).
+      const s = net.createServer((socket) => setTimeout(() => socket.destroy(), 20));
       const bound = await new Promise((r) => {
         s.once("error", () => r(false));
         s.listen(p, "127.0.0.1", () => r(true));
@@ -113,6 +151,100 @@ test("binds outside 4949-4958 when the whole range is held, and finds it again",
     assert.equal(firstLine(second.stdout), url,
       "an OS-assigned port is rediscovered rather than duplicated");
   });
+
+test("an unwritable registry still serves, warns on stderr, and stays inside the legacy range",
+  async (t) => {
+    const dir = await project("serve-noreg-");
+    await fs.mkdir(REGISTRY, { recursive: true });
+    const originalMode = (await fs.stat(REGISTRY)).mode & 0o777;
+    t.after(async () => {
+      await fs.chmod(REGISTRY, originalMode);
+      await stopServersFor(dir);
+      rmSync(dir, { recursive: true, force: true });
+    });
+    // Read + execute only: the directory itself can still be listed and its
+    // existing entries read, but no new file can be created in it — the
+    // exact shape of "registry unwritable" this fix has to survive.
+    await fs.chmod(REGISTRY, 0o555);
+
+    const first = await run(process.execPath, [CLI], { cwd: dir });
+    const url = firstLine(first.stdout);
+    assert.match(url, /^http:\/\/127\.0\.0\.1:\d+$/, "did not produce a working URL");
+    assert.match(first.stderr, /registry/i, "no mention of the registry problem on stderr");
+    assert.match(first.stderr, /not writable|could not write|not recorded|cannot be recorded/i,
+      `stderr does not explain the registry write failure: ${first.stderr}`);
+    assert.ok((await fetch(`${url}/healthz`)).ok, "server did not actually come up");
+    // An OS-assigned port here would be unfindable by any later invocation
+    // forever, since nothing could record it — that is the unbounded-orphan
+    // bug this fix removes. Staying inside the legacy range instead means a
+    // plain probe can still find it with no registry at all.
+    assert.ok(LEGACY.includes(portOf(url)),
+      `port ${portOf(url)} landed outside the legacy range while unregistered — unfindable`);
+  });
+
+test("the registry record exists while serve-cli is still waiting on health, not only after",
+  async (t) => {
+    const dir = await project("serve-early-");
+    const realOutDir = await fs.realpath(path.join(dir, "out"));
+    t.after(async () => {
+      await stopServersFor(dir);
+      rmSync(dir, { recursive: true, force: true });
+    });
+    await fs.mkdir(REGISTRY, { recursive: true });
+
+    const pending = run(process.execPath, [CLI], { cwd: dir });
+    let seenBeforeExit = false;
+    let cliDone = false;
+    pending.then(() => { cliDone = true; });
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !cliDone) {
+      if (await findRecordFor(realOutDir)) { seenBeforeExit = true; break; }
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    const { stdout } = await pending;
+    assert.ok(seenBeforeExit,
+      "no registry record appeared before serve-cli finished — it is being written only on success");
+    assert.match(firstLine(stdout), /^http:\/\/127\.0\.0\.1:\d+$/);
+  });
+
+test("a start that never becomes healthy leaves no registry record behind", async (t) => {
+  // server.mjs itself is out of scope for this file, so the failure is
+  // forced structurally instead of by timeout: once serve-cli's OWN record
+  // for the server it just spawned appears (written immediately after
+  // spawn(), before health is even polled — see the previous test), its
+  // directory check has already passed and the grandchild is booting, so
+  // deleting the served tree out from under it right then is not a guess
+  // about timing. The grandchild's OWN startup re-validates --dir itself,
+  // finds nothing there, and exits fast — never binding a port, never
+  // answering healthy — well inside the record's appearance and the
+  // grandchild reaching that check (importing server.mjs alone takes on the
+  // order of a quarter second, measured separately).
+  const dir = await project("serve-fail-");
+  const outDir = path.join(dir, "out");
+  const realOutDir = await fs.realpath(outDir);
+  t.after(async () => {
+    await stopServersFor(dir);
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await fs.mkdir(REGISTRY, { recursive: true });
+
+  const pending = run(process.execPath, [CLI], { cwd: dir });
+  const deadline = Date.now() + 5000;
+  let spawnedRecord = null;
+  while (Date.now() < deadline && !spawnedRecord) {
+    spawnedRecord = await findRecordFor(realOutDir);
+    if (!spawnedRecord) await new Promise((r) => setTimeout(r, 5));
+  }
+  assert.ok(spawnedRecord, "serve-cli never spawned a server to pull the tree out from under");
+  rmSync(outDir, { recursive: true, force: true });
+
+  await assert.rejects(pending,
+    (e) => /did not come up/.test(e.stderr),
+    "serve-cli did not fail once its target directory vanished mid-start");
+  const after = await fs.readdir(REGISTRY).catch(() => []);
+  assert.ok(!after.includes(spawnedRecord),
+    `the record for the start that never came up (${spawnedRecord}) was left behind`);
+});
 
 test("a healthy server on another existing directory is left alone", async (t) => {
   const theirs = await project("serve-theirs-");

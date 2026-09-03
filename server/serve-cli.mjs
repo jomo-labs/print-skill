@@ -17,6 +17,15 @@
 // wherever it landed. The legacy 4949-4958 range is still probed alongside
 // those records, so servers started by hand or by older builds are reused too.
 //
+// A server that lands outside 4949-4958 is findable ONLY through its
+// registry record — unlike the old fixed-range design, an unwritable
+// registry here does not degrade gracefully, it makes the server permanently
+// unfindable and every later run starts another one just as unfindable
+// (unbounded orphans, worse than the ten-port cap this replaced). So when the
+// registry cannot be written, spawning below deliberately keeps trying ports
+// inside the legacy range instead of taking whatever the OS offers, and says
+// so on stderr — a bounded, probeable fallback beats a silent unbounded one.
+//
 // Usage: node serve-cli.mjs [--dir <pages-dir>] [--help]
 //   --dir defaults to <cwd>/out (resolved exactly as server.mjs resolves it).
 // Prints the base URL on stdout. Exit 0 with a server up; 1 otherwise.
@@ -130,16 +139,58 @@ function records() {
   return out;
 }
 
+// Logged at most once per run: a broken registry produces one failed
+// remember() per spawn attempt (and again on a legacy-probe reuse), and
+// repeating the same explanation for each would just be noise.
+let warnedRegistryFailure = false;
+
+// Returns whether the write actually landed. A caller that ignores this
+// return value is the exact bug this fix removes: a port outside
+// 4949-4958 that fails to register can never be found again by anything,
+// so the failure has to be visible and has to change what happens next
+// (see registryIsWritable below), not just get swallowed.
 function remember(port, pid) {
   try {
     fs.mkdirSync(REGISTRY, { recursive: true });
     fs.writeFileSync(path.join(REGISTRY, `${port}.json`),
       JSON.stringify({ dir: root, target, pid, started: new Date().toISOString() }));
-  } catch { /* best effort: reuse degrades to the legacy probe, nothing breaks */ }
+    return true;
+  } catch (err) {
+    if (!warnedRegistryFailure) {
+      console.error(
+        `serve-cli: could not write the server registry (${REGISTRY}): ${err.message}\n` +
+        `  The server on port ${port} was NOT recorded. Unless that port is inside ` +
+        `4949-4958, no later invocation can ever find it again by probing — check ` +
+        `it's cleaned up manually if it's no longer wanted, and fix permissions on ` +
+        `the registry directory to restore normal reuse.`);
+      warnedRegistryFailure = true;
+    }
+    return false;
+  }
+}
+
+// Checked once, before choosing a port to spawn on: a broken registry means
+// only a legacy-range port can be found by a later run, so the candidate
+// selection below has to stay inside that range rather than accept whatever
+// the OS hands back from claimPort(0).
+function registryIsWritable() {
+  try {
+    fs.mkdirSync(REGISTRY, { recursive: true });
+    const probeFile = path.join(REGISTRY, `.write-test-${process.pid}`);
+    fs.writeFileSync(probeFile, "");
+    fs.rmSync(probeFile, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function forget(file) {
   try { fs.rmSync(file, { force: true }); } catch { /* raced with another run */ }
+}
+
+function forgetPort(port) {
+  forget(path.join(REGISTRY, `${port}.json`));
 }
 
 // Signal 0 tests for existence without delivering anything. EPERM means the
@@ -154,17 +205,35 @@ function alive(pid) {
   }
 }
 
+// One failed probe is not enough to call a port dead: a live server that is
+// briefly slow (GC pause, a heavy request) can miss a single 500ms probe,
+// and pruning its record on that alone spawns a duplicate on a new port
+// while the original quietly holds its own forever — the orphan-accumulation
+// bug this rewrite exists to remove. Require a second, backed-off failure
+// before treating the port as silent.
+async function probeForSurvey(port) {
+  const first = await probe(port);
+  if (first) return first;
+  await new Promise((r) => setTimeout(r, 200));
+  return probe(port);
+}
+
 // Probes every port worth knowing about — registry records first, then the
 // legacy range — and prunes records whose process is provably gone.
 async function survey() {
   const all = records();
   const ports = [...new Set([...all.map((r) => r.port), ...LEGACY_PORTS])];
-  const health = new Map(await Promise.all(ports.map(async (p) => [p, await probe(p)])));
-  // A record for a port nothing answers on is useless. Keep it only while its
-  // process is provably alive and the record is young — that covers a server
-  // still booting, without letting a recycled pid pin a record forever.
+  const health = new Map(await Promise.all(ports.map(async (p) => [p, await probeForSurvey(p)])));
+  // A record for a port nothing answers on (after retrying) is useless. Keep
+  // it only while its process is provably alive and the record is young —
+  // that covers a server still booting, without letting a recycled pid pin a
+  // record forever.
   const known = all.filter((rec) => {
     if (health.get(rec.port) || (alive(rec.pid) && !rec.stale)) return true;
+    console.error(
+      `serve-cli: forgetting the registry record for port ${rec.port} — it did not ` +
+      `answer after retrying${rec.stale ? " and the record was already stale" : ""}. ` +
+      `If that server is actually alive, this run will start a duplicate.`);
     forget(rec.file);
     return false;
   });
@@ -207,24 +276,39 @@ function claimPort(preferred) {
 // pipe to an exited parent would EPIPE the server's own logging later. The
 // exit handler is what makes a lost port race cheap — the child dies on
 // EADDRINUSE in milliseconds, so we retry instead of waiting out the timeout.
+// The error handler matters for the same reason: without it, a spawn failure
+// (e.g. the node binary itself unreachable) is an uncaught exception instead
+// of feeding back into that same retry path.
 async function startOn(port) {
   const child = spawn(process.execPath,
     [path.join(HERE, "server.mjs"), "--dir", root, "--port", String(port)],
     { detached: true, stdio: "ignore" });
   child.unref();
-  let exited = false;
-  child.once("exit", () => { exited = true; });
+  let done = false;
+  child.once("exit", () => { done = true; });
+  child.once("error", () => { done = true; });
+
+  // Recorded now, before the health wait — not after it succeeds. Once
+  // spawned, this process holds the port whether or not it ever answers
+  // healthy; if serve-cli is interrupted (or simply times out) during the
+  // wait below, a record written only on success would leave a live,
+  // port-holding server with nothing that could ever find or reap it. The
+  // registry's own prune rule (see survey()) already reclaims a record for a
+  // server that never comes up, so recording early costs nothing on failure.
+  remember(port, child.pid);
 
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 100));
     const h = await probe(port);
     if (h && realOrSelf(h.dir) === target) return child.pid;
-    if (exited) return null;
+    if (done) break;
   }
-  // Never came up but is still running: it could bind later and confuse the
-  // next run, so take it down rather than leaving it behind.
-  try { child.kill(); } catch { /* already gone */ }
+  // Never came up (or failed to spawn at all): drop the record so nothing
+  // treats it as reusable, and take the process down if it's still running —
+  // it could bind later and confuse a future run otherwise.
+  forgetPort(port);
+  try { child.kill(); } catch { /* already gone, or never started */ }
   return null;
 }
 
@@ -235,18 +319,35 @@ if (port === null) {
   const note = orphanNote(health);
   if (note) console.error(note);
 
+  // A server that lands outside 4949-4958 can only ever be found again
+  // through its registry record (see remember()). When the registry cannot
+  // be written, stay inside that legacy range instead — a probe can still
+  // find those without any record at all — rather than accept an
+  // OS-assigned port that would be unfindable and hence permanently orphaned.
+  const canRegister = registryIsWritable();
+  if (!canRegister) {
+    console.error(
+      `serve-cli: the server registry (${REGISTRY}) is not writable — ` +
+      `staying inside the legacy 4949-4958 port range so this server can ` +
+      `still be found by probing, since it cannot be recorded.`);
+  }
+  const legacyFallback = LEGACY_PORTS.filter((p) => p !== PREFERRED_PORT);
+
   let lastPort = null;
   for (let attempt = 0; attempt < START_ATTEMPTS && port === null; attempt++) {
-    // Only the first attempt asks for 4949; after a race, take what we're given.
-    const candidate = (attempt === 0 ? await claimPort(PREFERRED_PORT) : null)
-      ?? await claimPort(0);
+    // Only the first attempt asks for 4949; after a race, take what we're
+    // given — unless the registry is broken, in which case later attempts
+    // keep working through the rest of the legacy range rather than accept
+    // whatever unbounded, unrecordable port the OS offers next.
+    let candidate = attempt === 0 ? await claimPort(PREFERRED_PORT) : null;
+    while (candidate === null && !canRegister && legacyFallback.length > 0) {
+      candidate = await claimPort(legacyFallback.shift());
+    }
+    candidate ??= await claimPort(0);
     if (candidate === null) continue;
     lastPort = candidate;
     const pid = await startOn(candidate);
-    if (pid !== null) {
-      port = candidate;
-      remember(port, pid);
-    }
+    if (pid !== null) port = candidate; // startOn() already recorded it
   }
   if (port === null) {
     console.error(

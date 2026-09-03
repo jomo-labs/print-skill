@@ -55,6 +55,10 @@ test("basic assembly passes verification and both checks", async (t) => {
   assert.match(r.stdout, /structural verification: ok/);
   assert.match(r.stdout, /fits: 1 sheet, as authored/);
   assert.match(r.stdout, /contrast ok/);
+  // No --answer-key: lint-cli runs exactly once (over --content only) — the
+  // no-answer-key path is unaffected by the second, key-only invocation that
+  // only fires when --answer-key is given.
+  assert.equal((r.stdout.match(/css lint: ok/g) || []).length, 1);
   const html = await fs.readFile(r.file, "utf-8");
   assert.ok(html.includes("--color-ink"), "document.css inlined");
   assert.ok(!html.includes("<!-- CONTENT -->"));
@@ -94,9 +98,87 @@ test("an answer key makes a two-sheet document within the default budget", async
   const r = await assemble(dir, ["--answer-key", keyFile]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /fits: 2 sheets, as authored/);
+  // A clean answer key still lints and assembles fine — lint-cli runs once
+  // for --content and once for --answer-key, both clean.
+  assert.equal((r.stdout.match(/css lint: ok/g) || []).length, 2);
   const html = await fs.readFile(r.file, "utf-8");
   assert.ok(html.indexOf('id="mp-nested-sheets"') < html.indexOf('id="content-overrides"'));
   assert.equal((html.match(/<div class="page">/g) || []).length, 2);
+});
+
+test("a banned inline style in the answer key fails the build (Part B item 7)", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "asm-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const keyFile = path.join(dir, "key.html");
+  // A literal color outside :root is item 6, caught in inline style="" via
+  // item 7 — the same predicate the main content is linted under.
+  await fs.writeFile(keyFile, `<div style="color: red">Key</div>`);
+  const r = await assemble(dir, ["--answer-key", keyFile], { title: "Bad Key" });
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /css lint FAILED/);
+  assert.match(r.stderr, /item 6,/);
+  assert.match(r.stderr, /key\.html/, "the finding names the key file, not content.html");
+  await assert.rejects(fs.access(r.file), /ENOENT/,
+    "a lint-failing build with no prior page must leave none behind");
+});
+
+test("a lint-failing rebuild leaves a pre-existing good page in place", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "asm-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const good = await assemble(dir, [], { title: "Stable Name" });
+  assert.equal(good.code, 0, good.stderr);
+  const goodHtml = await fs.readFile(good.file, "utf-8");
+
+  // Rebuild at the SAME title (same output filename) with content that fails
+  // the Part B lint outright.
+  const bad = await assemble(dir, [], {
+    content: `<div style="color: red">bad</div>`,
+    title: "Stable Name",
+  });
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /css lint FAILED/);
+  assert.match(bad.stderr, /left untouched/);
+
+  const afterHtml = await fs.readFile(good.file, "utf-8");
+  assert.equal(afterHtml, goodHtml,
+    "the failed rebuild must not have overwritten the last good page");
+  assert.ok(!afterHtml.includes("bad</div>"), "the broken content never landed on disk");
+});
+
+test("a lint-failing rebuild leaves no stray temp file behind in out-dir", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "asm-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const r = await assemble(dir, [], { content: `<div style="color: red">bad</div>`, title: "Litter" });
+  assert.equal(r.code, 1);
+  const entries = await fs.readdir(path.join(dir, "out"));
+  assert.deepEqual(entries, [], "no temp or partial file should remain after a lint failure");
+});
+
+test("a passing build writes to the exact same path as before (rename regression guard)", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "asm-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const first = await assemble(dir, [], { title: "Reprint Me" });
+  assert.equal(first.code, 0, first.stderr);
+  const expectedPath = path.join(dir, "out", "reprint-me.html");
+  assert.equal(first.file, expectedPath);
+  const firstHtml = await fs.readFile(first.file, "utf-8");
+  assert.ok(firstHtml.includes("Assembled"));
+
+  // A second passing build at the same title lands at the same path and its
+  // content really is replaced (the rename overwrites, it doesn't refuse).
+  const second = await assemble(dir, [], {
+    content: `<div data-mp-section="hero"><h1>Reassembled</h1><p>New body.</p></div>`,
+    title: "Reprint Me",
+  });
+  assert.equal(second.code, 0, second.stderr);
+  assert.equal(second.file, expectedPath);
+  const secondHtml = await fs.readFile(second.file, "utf-8");
+  assert.ok(secondHtml.includes("Reassembled"));
+  assert.ok(!secondHtml.includes("Assembled</h1>"));
+
+  // And no temp files were left behind alongside it.
+  const entries = await fs.readdir(path.join(dir, "out"));
+  assert.deepEqual(entries, ["reprint-me.html"]);
 });
 
 test("a non-Google-Fonts URL is dropped with a warning, never embedded", async (t) => {
@@ -151,8 +233,12 @@ test("an overflow beyond the squeeze floors fails with the section table", async
   assert.match(r.stderr, /squeeze floors .* were not enough/);
   assert.match(r.stderr, /cut \d+px/);
   assert.match(r.stderr, /row-0/, "section table names the blocks");
-  const html = await fs.readFile(r.file, "utf-8");
-  assert.ok(!html.includes("mp-fit-squeeze"), "no squeeze persisted on failure");
+  // No prior good page existed at this path, and the build failed: the
+  // temp-write-then-rename means nothing is ever written to it at all —
+  // a stronger guarantee than "no squeeze persisted", which is now moot
+  // because there is no file to inspect.
+  await assert.rejects(fs.access(r.file), /ENOENT/,
+    "a fit failure with no prior page must leave none behind");
 });
 
 test("editing content down removes a stale squeeze on the next fit run", async (t) => {

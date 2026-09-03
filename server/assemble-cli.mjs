@@ -17,13 +17,16 @@
 //        [--answer-key <key.html>] [--out-dir <dir>] [--max-sheets N]
 //   node assemble-cli.mjs --help   prints the same flag list and exits 0.
 //
-// Writes <out-dir>/<slugified-title>.html (out-dir defaults to <cwd>/out),
-// runs the full structural verification from assembly.md, then the Part B CSS
+// Runs the full structural verification from assembly.md, then the Part B CSS
 // lint over the AUTHORED channels (lint-cli.mjs — a hard short-circuit, so bad
-// CSS never pays for a browser launch), then ALWAYS runs the fit check (which
-// may squeeze a near-miss into fitting — see fit-cli.mjs) and the contrast
-// check on the written file, in that order (fit may rewrite the file; contrast
-// validates the result).
+// CSS never pays for a browser launch — run once for --content and, when
+// given, again for --answer-key, since both become authored HTML on paper),
+// then ALWAYS runs the fit check (which may squeeze a near-miss into fitting
+// — see fit-cli.mjs) and the contrast check, in that order (fit may rewrite
+// the file; contrast validates the result). Only once every gate has passed
+// is the page written to <out-dir>/<slugified-title>.html (out-dir defaults
+// to <cwd>/out) — via a temp file in the same directory, renamed into place
+// last, so a failing build never overwrites a previous good page there.
 //
 // --max-sheets is the user's page budget, default 1 (2 when --answer-key is
 // given — the key is the one sanctioned second sheet). Authoring more sheets
@@ -60,9 +63,11 @@ const USAGE =
   "  --max-sheets N         the page budget. Default: 1 (2 with --answer-key).\n" +
   "  --help                 print this and exit 0.\n" +
   "\n" +
-  "Writes <out-dir>/<slugified-title>.html, then runs structural verification,\n" +
-  "the Part B CSS lint over the authored channels, the fit check (which may\n" +
-  "squeeze a near miss into fitting) and the contrast check on it.\n" +
+  "Runs structural verification, the Part B CSS lint over the authored\n" +
+  "channels (--content and, when given, --answer-key), the fit check (which\n" +
+  "may squeeze a near miss into fitting) and the contrast check, in that\n" +
+  "order. Only once every check passes is <out-dir>/<slugified-title>.html\n" +
+  "written; a failing build never overwrites a page already there.\n" +
   "Exit: 0 assembled and every check passed · 1 something failed · 2 bad usage";
 
 if (argv.includes("--help")) {
@@ -200,7 +205,6 @@ if (paper || landscape) {
 html = html.replace("<!-- CONTENT -->", pageContent);
 
 const outFile = path.join(outDir, `${slugify(flags.title)}.html`);
-await fs.writeFile(outFile, html);
 
 // ── Verification (the grep list at the end of assembly.md, as code) ────────
 const count = (re) => (html.match(re) || []).length;
@@ -277,20 +281,22 @@ if (paper) check(bodyTag.includes(`data-mp-paper="${paper}"`), "body must carry 
 if (landscape) check(bodyTag.includes('data-mp-orientation="landscape"'), "body must carry data-mp-orientation");
 if (!landscape) check(!bodyTag.includes("data-mp-orientation"), "portrait pages carry no orientation attribute");
 
-// ── Fit then contrast, always, in that order ───────────────────────────────
-// Sequential on purpose: the fit check may rewrite the file (a near-miss gets
-// squeezed — see fit-cli.mjs), and the contrast check must measure the sizes
-// that will actually print.
-console.log(`assembled: ${outFile}`);
+// ── Structural verification gate ───────────────────────────────────────────
+// Nothing is written to outFile until every gate below — structural, lint,
+// fit, contrast — has passed. outFile may hold the last good page, it lives
+// in the directory serve-cli serves, and an open tab reloads whenever that
+// file's contents change (see the temp-file note further down); a build that
+// fails partway must never leave it clobbered with a broken result.
 for (const w of warnings) console.error(`warning: ${w}`);
 if (failures.length) {
   console.error("structural verification FAILED:");
   for (const f of failures) console.error(`  - ${f}`);
+  console.error(`assemble-cli: ${outFile} left untouched.`);
   process.exit(1);
 }
 console.log("structural verification: ok");
 
-const runCheck = (cli, args = [outFile]) => new Promise((resolve) => {
+const runCheck = (cli, args) => new Promise((resolve) => {
   execFile(process.execPath, [path.join(HERE, cli), ...args],
     { maxBuffer: 4 * 1024 * 1024 },
     (err, stdout, stderr) => {
@@ -307,11 +313,48 @@ const runCheck = (cli, args = [outFile]) => new Promise((resolve) => {
 // Chromium launch. It reads the AUTHORED channels, never this assembled page —
 // document.css is inlined above and breaks half these rules by right; see
 // lint-cli.mjs's input contract.
+//
+// The answer key is authored HTML too — it becomes the second printed sheet
+// and its inline style="" attributes are exactly as capable of carrying
+// banned CSS as the main content's (item 7) — so it must be linted just as
+// strictly, on pain of Part B shipping to paper unchecked on that sheet.
+// lint-cli's --content takes a single file per run (no repeatable flag: see
+// its takeValue-based parsing), so the key gets its own invocation rather
+// than a second --content on the same command line; either invocation
+// failing fails the build.
 const lintArgs = ["--content", path.resolve(flags.content)];
 if (flags.css) lintArgs.push("--css", path.resolve(flags.css));
 if (flags["font-import"]) lintArgs.push("--font-import", flags["font-import"]);
-if (!(await runCheck("lint-cli.mjs", lintArgs))) process.exit(1);
+const contentLintOk = await runCheck("lint-cli.mjs", lintArgs);
+const keyLintOk = flags["answer-key"]
+  ? await runCheck("lint-cli.mjs", ["--content", path.resolve(flags["answer-key"])])
+  : true;
+if (!contentLintOk || !keyLintOk) {
+  console.error(`assemble-cli: css lint failed; ${outFile} left untouched.`);
+  process.exit(1);
+}
 
-const fitOk = await runCheck("fit-cli.mjs");
-const contrastOk = await runCheck("contrast-cli.mjs");
-process.exit(fitOk && contrastOk ? 0 : 1);
+// ── Write to a temp path; fit and contrast run against it; rename last ─────
+// The assembled page is written next to outFile under a temp name, never
+// straight to outFile: fit-cli may rewrite its target in place (squeezing a
+// near miss into fitting — see fit-cli.mjs) and contrast-cli then reads
+// whatever fit-cli left behind, so both have to run against the same file,
+// and that file can't be outFile until it is known good. Renaming into place
+// only after both pass (same directory, so it's one atomic rename, not a
+// copy) means a failing build here never overwrites the last good page, and
+// never hands serve-cli's auto-reloading tab a broken intermediate file to
+// pick up mid-build.
+const tmpFile = path.join(outDir, `.${slugify(flags.title)}.${process.pid}-${Date.now()}.tmp.html`);
+await fs.writeFile(tmpFile, html);
+
+const fitOk = await runCheck("fit-cli.mjs", [tmpFile]);
+const contrastOk = await runCheck("contrast-cli.mjs", [tmpFile]);
+if (!fitOk || !contrastOk) {
+  await fs.unlink(tmpFile).catch(() => {});
+  console.error(`assemble-cli: ${outFile} left untouched.`);
+  process.exit(1);
+}
+
+await fs.rename(tmpFile, outFile);
+console.log(`assembled: ${outFile}`);
+process.exit(0);

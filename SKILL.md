@@ -270,9 +270,11 @@ node <skill-dir>/server/assemble-cli.mjs \
 
 It executes the whole procedure in `references/assembly.md` — template copy
 with the document stylesheet inlined, multi-sheet wrapping, anchored
-insertions, `<body>` attributes, `@page` size — then always runs the
-structural verification list, the fit check, and the contrast check on the
-written file, exiting 0 only when everything passes. `--max-sheets` is the
+insertions, `<body>` attributes, `@page` size — then runs the structural
+verification list, the Part B CSS lint over your authored channels, the fit
+check and the contrast check, exiting 0 only when everything passes. The page
+is written only once they all pass, so a failed build leaves the previous one
+intact. `--max-sheets` is the
 user's page budget (default 1; an answer key makes it 2): authoring more
 sheets than the budget fails the build, so a bigger page is an explicit
 choice, not a spill. One command instead of a chain
@@ -427,7 +429,11 @@ place — don't regenerate from scratch:
   directly.
 - **Style changes**: edit the CSS inside `<style id="content-overrides">` (and
   the font `<link>` if the font changes). Step 5 is not re-run here, so lint the
-  updated block yourself: `node <skill-dir>/server/lint-cli.mjs --css <file>`.
+  edited page yourself:
+  `node <skill-dir>/server/lint-cli.mjs --page out/<file>.html`. It reads only
+  what you authored — the overrides block, the page content, and the font
+  link — and ignores the shell's own stylesheet, which breaks these rules by
+  design.
 - **Structural changes** (different page type, different orientation,
   rethinking the layout): re-author the content channels and re-assemble from
   the shell instead of patching.
@@ -597,7 +603,7 @@ doesn't show a half-written file:
    browser edits and their `data-mp-edited` markers live in it, and the
    selector points into it. For a sweep of everything they edited:
    `edits <file>.html`.
-3. Apply the change (same CSS lint, same Step 6 checks), and
+3. Apply the change (same `--page` lint, same Step 6 checks), and
    strip the `data-mp-edited` markers you addressed — the marker means "not yet
    seen by the model".
 4. `status <file>.html done` — always, and only once the file is final: that is

@@ -199,9 +199,14 @@ layer — Part A rule 1. (6) No literal color outside `:root`, `white` included;
 `transparent` and `currentColor` are fine — Part A rule 2. (7) The same six over
 inline styles. (8) `font_import` is a plain `https://fonts.googleapis.com/` URL;
 anything else is **dropped with a warning**, not a failure, so pick a font from
-the preloaded trio when that happens. (9) Display leading (`var(--leading-display)`
-or anything under ~1.2) comes with `padding-block: var(--display-overhang)`, and
-no rule zeroes an `h1`/`h2`'s padding — the clip invariant above.
+the preloaded trio when that happens. (9) Display leading comes with
+`padding-block: var(--display-overhang)`, and no rule zeroes an `h1`/`h2`'s
+padding — the clip invariant above. "Display leading" is `var(--leading-display)`
+by name, or a number under ~1.2 on a rule that also sets **display-scale type**
+(`font-size` of `var(--text-xl|2xl|3xl|4xl)` or ≥24px, or the `var(--font-display)`
+face). Tight leading on small type is not this rule: the overhang is a
+display-size problem, and `line-height: 1` on a stat number, a label or a table
+cell clears nothing and is left alone.
 
 ---
 
