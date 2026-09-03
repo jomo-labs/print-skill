@@ -331,22 +331,17 @@ Make the page reachable at `http://127.0.0.1:<port>/<file>.html`. The served
 root is `<cwd>/out` — the assembly output directory — so one server covers
 every page this project generates.
 
-1. One command does the probe / reuse / start sequence and prints the URL:
+1. One command reuses or starts the server and prints the URL:
 
    ```
    node <skill-dir>/server/serve-cli.mjs --dir <cwd>/out
    ```
 
-   It finds a print-skill server already serving this exact directory on
-   ports 4949–4958 and reuses it, or starts one **detached** (it outlives
-   the command — never start `server.mjs` in the foreground yourself; some
-   harnesses kill foreground commands at 30s, taking the server down) and
-   reports the URL it actually bound — read it, don't assume 4949. A healthy
-   server on another `dir` belongs to another project and is left alone.
-   Give `--dir` as an **absolute** path: a shell that ran the Step 0
-   `npm install` is still sitting in `<skill-dir>/server`, and a relative
-   `out` resolves there instead of in the project. The server refuses a
-   root inside the skill and says so — re-run with the absolute path.
+   It takes a free port itself, so **read the URL it prints** — it is not a
+   fixed one. Give `--dir` as an **absolute** path: a shell that ran the
+   Step 0 `npm install` is still sitting in `<skill-dir>/server`, and a
+   relative `out` resolves there instead of in the project. Anything it
+   writes to stderr about servers left by earlier runs needs no action.
    If the Step 0 background `npm install` is still running, wait for it to
    finish first; if it was skipped or failed, run
    `npm install --prefix <skill-dir>/server` now (its postinstall fetches the

@@ -30,7 +30,7 @@ const run = (args) => new Promise((resolve) => {
 // Each CLI parses its flags through one construct; `parsed` extracts from that
 // construct rather than scanning for every "--x" string in the file, which
 // would also pick up flags a CLI passes to a DIFFERENT program (serve-cli
-// spawns server.mjs with --port and --auto-port, which are not its own).
+// spawns server.mjs with --dir and --port, which are server.mjs's, not its own).
 const CLIS = [
   {
     file: "assemble-cli.mjs",
