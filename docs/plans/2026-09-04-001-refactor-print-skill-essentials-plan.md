@@ -8,388 +8,340 @@ date: 2026-09-04
 
 ## Summary
 
-Cut what the skill loads on every run from ~87KB to ≤50KB by keeping only
-what changes the printed page or the model's next action: rules stay, essays
-go; anything a check enforces loses its prose; anything serving a turn a
-first-generation run never reaches moves behind a pointer. Nothing is
-protected — the craft prose included — and one eval batch at the end says
-whether quality moved. The server is left alone: its per-check cost is page
-load, not launch, and combining checks would save under 2% of wall clock.
+Cut what a themed run loads from ~90.6KB to ≤56KB by keeping what changes the
+printed page or the model's next action and removing what does not. Three
+classes of prose get three treatments: mechanism explanation the model never
+uses is deleted; thresholds and procedures the model demonstrably executes
+stay; judgment rationale — the case behind a rule — is cut last, in its own
+commits, because whether it earns its place is exactly what the gate has to
+find out. Nothing is protected. The server gets a dead-code survey rather than
+a redesign, and the gate compares post-cut pages to pre-cut pages, not to a
+control that loses on physical rules alone.
 
 ---
 
 ## Problem Frame
 
-A themed first-generation run loads ~87KB of instruction before it writes a
-byte of content, and that instruction rides every one of ~40-50 turns as
-cache-read. Measured on the current working tree:
+A themed first-generation run loads ~90.6KB of instruction before writing any
+content, and that instruction rides every one of ~40-50 turns as cache-read.
+Measured on the working tree at `b7d20bf`:
 
-| file | bytes | share | loaded |
+| file | bytes | loaded |
+|---|---|---|
+| `SKILL.md` | 36,004 | every run |
+| `references/design-rules.md` | 15,551 | every run |
+| `references/routing.md` | 8,135 | every run |
+| `references/page-types.md` | 6,635 | every run |
+| `references/principles.md` | 5,581 | every run |
+| `references/themes/README.md` | 8,752 | every themed run |
+| one theme spec | 5,504 (comic) – 9,011; median 8,877 | every themed run |
+| one type spec | 1,053 median | every run |
+| **total, median theme** | **90,588** | |
+
+Plus `references/themes/theme-spec-template.md` (6,559) whenever the model
+follows either of two pointers into it — the ad-hoc theme checklist, and
+`SKILL.md` Step 3's `custom_css` row, which names it as the token set.
+
+### Where the bytes go that do not earn their place
+
+**44% of `SKILL.md` serves turns a first generation never reaches.** Live mode
+(four sections, 7,895 bytes), editing an existing page (2,342) and headless
+use (2,021) total 12,258. The interview (3,738) is skipped in every headless
+run. That is 16,000 bytes on every first-generation turn for paths it does not
+take. The 0-of-14 live-mode figure from the eval measures the harness, not
+users — first-generation runs cannot exercise those paths — so this is a
+loaded-per-turn argument, not a "nobody uses it" argument.
+
+**The fill rule is stated three times.** `design-rules.md`'s invariant
+(1,948 bytes), `SKILL.md` Step 3 (781) and Step 6 (667), with `principles.md`
+VII restating the overflow half. One owner; the others point.
+
+**Mechanism explanation the model never operates.** The preamble's account of
+the shell's shadow root and renderer (1,186 of 1,507 bytes). Step 6's
+description of how the squeeze persists a `<style id="mp-fit-squeeze">`
+block. Step 5's account of what the assemble command does internally. Part B
+of `design-rules.md`, which was written as a short pointer to the linter and
+has grown back to 2,305 bytes re-enumerating all nine checks the linter names
+when one fires.
+
+**Duplication in `principles.md`.** Principles I (tokens) and VI (no fills,
+flat shadows) restate Part A rules 2 and 1. II, III, IV, V and VII carry
+authoring instruction stated nowhere else — II's "fill named typographic
+roles, never freelance a font per element" included.
+
+**A 383-byte header on 30 of 31 type specs** telling the model where the
+routing table is, which it has already read. A median spec is 1,053 bytes.
+
+**A 4,602-byte drawing tutorial on every themed run.** "Getting a mark that
+reads" applies only when the page draws a pictorial subject.
+
+### What the traces say about prose — and it is not one thing
+
+The model ignored "batch your reads" in 14 of 14 runs until it became a
+command block, and launched `server.mjs` directly 15 times against a
+prohibition. But the same traces show prose followed reliably: Step 8's two
+reminder sentences reproduced verbatim in 12 of 12 completed runs;
+`data-mp-section` wrapping in 14 of 14; the sizing ledger executed by name
+(*"Sizing ledger first (letter landscape, content box 912×680, footer takes
+41 → 639 usable)"*); and the squeeze ladder's floors used in 6 of 14 runs to
+decide whether to accept a squeeze or cut content — a judgment the passing
+output line cannot inform, since `fit-cli` prints the applied percentage and
+never the floors.
+
+So "the model ignores prose" is false as a generalization. Three classes:
+
+| class | example | model uses it? | treatment |
 |---|---|---|---|
-| `SKILL.md` | 36,004 | 41% | every run |
-| `references/design-rules.md` | 15,551 | 18% | every run |
-| `references/themes/README.md` | 8,752 | 10% | every themed run |
-| `references/routing.md` | 8,135 | 9% | every run |
-| `references/page-types.md` | 6,635 | 8% | every run |
-| `references/principles.md` | 5,581 | 6% | every run |
-| one theme spec | ~5,500 | 6% | every themed run |
-| one type spec | ~1,130 | 1% | every run |
-| **total** | **87,291** | | |
-
-Plus `references/themes/theme-spec-template.md` (6,559) on every ad-hoc themed
-run, which the ad-hoc checklist sends the model into.
-
-### Where the bytes go that don't earn their place
-
-**A third of `SKILL.md` serves turns a first generation never reaches.** Live
-mode (7,895 bytes across four sections), editing an existing page (2,342),
-and headless/pipeline use (2,021) total 12,258 bytes. In 14 eval runs,
-`chat-cli` — the live-mode mechanism — ran zero times. The interview (3,738)
-is skipped entirely in headless runs. Together that is 16,000 bytes, 44% of
-the file, riding every first-generation turn for paths it does not take.
-
-**The same rule is stated in three places.** The fill/overflow rule — stop
-short vs stretched, token edits first, one pass — is written out in
-`design-rules.md`'s invariants (~1,400 bytes), again in `SKILL.md` Step 3
-"Fill the sheet" (~900), and again in Step 6's fill paragraph (~700), with
-`principles.md` VII restating the overflow half. One statement, in one place,
-pointed at from the others.
-
-**Explanation outnumbers instruction.** The `SKILL.md` preamble spends ~2,400
-bytes on how the shell's shadow root isolates chrome from the document — a
-mechanism the model never operates. Step 6 spends ~1,400 explaining the
-squeeze ladder's percentages and how it persists a `<style>` block; the model
-reads the check's output, not its internals. Design rule 1 spends ~1,500 bytes
-on why blurred shadows print as mud; the lint catches them regardless. The
-Part B pointer, written to replace a 60-line checklist with a short note, has
-grown back to 1,800 bytes restating all nine checks the lint already names when
-one fires.
-
-**`principles.md` duplicates `design-rules.md`.** Principles I (tokens not
-literals), II (hierarchy not decoration), and VI (no fills, print-flat shadows)
-restate Part A rules 1 and 2. III, IV, V and VII carry authoring guidance
-stated nowhere else.
-
-**Every type spec carries the same 450-byte header** telling the model where
-the routing table lives — which it has already read to arrive at the spec. A
-median spec is ~1,100 bytes, so the header is 40% of it.
-
-**`themes/README.md` loads a 3,500-byte drawing tutorial on every themed
-run.** "Getting a mark that reads" — how to source, trace, and hand-draw a
-recognisable SVG mark — applies only when the page draws a pictorial subject.
-Most themed pages do not.
-
-### What the trace evidence says about prose
-
-The model ignored `SKILL.md`'s "batch your reads" instruction in 14 of 14
-runs until it was replaced by a command block. It launched `server.mjs`
-directly 15 times against an explicit prohibition. Instructions that ask for
-behaviour are unreliable; mechanisms and terse rules are followed. That is the
-lens for every sentence: does this change the printed page, or the model's next
-action? If neither, it is a candidate.
+| mechanism explanation | shadow root; how the squeeze persists | no | delete |
+| thresholds and procedures | ladder floors; ledger; section marking; report sentences | yes, traced | keep, tightened |
+| judgment rationale | why a stretched page is hard to see; the case for ranking content | untested | cut last, own commits, measured |
 
 ### What this is not
 
-This is a context cut, not a turn cut. Removing prose the model does not act
-on does not remove turns; it removes tokens from each turn. Expect cache-read
-to fall roughly in proportion to instruction bytes (~40% of ~22k instruction
-tokens per turn) and turns to be unchanged. The server's wall clock is also
-unchanged: a Chromium launch is ~120ms, a full fit check ~1.8s and contrast
-~1.7s, so merging the two saves ~8s of a 456s run.
+A context cut, not a turn cut: removing prose the model does not act on
+removes tokens from each turn, not turns. It is also not a server change —
+measured, a Chromium launch is ~120ms and a full fit or contrast check ~1.8s,
+so merging the two saves ~8s of a 456s run. The server gets a survey for dead
+code and oversized surface, not a redesign.
 
 ---
 
 ## Requirements
 
-**Budget**
+**Budget** — measured directly from the files a run reads, with
+`references/themes/sports.md` as the theme spec (median size).
 
-R1. Instruction bytes loaded on a themed first-generation run drop from ~87KB
-   to ≤50KB, measured as the sum of the files the Step 1 read and the Step 3
-   batched read actually load.
-R2. `SKILL.md` drops from 36KB to ≤14KB.
-R3. Median cache-read tokens per run drop ≥10% against the most recent
-   measurement of the same skill arm, with turns within ±2 of that
-   measurement — proving the saving came from context, not from behaviour
-   change.
+R1. A themed first-generation run loads ≤56KB of instruction, from ~90.6KB.
+R2. `SKILL.md` ≤15.5KB, from 36KB.
+R3. Median per-turn context — `cache_read_input_tokens +
+   cache_creation_input_tokens` per assistant message, over the turns after
+   the Step 3 batched read — drops ≥30% against the same statistic from
+   `2026-09-03-001-d63693b2`. Per-turn, so turn-count changes from other work
+   cannot satisfy it; ≥30% because ~40% of the ~22k instruction tokens leave
+   and margin is owed.
 
 **Nothing lost that changes the page**
 
-R4. Every rule in `design-rules.md`'s platform invariants and Part A survives
-   as a statement. Shorter is fine; absent is not. Verified by a rule
-   inventory diffed before and after.
-R5. Every mechanically enforced check — structural verification, the Part B
-   lint, fit, contrast — is unchanged. No server code moves in this plan.
-R6. Every follow-up path — editing an existing page, live mode, headless use —
-   remains reachable: a trigger sentence in `SKILL.md` names the situation and
-   the file to read, and that file carries the full procedure.
+R4. Every rule in `design-rules.md`'s platform invariants and Part A, and
+   every Part B check that has no Part A counterpart (items 2 and 7), survives
+   as a statement. Verified by a rule-inventory fixture written from the
+   current file before any cut.
+R5. Every threshold or procedure the traces show the model executing survives
+   in `SKILL.md`: the two squeeze floors, the sizing ledger's formula and
+   geometry pointer, the `data-mp-section` rule, and Step 8's two reminder
+   sentences verbatim.
+R6. No server behaviour changes. U17 removes dead code and shrinks oversized
+   surface; every existing test passes unchanged.
+R7. Every follow-up path remains reachable: a trigger in `SKILL.md` names the
+   situation and the file, and that file carries the full procedure. The
+   state-keyed fit-record check — read the fit record at the start of any turn
+   with a server up — keeps its own one-line trigger in `SKILL.md`, since no
+   utterance fires it.
 
 **Quality**
 
-R7. No more than 2 of 11 cross-arm pairs go to the control (baseline 1 of 11;
-   at n=11 the reachable rates are 100%, 90.9% and 81.8%, so this permits one
-   additional loss). Physical-rule violations ≤3.
+R8. Against the no-skill control: no more than 2 of 13 cross-arm pairs lost
+   (baseline 1 of 13); physical violations ≤3. This is a floor, not a
+   detector — a skill with every principle deleted still beats a control
+   carrying 60 physical violations.
+R9. Against the pre-cut skill: the post-cut skill loses no more than 7 of 13
+   pairs to a snapshot of `b7d20bf`. The cut claims no quality change, so a
+   coin flip is the pass. This is the comparison that can actually see craft
+   loss, and it needs U19.
 
 ---
 
 ## Key Technical Decisions
 
-KTD1. **Cut by loaded-per-turn cost, not by file size.** The 268KB of
-   references is not the problem; the ~87KB loaded every run is. A byte in
-   `SKILL.md` costs 40-50 times what a byte in `assembly.md` costs.
-   Rationale: cache-read is `turns × context`, and only the always-loaded set
-   is in the context on every turn.
+KTD1. **Cut by loaded-per-turn cost.** The ~90KB loaded every run is the
+   problem, not the 268KB of references. Rationale: cache-read is `turns ×
+   context`; only the always-loaded set is in every turn.
 
-KTD2. **Nothing is protected.** The design principles and the reasoning behind
-   the design rules are cut like everything else and measured at the gate.
-   Rationale: the owner's explicit decision. The earlier plan deferred this
-   material as "the likeliest source of the quality margin"; that was never
-   tested, and this plan tests it.
+KTD2. **Nothing is protected.** The owner's decision. The principles and the
+   reasoning behind the rules are cut and measured, not preserved on the
+   assumption they earn the quality margin.
 
-KTD3. **One statement per rule, in one place.** Where a rule is written in
-   several files, it stays in the file that owns it and the others point.
-   Rationale: the fill rule alone costs ~3,000 bytes across three statements.
+KTD3. **One statement per rule, in one place.** The fill rule's owner is the
+   `design-rules.md` invariant; `SKILL.md` points at it.
 
-KTD4. **Where a check exists, the prose goes; where none does, the rule stays
-   and the essay goes.** Rationale: the lint names the rule when it fires; the
-   model needs a rule stated once, not its justification. Explanation of *why*
-   a rule exists moves out of the always-loaded path or is deleted.
+KTD4. **Three prose classes, three treatments.** Mechanism explanation the
+   model never operates is deleted. Thresholds and procedures the traces show
+   it executing stay. Judgment rationale is cut last, in separate commits, so
+   the gate can attribute a regression to it. Rationale: the earlier framing
+   — "instructions are unreliable, mechanisms are followed" — was true of two
+   directives and false of four other passages in the same traces. The lens
+   has to distinguish what the model uses from what it does not.
 
-KTD5. **Follow-up material moves rather than vanishing.** Live mode, in-place
-   editing and headless use go to one on-demand reference. `SKILL.md` keeps
-   only the sentence that says when to read it. Rationale: these paths are
-   real but were used in 0 of 14 first-generation runs; a pointer costs ~400
-   bytes, the material costs 12,000.
+KTD5. **Follow-up material moves, it does not vanish.** One on-demand file;
+   `SKILL.md` keeps the sentence that says when to read it.
 
-KTD6. **The server is out of scope.** Rationale: measured. Launch 120ms, fit
-   1.8s, contrast 1.7s; merging them saves ~2% of wall clock and zero tokens,
-   while risking a component nine reviewers just spent a fix pass on.
+KTD6. **The server gets a survey, not a redesign.** Rationale: the owner asked
+   for the entire skill and said nothing is protected, so declaring the server
+   out of scope on one 2% measurement was a scope cut in disguise. But the
+   measured wall-clock cost is page load, not launch, so the change is dead
+   code and oversized surface — `--auto-port` has no in-repo caller, the
+   lint CLI's 3,321-byte usage string enters context on every `--help` — not
+   check consolidation.
 
-KTD7. **One eval batch at the end, not per cut.** Rationale: the owner's
-   posture is aggressive; each batch is ~$48 plus gallery time; attribution
-   across six units is not worth six batches for a change whose failure mode —
-   pages got worse — is visible in one.
+KTD7. **Phase A then Phase B, then the gate.** Mechanical cuts (moves,
+   header strip, mechanism deletion, dedupe) land first. Rationale cuts land
+   last, each unit its own commit. Rationale: if the gate fails, revert Phase
+   B and run one more batch — two batches isolate "rationale vs mechanical"
+   where six would otherwise be needed.
+
+KTD8. **The gate compares pre-cut to post-cut.** Rationale: the no-skill
+   control cannot see craft loss (R8's note). A second arm running a snapshot
+   of the pre-cut tree can. That is harness work in the sibling repo (U19),
+   and it is the only instrument that makes KTD2 a measurement rather than a
+   hope.
 
 ---
 
 ## High-Level Technical Design
 
-Where each byte lives after the cut, and how often it loads.
-
 ```mermaid
 flowchart LR
-    subgraph always["Loaded every run  (~50KB, was 87KB)"]
-        S["SKILL.md<br/>≤14KB · was 36KB"]
-        R["routing.md<br/>~7.6KB"]
-        D["design-rules.md<br/>≤10KB · was 15.5KB"]
-        P["principles.md<br/>≤2.5KB · was 5.6KB"]
-        G["page-types.md<br/>~6KB"]
-        T["one type spec<br/>~0.7KB · header gone"]
+    subgraph always["Loaded every run — 39.9KB, was 71.9KB"]
+        S["SKILL.md<br/>≤15.5KB · was 36.0KB"]
+        R["routing.md<br/>8.1KB · unchanged"]
+        D["design-rules.md<br/>≤10KB · was 15.6KB"]
+        P["principles.md<br/>≤3KB · was 5.6KB"]
+        G["page-types.md<br/>6.6KB · unchanged"]
+        T["one type spec<br/>~0.7KB · was ~1.05KB"]
     end
-    subgraph themed["Loaded on themed runs only"]
-        TR["themes/README.md<br/>≤4KB · was 8.7KB"]
-        TS["one theme spec<br/>~4.3KB · was 5.5KB"]
+    subgraph themed["Loaded on themed runs — ≤11.5KB, was 17.6KB"]
+        TR["themes/README.md<br/>≤4KB · was 8.8KB"]
+        TS["one theme spec<br/>≤7.5KB · was 8.9KB median"]
     end
-    subgraph demand["Loaded on demand — pointed at, not read by default"]
-        F["follow-up.md (new)<br/>live mode · editing · headless<br/>~12KB moved out of SKILL.md"]
-        M["marks.md (new)<br/>sourcing and drawing SVG marks<br/>~3.5KB moved out of themes/README"]
-        A["assembly.md · harness-support.md<br/>print-fundamentals.md<br/>unchanged"]
+    subgraph demand["On demand — pointed at, never batched"]
+        F["follow-up.md (new)<br/>live · editing · headless<br/>12.3KB out of SKILL.md"]
+        M["marks.md (new)<br/>drawing SVG marks<br/>4.6KB out of themes/README"]
+        A["assembly.md · harness-support.md<br/>print-fundamentals.md<br/>same essay-vs-rule pass (U18)"]
     end
-    S -- "trigger sentence" --> F
+    S -- "trigger sentences" --> F
     D -- "rule 1a, when drawing" --> M
     S -- "Step 1" --> R
     S -- "Step 3 batch" --> D & P & G & T
     S -- "Step 3, if themed" --> TR & TS
 ```
 
-**Budget by unit.** Savings are estimates from reading the current files;
-the gate measures the outcome, and R1/R2 are the thresholds.
+Themed-run total across both subgraphs: **≤56KB, was 90.6KB** (R1).
 
-| unit | file(s) | now | target | saving |
+**Budget by unit.** Every "now" figure is `wc -c` on the working tree or
+`awk` over headings; every target is what the described cuts reach with margin.
+
+| unit | file | now | target | saving |
 |---|---|---|---|---|
-| U1 | `SKILL.md` | 36,004 | ≤14,000 | ~22,000 |
-| U2 | `design-rules.md` | 15,551 | ≤10,000 | ~5,500 |
-| U3 | `principles.md` | 5,581 | ≤2,500 | ~3,000 |
-| U4 | `themes/README.md` + template at runtime | 8,752 (+6,559 ad-hoc) | ≤4,000 (+0) | ~4,700 (+6,500 ad-hoc) |
-| U5 | type spec header · theme spec sections | ~1,130 · ~5,500 | ~680 · ~4,300 | ~450 · ~1,200 |
-| | **always-loaded, themed run** | **87,291** | **≤50,000** | **~37,000** |
+| U11 | `SKILL.md` | 36,004 | ≤15,500 | ~20,500 |
+| U12 | `design-rules.md` | 15,551 | ≤10,000 | ~5,600 |
+| U13 | `principles.md` | 5,581 | ≤3,000 | ~2,600 |
+| U14 | `themes/README.md` | 8,752 | ≤4,000 | ~4,750 |
+| U15 | one theme spec (median) | 8,877 | ≤7,500 | ~1,400 |
+| U15 | one type spec (median) | 1,053 | ≤700 | ~380 |
+| — | `routing.md` | 8,135 | 8,135 | 0 |
+| — | `page-types.md` | 6,635 | 6,635 | 0 |
+| | **themed run, median spec** | **90,588** | **≤55,470** | **~35,200** |
+
+`theme-spec-template.md` (6,559) also stops loading at runtime — both pointers
+into it are repointed at `page-types.md`'s token table (U11, U14).
 
 ---
 
 ## Implementation Units
 
-U-IDs continue from the earlier plan in this directory (which reached U10), so
-this plan's units start at U11.
+U-IDs continue from the earlier plan in this directory (which reached U10).
+Units are grouped by KTD7's phases; within a phase, order is by dependency.
+
+### Phase A — mechanical
 
 ### U11. Cut `SKILL.md` to the first-generation path
 
-**Goal:** `SKILL.md` carries what a first-generation run needs and pointers to
-everything else. ≤14KB, from 36KB.
+**Goal:** `SKILL.md` carries what a first-generation run executes and pointers
+to everything else. ≤15.5KB from 36KB.
 
-**Requirements:** R1, R2, R6
+**Requirements:** R1, R2, R5, R7
 
 **Dependencies:** none
 
 **Files:**
 - `SKILL.md`
 - `references/follow-up.md` (new) — live mode, editing an existing page,
-  headless/pipeline use, moved substantially intact
-- `server/test/skill-doc.test.mjs` (new) — see test scenarios
+  headless use, moved intact
+- `server/test/skill-doc.test.mjs` (new) — a prose-fact harness in the shape
+  of `server/test/cli-help.test.mjs`
 
-**Approach:** Four moves, largest first.
+**Approach:** Four moves.
 
-*Move the follow-up material out.* "Live mode" and its three subsections,
-"Editing an existing page", and "Headless / pipeline use" — 12,258 bytes —
-go to `references/follow-up.md` as they are. `SKILL.md` keeps one trigger
-sentence per path, placed where the model will be when it needs it: after
-Step 8, "If the user asks to change this page, or pastes `/print fix`, read
-`references/follow-up.md` first"; in Step 0, "If the output is for an
+*Move the follow-up material out* — 12,258 bytes to `references/follow-up.md`
+as-is. Three trigger sentences stay, placed where the model will be: after
+Step 8, *"If the user asks to change this page, or pastes `/print fix`, read
+`references/follow-up.md` first"*; in Step 0, *"If the output is for an
 automated consumer or the user asked for a PDF file, read the headless section
-of `references/follow-up.md`." The `/print fix` paste is the one trigger that
-must survive verbatim, since it arrives with no other context.
+of `references/follow-up.md`"*; and in Step 7, since it is keyed to state
+rather than to anything the user says, *"At the start of any later turn with
+the server up, check the fit record — `references/follow-up.md`, 'A page that
+stops fitting'."* Step 0's parenthetical listing the sections that contain
+`<skill-dir>` is reworded to *"in this file and in `references/follow-up.md`"*,
+keeping the `**absolute**` token `cli-help.test.mjs` asserts on.
 
-*Compress the interview.* Step 0.5 is 3,738 bytes for two dialogs. Keep the
-skip rule (one sentence: no `AskUserQuestion` tool means headless — skip),
-the two dialogs' actual questions and defaults as a compact list, and the
-binding sentence. Drop the explanations of why each default is a guess and
-the harness-capability discussion, which `references/harness-support.md`
-already owns. Target ~1,200 bytes.
+*Compress the interview* — 3,738 to ~1,200: the skip rule in one sentence
+(no `AskUserQuestion` tool means headless), the two dialogs' questions and
+defaults as a list, the binding sentence. The harness-capability discussion
+already lives in `references/harness-support.md`.
 
-*Delete explanation the model does not act on.* The preamble's account of the
-shell's shadow root, chrome isolation and PDF renderer (~1,800 of its 2,400
-bytes). Step 6's description of the squeeze ladder's percentages and persisted
-`<style>` block — the model reads the check's output line. Step 5's paragraph
-on what the assemble command does internally. Step 7's fallbacks for a missing
-Node install, which `harness-support.md` owns. Step 0's rationale for
-`--prefix` over `cd`.
+*Delete mechanism explanation* — the preamble's shadow-root and renderer
+passage (1,186 bytes); Step 6's account of how the squeeze persists its
+`<style id="mp-fit-squeeze">` block and re-derives; Step 5's account of what
+assembly does internally; Step 7's Node-missing fallbacks (owned by
+`harness-support.md`); Step 0's `--prefix`-over-`cd` rationale; the Workflow
+section's batching paragraph, which the Step 3 command block has superseded.
 
-*Dedupe against the references.* Step 3's "Fill the sheet" paragraph and
-Step 6's fill paragraph restate `design-rules.md`'s invariant; each becomes
-one sentence pointing there (KTD3). Step 3's descriptions of what each
-reference file contains duplicate those files' own first paragraphs; keep the
-command block and cut the descriptions.
+*Dedupe against the references* — Step 3's "Fill the sheet" paragraph and
+Step 6's fill paragraph each become one sentence pointing at the
+`design-rules.md` invariant. Step 3's descriptions of what each reference
+contains go. The `custom_css` row's "Token set: the section-to-token map in
+`theme-spec-template.md`" is repointed at `page-types.md`'s token quick
+reference, which is already in the batch.
 
-What stays whole: the Step 0 `<skill-dir>` rule, the Step 1 routing
-instruction, the Step 3 command block and channel table, the Step 5 command,
-Step 8's report shape (compressed to its bullets), and every trigger sentence.
+**What stays whole, because the traces show the model executing it:** the
+Step 0 `<skill-dir>` rule; the Step 1 routing instruction; the Step 3 command
+block and channel table; the sizing ledger, compressed to its formula line and
+geometry pointer (the model runs it by name, and `design-rules.md` points at
+"SKILL.md Step 3" for it); **one sentence in Step 6 stating the two squeeze
+floors** — spacing to 75%, type to 92% — and that a squeeze at either floor
+means cut content and re-run, since the passing output never prints the
+floors; the `data-mp-section` rule; the Step 5 command; Step 8's two reminder
+sentences verbatim; every trigger sentence.
 
-**Patterns to follow:** the current Step 4 — four lines saying the lint runs
-inside assembly and pointing at `design-rules.md` — is the target density for
-every step.
+**Test scenarios** (`server/test/skill-doc.test.mjs`):
+- `SKILL.md` ≤15,500 bytes.
+- Every `<skill-dir>/…` path containing no further `<…>` placeholder and
+  ending in `.md` or `.mjs`, in `SKILL.md` and `references/*.md`, resolves to
+  an existing file.
+- `/print fix` appears in `SKILL.md`.
+- `references/follow-up.md` contains the headings "Live mode", "Editing an
+  existing page" and "Headless".
+- Each of those three is named from `SKILL.md` exactly once.
+- `SKILL.md` contains "75%" and "92%" (the floors) and does not contain
+  `mp-fit-squeeze` (the mechanism).
+- `SKILL.md` contains, verbatim, "double-click any text to edit it" and
+  "Press **Edit**".
+- `SKILL.md` does not contain `theme-spec-template.md`.
+- Every `(SKILL.md Step N)` or quoted-heading reference in `references/*.md`
+  matches a heading or bolded lead-in still present in `SKILL.md`.
 
-**Test scenarios** (`server/test/skill-doc.test.mjs`, new — the repo has no
-prose tests; this unit needs a small harness that reads `SKILL.md` and asserts
-facts about it, in the shape of `cli-help.test.mjs`):
-- `SKILL.md` is ≤14,000 bytes.
-- Every `<skill-dir>` path in `SKILL.md` and `references/*.md` resolves to a
-  file that exists on disk (catches a pointer left behind by the move).
-- The literal string `/print fix` appears in `SKILL.md` — the trigger that
-  arrives with no context.
-- `references/follow-up.md` contains the section headings "Live mode",
-  "Editing an existing page" and "Headless" — the move landed, not a delete.
-- Each of those three headings is named or linked from `SKILL.md` exactly
-  once — the trigger exists and is not duplicated.
-- No sentence in `SKILL.md` contains both "squeez" and "%" — the ladder
-  mechanics left.
-
-**Verification:** `SKILL.md` ≤14KB; the three follow-up sections exist in
-`follow-up.md` with their content intact; every pointer resolves; a
-first-generation run's Step 3 batch reads exactly the files it read before.
-
----
-
-### U12. Cut `design-rules.md` to one statement per rule
-
-**Goal:** Every rule survives; the reasoning behind it mostly does not.
-≤10KB, from 15.5KB.
-
-**Requirements:** R1, R4
-
-**Dependencies:** none (U11 points at this file; the pointer targets are
-section names, which do not change)
-
-**Files:**
-- `references/design-rules.md`
-- `server/test/skill-doc.test.mjs` — extend
-
-**Approach:** Take the file section by section against R4's rule inventory —
-the list of distinct rules it states today, written down before editing.
-
-*Platform invariants.* The fill/overflow bullet becomes the single owner of
-that rule (KTD3) and is tightened to the rule itself: the two floors, the two
-underfill shapes, remedies in cost order, one pass. Drop the paragraph on why
-stretched underfill is hard to see. The containers-clip bullet keeps the rule
-(containers clip; clearance comes from `padding-block`, never
-`overflow-clip-margin`; never zero a display heading's padding) and drops the
-explanation of line boxes and margin collapse — roughly half its 1,600 bytes.
-
-*Part A.* Rule 1 keeps the allowlist, the flat-shadow shape and the
-`.invert`/`.tint` instruction; drops the paragraph on why gradients dither.
-Rule 1a keeps "draw pictorial marks as stroked SVG, never CSS fills" and a
-pointer to `marks.md` (U14) for how; drops the rest. Rule 3a's Google Font
-suggestions become a four-row table. Rules 2, 3, 4, 5 are already close to
-one statement each.
-
-*Part B.* The pointer shrinks to three lines: nine checks, enforced by
-`lint-cli.mjs` inside assembly, never grep your own CSS, the report names each
-violation with its line. The enumeration of all nine goes — the lint names the
-rule when it fires, with the fix.
-
-*Part C.* Keep the three bullets; halve each.
-
-**Test scenarios:**
-- `design-rules.md` is ≤10,000 bytes.
-- A rule-inventory fixture — the distinct rules present before the cut, as a
-  list of short key phrases (`--color-paper`, `overflow-clip-margin`,
-  `padding-block`, `font_import`, `data-mp-section`, `.invert`, one per rule)
-  — every phrase still appears in the file. This is the R4 guard.
-- Section headings "Platform invariants", "Part A", "Part B", "Part C" and
-  "Section marking" all survive — other files point at them by name.
-
-**Verification:** ≤10KB; the inventory test passes; `SKILL.md`'s pointers into
-this file resolve to existing headings.
-
----
-
-### U13. Dedupe `principles.md` against `design-rules.md`
-
-**Goal:** Keep the craft guidance stated nowhere else; drop the restatements.
-≤2.5KB, from 5.6KB.
-
-**Requirements:** R1
-
-**Dependencies:** U12 (so the dedupe is against the final rules text)
-
-**Files:**
-- `references/principles.md`
-- `server/test/skill-doc.test.mjs` — extend
-
-**Approach:** Principles I (named tokens), II (hierarchy over decoration) and
-VI (design for the medium, print-flat shadows) each restate a Part A rule and
-become one line pointing at it. Principles III (rank multi-item content, the
-lead story gets weight), IV (design the empty state first), V (typographic
-correctness — curly quotes, dashes, tabular figures) and VII (count the
-content before choosing a layout) are authoring guidance no other file
-carries; each keeps its instruction and loses its argument. The premise
-paragraph goes.
-
-This is the unit where KTD2 bites: III, IV, V and VII are the plausible source
-of pages that read as composed rather than generated. They stay as
-instructions. What goes is the case for them.
-
-**Test scenarios:**
-- `principles.md` is ≤2,500 bytes.
-- Headings I through VII all survive — theme specs cite principles by number.
-- The phrases "lead", "empty state", "curly quotes" (or the characters
-  themselves) and "count" survive — the four instructions that live only here.
-
-**Verification:** ≤2.5KB; seven headings; the four instructions present.
+**Verification:** ≤15.5KB; the three follow-up sections exist intact in
+`follow-up.md`; every pointer resolves; the floors, ledger, section-marking
+rule and reminders are present; a first-generation run's Step 3 batch reads
+the same files as before minus the template.
 
 ---
 
 ### U14. Move the drawing tutorial out of `themes/README.md`
 
-**Goal:** A themed run loads the theme procedure, not a guide to hand-drawing
-SVG marks. README ≤4KB from 8.7KB; the template stops loading at runtime.
+**Goal:** A themed run loads the theme procedure, not a tutorial on
+hand-drawing SVG. ≤4KB from 8.75KB, and the template stops loading at
+runtime.
 
 **Requirements:** R1
 
@@ -397,187 +349,402 @@ SVG marks. README ≤4KB from 8.7KB; the template stops loading at runtime.
 
 **Files:**
 - `references/themes/README.md`
-- `references/marks.md` (new) — "Getting a mark that reads", moved intact
-- `references/design-rules.md` — rule 1a's pointer (coordinate with U12)
-- `references/themes/theme-spec-template.md` — unchanged, but its
-  section-to-token map is copied into the README's ad-hoc checklist
+- `references/marks.md` (new) — "Getting a mark that reads", 4,602 bytes,
+  moved intact
 - `server/test/skill-doc.test.mjs` — extend
 
-**Approach:** "Getting a mark that reads" (~3,500 bytes) moves to
-`references/marks.md` unchanged. It is reached from design rule 1a — the rule
-that says pictorial marks are stroked SVG — with one sentence: "for sourcing,
-tracing or drawing one that reads as its subject, read
-`references/marks.md`." The ad-hoc checklist's item 3 points there too.
+**Approach:** The tutorial moves unchanged. The ad-hoc checklist's item 3
+points at it; U12 adds the pointer from design rule 1a.
 
-The ad-hoc checklist currently tells the model to "work through the
-section-to-token map in `theme-spec-template.md`", which loads 6.6KB on every
-ad-hoc run. The map itself is ~20 lines. Copy it into the checklist and drop
-the pointer; the template stays for humans adding a theme, and the README's
-"Adding a new theme" section keeps pointing at it.
+The ad-hoc checklist's item 1 currently sends the model into
+`theme-spec-template.md` for the section-to-token map (6,559 bytes on every
+ad-hoc run). Do **not** copy the 1,351-byte map into the README — that would
+put the README at ~5,500 and miss its ceiling. Point item 1 at
+`page-types.md`'s token quick reference instead, which is already in every
+run's batch and lists the same tokens. The template stays for humans adding a
+theme; "Adding a new theme" keeps its pointer.
 
-"Executing a matched spec" (1,743 bytes) stays — it is the procedure every
-matched themed run follows. The ad-hoc checklist's six items stay, tightened.
+"Executing a matched spec" (1,743 bytes) stays whole. The six ad-hoc items are
+tightened, not cut.
 
 **Test scenarios:**
-- `themes/README.md` is ≤4,000 bytes.
+- `themes/README.md` ≤4,000 bytes.
 - `references/marks.md` contains "Diagnostic features first" and "Judge every
-  candidate at printed size" — the move landed.
-- `themes/README.md` does not reference `theme-spec-template.md` except under
-  the "Adding a new theme" heading.
-- `design-rules.md` rule 1a names `marks.md`.
+  candidate at printed size".
+- `themes/README.md` references `theme-spec-template.md` only under the
+  "Adding a new theme" heading.
 
-**Verification:** ≤4KB; the tutorial is reachable from rule 1a; an ad-hoc
-themed run's Step 3 batch no longer includes the template.
+**Verification:** ≤4KB; the tutorial is reachable from the checklist and
+(after U12) from rule 1a; an ad-hoc themed run's batch no longer includes the
+template.
 
 ---
 
-### U15. Strip the shared header from type specs; trim theme spec rationale
+### U15. Strip the shared type-spec header; keep theme specs' constraints
 
-**Goal:** The one spec a run loads carries only what authoring needs.
+**Goal:** The one spec a run loads carries only authoring instruction.
 
 **Requirements:** R1
+
+**Dependencies:** none (Phase A for the header strip; the §1/§7 trim is
+Phase B — see approach)
+
+**Files:**
+- `references/types/*.md` — 30 of 31 carry the header; `image-block.md`
+  opens differently and has no `*Functional requirements:*` marker
+- `references/themes/{arcade,comic,field-guide,newspaper,sports}.md`
+- `references/themes/theme-spec-template.md`
+- `server/test/skill-doc.test.mjs` — extend
+
+**Approach — Phase A:** Delete the 383-byte shared opening paragraph from the
+30 type specs that carry it. Each keeps its H1 and description.
+
+**Approach — Phase B:** Theme specs' §1 "Meta & Philosophy" (975-1,315
+bytes) cuts to a two-line identity statement. §7 "Contrast evidence" is
+**not** a proof to delete — it carries constraints stated nowhere else: which
+accent may carry body text and which is restricted to marks or large type
+(`arcade.md`: *"stays on marks and figures rather than carrying a sentence"*),
+and in `sports.md` the kids'-team body-size floor. `comic.md`'s §7 has no
+numeric ratios at all, so "a compact list of ratios" would be empty. §7
+becomes one line per accent — token, ratio where measured, size clearance —
+plus any body-floor override. Only the gamut and screen-legibility notes go.
+Update the template to the leaner shape.
+
+**Test scenarios:**
+- No file in `references/types/` contains "holds the routing table".
+- Every file in `references/types/` except `image-block.md` has an H1 on
+  line 1 and contains `*Functional requirements:*`.
+- Median type spec ≤700 bytes.
+- Every theme spec keeps all seven section headings.
+- §1 and §7 together ≤600 bytes in every theme spec; `comic.md` ≤4,500 total,
+  every other spec ≤7,500.
+- Every accent token defined in a theme's §3 appears in its §7.
+
+**Verification:** the six assertions pass; a themed run's batch is ~1,750
+bytes lighter.
+
+---
+
+### U17. Survey the server for dead code and oversized surface
+
+**Goal:** The server carries no code with no caller and no surface out of
+proportion to what it does. No behaviour changes.
+
+**Requirements:** R6
 
 **Dependencies:** none
 
 **Files:**
-- `references/types/*.md` — 31 files, same first paragraph
-- `references/themes/{arcade,comic,field-guide,newspaper,sports}.md`
-- `references/themes/theme-spec-template.md` — the schema
-- `server/test/skill-doc.test.mjs` — extend
+- `server/server.mjs` — `--auto-port` and `autoPort`
+- `server/lint-cli.mjs` — usage string, comment density
+- `server/chat-cli.mjs`, `server/chat-store.mjs` — survey only
+- existing tests, unchanged
 
-**Approach:** Every type spec opens with the same ~450-byte paragraph
-explaining that `routing.md` holds the routing table and `page-types.md` holds
-the blocks. The model has read both by the time it opens a spec. Delete the
-paragraph from all 31; keep each spec's title and its one-line description.
-`routing.md`'s index already says what a spec file is.
+**Approach:** The rate-limited audit that was meant to precede this plan never
+ran; this unit is that audit, scoped to what a survey found in one read.
 
-Theme specs follow a seven-section template. Sections 1 ("Meta &
-Philosophy", ~975 bytes in `comic.md`) and 7 ("Contrast evidence", ~640) are
-rationale and proof, not authoring instruction: the philosophy explains the
-theme's character in prose the tokens and components already embody, and the
-contrast evidence is the author's verification, which `contrast-cli` re-runs
-on every build anyway. Cut section 1 to its two-line identity statement and
-section 7 to the measured ratios as a compact list. Update the template to
-match so new themes follow the leaner shape.
+`server.mjs`'s `--auto-port` flag and its `attempt - port < 10` walk have no
+in-repo caller since `serve-cli` picks its own port. Remove them and the doc
+comment that describes a dead path.
 
-**Test scenarios:**
-- No file in `references/types/` contains the phrase "holds the routing
-  table".
-- Every type spec still opens with an H1 and a one-line description before
-  its first `*Functional requirements:*` marker.
-- Every theme spec still has all seven section headings — specs are cited by
-  section from the README's "Executing a matched spec".
-- Median type spec ≤700 bytes; each theme spec ≤4,500 bytes.
+`lint-cli.mjs` is 32KB — larger than `fit-cli` — for nine text rules. Its
+`USAGE` string is 3,321 bytes and enters the model's context on every
+`--help`; cut it to the flag list and one line per rule. Its `lintBlock`
+function is 7,500 bytes; report whether it can be shortened without a behaviour
+change, but do not restructure it here. Comment density (140 of 639 lines) is
+in line with the other CLIs and is not a target.
 
-**Verification:** the four assertions pass; a themed run's Step 3 batch is
-~1,650 bytes lighter.
+`chat-cli.mjs` and `chat-store.mjs` (14KB) are live mode — not dead, not
+loaded into context. Survey and report; change nothing.
+
+**Test scenarios:** `Test expectation: none beyond the existing suite — every
+existing test passes unchanged, which is R6's proof.` Add one assertion to
+`cli-help.test.mjs`: `lint-cli --help` output ≤1,500 bytes.
+
+**Verification:** `grep -rn auto-port server/` returns nothing; every
+existing test passes; `lint-cli --help` ≤1,500 bytes.
 
 ---
 
-### U16. Gate — one batch, read for context and quality
+### U18. Apply the same pass to the on-demand references
 
-**Goal:** Confirm the cut removed context without moving pages.
+**Goal:** `assembly.md`, `harness-support.md` and `print-fundamentals.md`
+get the essay-vs-rule pass everything else gets, judged by necessity rather
+than by load frequency.
+
+**Requirements:** R4
+
+**Dependencies:** U11 (so pointers into these files from the cut `SKILL.md`
+are settled first)
+
+**Files:**
+- `references/assembly.md` (11,779) — pointed at from four places, none on
+  the first-generation path; `assemble-cli.mjs` performs everything it
+  describes except hand assembly without Node
+- `references/harness-support.md` (8,162) — three pointers
+- `references/print-fundamentals.md` (4,625) — one pointer
+- `server/test/skill-doc.test.mjs` — extend
+
+**Approach:** Same three classes as KTD4. `assembly.md`'s description of the
+assembly procedure duplicates what the command does; keep the anchors an
+in-place edit needs and the hand-assembly path, drop the walkthrough of what
+`assemble-cli` already does. `harness-support.md`'s three parts are each a
+capability question with one answer; keep the answers. `print-fundamentals.md`
+is short and mostly numbers; verify its figures against `page-types.md`'s
+geometry and keep it.
+
+These do not move R1 — they are not on the batched path — and no ceiling is
+set. The test is the same one that guards everything else: every pointer into
+them still resolves, and every rule they own survives in the inventory.
+
+**Test scenarios:**
+- Every heading another file points at in these three files still exists.
+- The R4 inventory phrases that these files own (the `<body>` attributes and
+  `@page` anchors in `assembly.md`; the loopback and image-backend rules in
+  `harness-support.md`) survive.
+
+**Verification:** pointers resolve; inventory passes; the hand-assembly path
+in `assembly.md` is still complete.
+
+---
+
+### Phase B — rationale, each unit its own commit
+
+### U12. Cut `design-rules.md` to one statement per rule
+
+**Goal:** Every rule survives; the reasoning behind it mostly does not.
+≤10KB from 15.5KB.
+
+**Requirements:** R1, R4
+
+**Dependencies:** U14 — rule 1a's new pointer targets `references/marks.md`,
+which U14 creates; land after it or in the same commit so the pointer never
+dangles.
+
+**Files:**
+- `references/design-rules.md`
+- `server/test/skill-doc.test.mjs` — extend
+
+**Approach:** Write the R4 inventory fixture first, from the current file.
+
+*Platform invariants.* The fill bullet (1,948) becomes the rule's single owner
+and tightens to the rule: two floors, two underfill shapes, remedies in cost
+order, one pass — ~900 bytes. The containers-clip bullet (1,791) keeps the rule
+(containers clip; clearance is `padding-block`, never
+`overflow-clip-margin`; never zero a display heading's padding) and drops the
+line-box and margin-collapse explanation — ~900.
+
+*Part A.* Rule 1 (1,529) keeps the allowlist, the flat-shadow shape and
+`.invert`/`.tint`; drops the ~500 bytes on why gradients dither and the
+viewer's chrome shadow. Rule 1a keeps "pictorial marks are stroked SVG, never
+CSS fills" plus one sentence pointing at `references/marks.md`. Rule 3a's
+font suggestions become a four-row table. Rules 2-5 are already one statement.
+
+*Part B* (2,305) shrinks to ~350: nine checks, run by `lint-cli.mjs` inside
+assembly, never grep your own CSS, the report names each violation with its
+line and fix. The enumeration goes — except that items 2 (no backslashes) and
+7 (no character references in `style` attributes) have no Part A statement,
+so each keeps one sentence here.
+
+*Part C* halves.
+
+**Test scenarios:**
+- `design-rules.md` ≤10,000 bytes.
+- Every phrase in the inventory fixture survives (`--color-paper`,
+  `overflow-clip-margin`, `padding-block`, `font_import`,
+  `data-mp-section`, `.invert`, backslash, character reference, one per
+  rule).
+- Headings "Platform invariants", "Part A", "Part B", "Part C", "Section
+  marking" survive.
+- Rule 1a names `references/marks.md`.
+
+**Verification:** ≤10KB; inventory passes; every pointer into this file
+resolves.
+
+---
+
+### U13. Dedupe `principles.md`
+
+**Goal:** Keep the instructions stated nowhere else; drop their arguments.
+≤3KB from 5.6KB.
+
+**Requirements:** R1
+
+**Dependencies:** U12
+
+**Files:**
+- `references/principles.md`
+- `server/test/skill-doc.test.mjs` — extend
+
+**Approach:** I (named tokens) and VI (design for the medium) restate Part A
+rules 2 and 1; each becomes one line pointing there. II keeps its instruction
+— hierarchy through type alone, named typographic roles, never a per-element
+font — and drops only its decoration sentence, which rule 1 owns. III (rank
+multi-item content), IV (design the empty state first), V (typographic
+correctness) and VII (count the content before choosing a layout) keep their
+instruction and lose their argument. The premise paragraph goes.
+
+This is the unit KTD2 bites hardest: these are the plausible source of pages
+that read as composed. The instructions stay. The case for them is what the
+gate measures.
+
+**Test scenarios:**
+- `principles.md` ≤3,000 bytes.
+- Headings I-VII survive — theme specs cite them by number.
+- "lead", "empty state", curly-quote characters, "count", and "typographic
+  roles" survive.
+
+**Verification:** ≤3KB; seven headings; five instructions present.
+
+---
+
+### Phase C — measure
+
+### U19. Give the eval a pre-cut arm
+
+**Goal:** The gate can see craft loss.
 
 **Target repo:** `print-skill-eval`
 
-**Requirements:** R3, R5, R7
+**Requirements:** R9
 
-**Dependencies:** U11, U12, U13, U14, U15
+**Dependencies:** none (harness work; can proceed in parallel with Phases A
+and B)
 
 **Files:**
-- `src/trace-metrics.mjs`, `test/trace-metrics.test.mjs` — as specified in the
-  earlier plan's U6, which was never executed and is reused here unchanged
+- `eval.config.json`, `src/config.mjs`, `src/runner.mjs` — per-arm
+  `skillSource`
+- `src/trace-metrics.mjs`, `test/trace-metrics.test.mjs` — the metrics script
+  from the earlier plan's U6, which was never built; add the per-turn context
+  metric R3 needs
 
-**Approach:** The earlier plan's gate specification stands: commit the metrics
-script first with its definitions pinned (turns as assistant events, cache-read
-as summed per-message tokens, median as the midpoint of an even sample), then
-run `--task-set wide --replicates 1`.
+**Approach:** Today both arms are `{skill: true}` and `{skill: false}` with
+one global `skillSource`. A second skill arm needs a per-arm source so one can
+point at a snapshot of `b7d20bf` and the other at the post-cut tree. The
+gallery already presents pairs blind; two skill arms produce skill-vs-skill
+pairs the same way. Keep the no-skill arm as the physical-violation tripwire
+(R8) in a three-arm batch, or run it as a separate cheaper batch — decide by
+what the pairing code supports.
 
-What this gate reads differently: **turns should not move**. This plan removes
-prose the model does not act on, so if turns fall the cut removed an
-instruction that was steering behaviour, and if turns rise the cut removed
-guidance the model was using. Either is information. Cache-read should fall
-roughly with instruction bytes.
+The metrics script pins: per-turn context as
+`cache_read_input_tokens + cache_creation_input_tokens` per assistant message
+after the Step 3 read; median as the midpoint of an even sample; assemble
+outcomes classified from `tool_result` text.
 
-Attribution is weak and must be labelled so. The only measured baseline
-(`2026-09-03-001-d63693b2`) predates Tier 1, main's fill-loop fix, and this
-cut. The within-batch skill-vs-control ratio is the number that matters for
-the product; the change since that baseline reflects all three.
+**Test scenarios:**
+- A config with two skill arms and distinct sources runs each cell against
+  the right tree — assert by a marker file present in one snapshot and not
+  the other.
+- The per-turn context metric on the `d63693b2` traces reproduces a pinned
+  fixture figure.
+- The metrics script classifies `Cannot find module`, `does not fit` and
+  `structural verification FAILED` results as non-passes.
 
-**Test scenarios:** `Test expectation: none — this unit runs a harness; the
-metrics script carries its own tests per the earlier plan.`
+**Verification:** a dry run enumerates cells for both skill arms; the metric
+tests pass.
 
-**Verification:** cache-read median down ≥10% against the batch's own
-prior-run comparison where one exists; turns within ±2; no more than 2 of 11
-pairs to control; physical violations ≤3; always-loaded bytes ≤50KB measured
-directly from the files the run read; and `git diff --stat` for the branch
-touches nothing under `server/` except the test file U11 adds (R5).
+---
+
+### U16. Gate
+
+**Goal:** One batch answers whether the cut removed context without moving
+pages.
+
+**Target repo:** `print-skill-eval`
+
+**Requirements:** R1, R2, R3, R8, R9
+
+**Dependencies:** U11-U15, U17, U18, U19
+
+**Approach:** `--task-set wide --replicates 1`, pre-cut arm at `b7d20bf`,
+post-cut arm at the branch head, no-skill arm as tripwire. Read R3 per-turn
+so Tier 1's turn reduction cannot satisfy it. Read R9 first — it is the only
+number that can see the thing KTD2 risks. Read turn count for information:
+this plan removes prose the model does not act on, so turns should not move;
+if they do, something the model used was cut, and the class table in the
+Problem Frame says where to look.
+
+If R9 fails: revert Phase B (U12's rationale paragraphs, U13, U15's §1/§7),
+one more batch. If it still fails, the mechanical cuts are implicated and the
+inventory fixture is the next place to look.
+
+**Test scenarios:** `Test expectation: none — this unit runs the harness U19
+builds.`
+
+**Verification:** always-loaded bytes ≤56KB from the files the post-cut run
+read; `SKILL.md` ≤15.5KB; per-turn context down ≥30%; post-cut loses ≤7 of 13
+to pre-cut; ≤2 of 13 to control; physical violations ≤3; `git diff --stat`
+against `b7d20bf` touches nothing under `server/` except U17's changes and
+the new test file.
 
 ---
 
 ## Scope Boundaries
 
-**In scope:** the always-loaded instruction set — `SKILL.md`, the four
-references every run reads, the one theme and one type spec — and the
-on-demand references created to receive what moves out. One gate.
+**In scope:** everything a run can load — the always-loaded set, the on-demand
+references, one theme and one type spec — plus dead code and oversized
+surface in the server, plus the harness change that makes the gate honest.
 
 ### Deferred to Follow-Up Work
 
-- **Combining fit and contrast into one browser session.** Measured at ~1.7s
-  per assemble, ~8s per run, under 2%. Real, but not worth risk in this pass.
-- **`assembly.md` (11.8KB) and `harness-support.md` (8.2KB).** Genuinely
-  conditional — pointed at from four and three places respectively, none on
-  the first-generation path. Cutting them saves bytes only when they load.
-- **Consolidating the 31 type specs** into fewer files with shared
-  scaffolding. Only one loads per run, so the per-run saving beyond U15's
-  header removal is small; the maintenance case may still justify it.
-- **The ~7 pure-text turns after the last assemble.** Report-writing and
-  reasoning, unattributed. Step 8's report shape is compressed in U11, which
-  may move this; the gate's turn count will say.
-- **`chat-cli.mjs`'s 4949 default, registry hardening, and the other
-  residuals** recorded in the earlier plan's Known Residuals.
+- **Combining fit and contrast into one browser session.** ~8s of a 456s run.
+- **Consolidating the 31 type specs.** Only one loads per run; the
+  maintenance case may still justify it.
+- **The ~7 pure-text turns after the last assemble.** U11 compresses Step 8;
+  the gate's turn count will say whether that moved anything.
+- **`chat-cli.mjs`'s 4949 default and the registry hardening residuals** from
+  the earlier plan.
+- **`lintBlock` restructuring** if U17's survey finds it can shrink without a
+  behaviour change.
 
-**Not in scope:** any server code, any check's behaviour, what the skill
-produces, and the print-correctness rules themselves.
+**Not in scope:** any check's behaviour, what the skill produces, and the
+print-correctness rules themselves.
 
 ---
 
 ## Risks
 
-**Cutting the craft prose degrades pages.** The owner's explicit call, and
-the gate exists to see it. If R7 fails, U13 is the first suspect — III, IV, V
-and VII are the instructions most plausibly behind pages reading as composed.
-Restore their arguments before touching anything mechanical.
+**The rationale cut degrades pages.** KTD2 accepted this; KTD7 and KTD8 make
+it visible and attributable. If R9 fails, Phase B reverts first, in one
+batch. If R9 fails and Phase B was not the cause, R4's inventory is the next
+suspect — a rule lost in compression rather than rationale lost by design.
 
-**A rule is lost in compression.** R4's inventory test is the guard, and it
-has to be written *before* the cut from the current file, not after from
-memory. A phrase list is a weak proxy for a rule surviving; the reviewer
-reading the diff is the real check.
+**A threshold or procedure the model uses is cut as "explanation."** The
+traces already caught one — the squeeze floors — before this plan shipped.
+R5 pins the four that were found; there may be others. U11's implementer
+should grep the traces for any `SKILL.md` phrase they are about to delete.
 
-**A follow-up trigger is too terse to fire.** The follow-up paths ran in 0 of
-14 first-generation runs, so the gate will not exercise them. U11's
-test asserts the triggers exist; whether the model acts on them is untested
-here. If a user's edit request is met with a regeneration, this is why.
+**The pre-cut arm is real harness work.** U19 is in a sibling repo and touches
+config, runner and pairing. If it slips, the gate falls back to R8 alone and
+the plan must say so rather than pretend R8 measured craft.
 
-**Attribution at the gate is weak.** Three changes sit between the only
-baseline and this batch. The plan says so rather than pretending otherwise.
+**The gate's baseline is stale for turns and total tokens.** Tier 1 and
+main's fill fix sit between `d63693b2` and this batch. R3 is per-turn for
+that reason; total cache-read and turn count are read for information only.
+
+**Follow-up paths are unexercised by the gate.** First-generation batches
+cannot reach them. R7's triggers are asserted to exist, not to fire.
 
 ---
 
 ## Sources
 
-- The working tree at commit `b7d20bf` — byte counts, section budgets and
-  duplication findings are from reading these files directly:
-  `SKILL.md` (section budget via `awk` on `##`/`###` headings),
-  `references/design-rules.md`, `references/principles.md`,
-  `references/page-types.md`, `references/routing.md`,
-  `references/themes/README.md`, `references/themes/comic.md`,
-  `references/themes/theme-spec-template.md`, `references/types/*.md`.
-- `server/browser.mjs`, `server/fit-cli.mjs`, `server/contrast-cli.mjs`,
-  `server/render.mjs` — the launch and load path; timings measured on this
-  machine (launch ~120ms, fit 1.8s, contrast 1.7s).
-- Eval run `2026-09-03-001-d63693b2` — the 0-of-14 live-mode figure, the
-  batching-instruction failure, and the 15 direct `server.mjs` launches.
-- `docs/plans/2026-09-03-001-perf-print-skill-token-efficiency-plan.md` — the
-  prior plan; its U6 gate specification is reused by U16, and its Known
-  Residuals are carried forward under Deferred.
+- Working tree at `b7d20bf`, measured with `wc -c` and `awk` over headings:
+  `SKILL.md` (preamble 1,507, shadow-root passage 1,186, follow-up sections
+  12,258, interview 3,738, Step 3 fill 781, Step 6 fill 667, scope notes
+  953); `references/design-rules.md` (fill bullet 1,948, clip bullet 1,791,
+  rule 1 1,529, Part B 2,305); `references/themes/README.md` (mark tutorial
+  4,602); `references/themes/theme-spec-template.md` (token map 1,351);
+  theme specs 5,504 / 8,825 / 8,877 / 8,939 / 9,011; type header 383, median
+  spec 1,053.
+- `server/browser.mjs`, `fit-cli.mjs`, `contrast-cli.mjs` — launch ~120ms,
+  fit 1,804ms, contrast 1,701ms on this machine. `server.mjs` `--auto-port`
+  has no caller outside itself. `lint-cli.mjs` `USAGE` is 3,321 bytes.
+- Eval traces `2026-09-03-001-d63693b2` — squeeze floors used in 6 of 14
+  runs; Step 8 reminders verbatim 12 of 12; `data-mp-section` 14 of 14; the
+  sizing ledger by name; batching ignored 14 of 14; `server.mjs` launched
+  directly 15 times. `report.txt` — 13 of 14 pairs judged, 92%, control 60
+  physical violations vs skill 3. Seventeen later result directories share
+  the config hash and have no report; none is a usable baseline.
+- `docs/plans/2026-09-03-001-perf-print-skill-token-efficiency-plan.md` —
+  the prior plan; its U6 metrics specification is absorbed into U19.
