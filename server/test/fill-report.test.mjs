@@ -2,7 +2,10 @@
 // (never fails) below the underfill floors. Overflow already fails loudly, so
 // without this number the tooling's gradient only pushes pages shorter; the
 // fill line is the counter-signal (principles.md VII) and replaces the fill
-// measurements authors otherwise hand-roll.
+// measurements authors otherwise hand-roll. The warning is ONE line naming
+// the condition — it does not coach, because a check that prescribes a fix on
+// every pass buys a content rewrite on every pass; the remedy and the
+// one-pass bound live in design-rules.md.
 //
 // Two numbers, because height alone cannot see underfill: a page whose blocks
 // are spread apart with loose leading runs to the bottom margin and scores
@@ -59,7 +62,7 @@ test("a short sheet reports both numbers and warns on height", async (t) => {
   assert.match(r.stdout, /fits: 1 sheet, as authored/);
   const f = fill(r.stdout);
   assert.ok(f.height < 70, "expected a short page, got height " + f.height);
-  assert.match(r.stdout, /uses only \d+% of its height — underfill/);
+  assert.match(r.stdout, /underfill: the sheet stops short, at \d+% of its height/);
 });
 
 // The regression this pair exists for: same content, once packed and once
@@ -88,9 +91,10 @@ test("a stretched sheet reaches the bottom and is still caught", async (t) => {
   assert.ok(f.height >= 70,
     "the stretched page should reach the bottom, got height " + f.height);
   assert.ok(f.ink < 30, "expected a thinly covered page, got ink " + f.ink);
-  assert.doesNotMatch(r.stdout, /uses only \d+% of its height/);
-  assert.match(r.stdout, /covers only \d+% of it — underfill/);
-  assert.match(r.stdout, /Spacing is already carrying the height/);
+  assert.doesNotMatch(r.stdout, /stops short/);
+  assert.match(r.stdout, /underfill: the sheet is stretched — \d+% height on \d+% ink/);
+  // One line, no coaching: the remedy is the rule's job, not the check's.
+  assert.equal((r.stdout.match(/^underfill:/gm) || []).length, 1, r.stdout);
 });
 
 test("a genuinely full sheet gets both numbers and no warning", async (t) => {
@@ -122,7 +126,7 @@ test("a bordered wrapper around thin content does not read as full", async (t) =
   const f = fill(r.stdout);
   assert.ok(f.height >= 70, "the wrapper reaches the bottom, got height " + f.height);
   assert.ok(f.ink < 30, "the wrapper is not coverage, got ink " + f.ink);
-  assert.match(r.stdout, /covers only \d+% of it — underfill/);
+  assert.match(r.stdout, /underfill: the sheet is stretched — \d+% height on \d+% ink/);
 });
 
 // Functional blank areas are content, not emptiness: a week grid is full even
