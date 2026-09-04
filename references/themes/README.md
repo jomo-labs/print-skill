@@ -14,6 +14,9 @@ only what sits on top of them.
 |---|---|---|
 | Newspaper | `newspaper.md` | *(default — no triggers; it is the base layer, used whenever no style is named, which is not a themed request)* |
 | Comic | `comic.md` | "Dog Man", "comic book", "comic strip", "Captain Underpants", "kids comic" |
+| Sports | `sports.md` | "baseball", "basketball", "soccer", "football", "hockey", "World Cup", "little league", "varsity", "sports theme", "trading card", "stadium", "jersey" |
+| Arcade | `arcade.md` | "8-bit", "8 bit", "arcade", "pixel art", "video game", "retro game", "game console", "Minecraft", "Mario", "Zelda", "Pokemon" |
+| Field guide | `field-guide.md` | "field guide", "botanical", "naturalist", "nature journal", "herbarium", "specimen", "Audubon", "vintage science", "apothecary", "old encyclopedia" |
 
 **Matching is forgiving about punctuation and spacing**: compare trigger
 phrases and the request with everything lowercased and non-alphanumerics
@@ -22,6 +25,14 @@ stripped, so "dogman" = "Dog Man" = "dog-man".
 **A trigger must match whole words, not any substring** — "comic" matches "a
 comic-strip layout" but NOT "economic", so check for a word boundary either
 side. First match wins. Ignore trigger phrases shorter than 4 characters.
+
+**First match wins, scanning the index top to bottom** — not the earliest match
+in the request text. Row order is therefore load-bearing now that a request can
+plausibly hit two themes: "a baseball page in a Dog Man theme" matches Comic,
+because Comic sits above Sports. The order encodes specificity — a named
+property beats a genre, and a genre beats a period look — so a new theme goes
+in at the row where its triggers are more specific than everything below it and
+less specific than everything above.
 
 If a trigger matches → follow **Executing a matched spec**. If the request is
 themed but nothing matches ("in the style of Batman") → follow **Ad-hoc
