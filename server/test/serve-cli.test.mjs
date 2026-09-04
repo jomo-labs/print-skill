@@ -22,15 +22,20 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, "..", "serve-cli.mjs");
-const run = promisify(execFile);
+const execFileP = promisify(execFile);
 const LEGACY = Array.from({ length: 10 }, (_, i) => 4949 + i);
-// The same fixed path serve-cli.mjs hardcodes: there is no override for it,
-// so these registry-behavior tests reach into the real one rather than a
-// fixture. It is process-wide shared state (other invocations, including a
-// developer's own servers, read and write it too), so every test below that
-// touches its permissions restores them in t.after() before doing anything
-// else, and touches only the directory's own mode bit — never its contents.
-const REGISTRY = path.join(tmpdir(), "print-skill-servers");
+// serve-cli keeps its registry under os.tmpdir(), which honours TMPDIR — so
+// every CLI this file spawns gets a throwaway TMPDIR of its own. Without that,
+// these tests read and write the developer's REAL registry: shared with prior
+// runs, with other test files in a parallel suite, and with the developer's
+// own live servers. That shared state made the range-exhaustion test flake,
+// and the unwritable-registry test chmod'd the real directory read-only —
+// which a crash mid-test would have left that way.
+const ISOLATED_TMP = mkdtempSync(path.join(tmpdir(), "serve-cli-tmp-"));
+process.on("exit", () => rmSync(ISOLATED_TMP, { recursive: true, force: true }));
+const ENV = { ...process.env, TMPDIR: ISOLATED_TMP };
+const run = (bin, args, opts = {}) => execFileP(bin, args, { ...opts, env: ENV });
+const REGISTRY = path.join(ISOLATED_TMP, "print-skill-servers");
 
 async function project(prefix) {
   const dir = mkdtempSync(path.join(tmpdir(), prefix));
