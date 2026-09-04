@@ -127,7 +127,7 @@ test("nor does the squeeze, which shrinks the margin the inset derives from", as
     "much at all. Drivers who take it for the view stop at the second pullout.";
   const contentFile = path.join(dir, "content.html");
   await fs.writeFile(contentFile,
-    `<div data-mp-section="body">${`<p>${para}</p>`.repeat(22)}</div>`);
+    `<div data-mp-section="body">${`<p>${para}</p>`.repeat(19)}</div>`);
   const cssFile = path.join(dir, "overrides.css");
   await fs.writeFile(cssFile,
     ":root { --page-margin-top: 32px; --page-border: 3px solid var(--color-ink); }");

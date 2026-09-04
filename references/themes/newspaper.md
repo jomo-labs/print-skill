@@ -55,7 +55,7 @@ them is wrong. Platform invariants live in `design-rules.md`.
 | Token | Value | Role |
 |---|---|---|
 | `--leading-display` | 1.1 | h1, h2 |
-| `--leading-body` | 1.35 | body copy — newsprint leading, not web-article leading |
+| `--leading-body` | 1.65 | body copy — the base layer's value; a page type that reads as newsprint tightens it per page (see `types/news-digest.md`), the theme does not |
 | `--leading-label` | 1.4 | labels, kickers, headings in the label font |
 | `--tracking-display` | 0 | display type sets at normal tracking |
 | `--tracking-label` | 0.08em | section headings (h3) |
@@ -108,9 +108,9 @@ running content. Don't collapse them.
   carries it the whole way down. Height and ink are different questions —
   spacing buys the first without buying the second, so a page that runs to
   the bottom on air is underfilled, not composed (principles.md VII). Fit it
-  by writing more of what was asked for, or by scaling type and functional
-  blank areas up; never by opening the rhythm. The fit check reports both
-  numbers, and warns below 30% ink.
+  by writing to the space in the first draft; never by opening the rhythm.
+  The fit check reports both numbers and warns below 30% ink, and the
+  one-pass rule in `design-rules.md` applies: one adjustment, then ship.
 
 ## 5. Surface & Motifs
 

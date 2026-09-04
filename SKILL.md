@@ -209,9 +209,13 @@ exactly that, and a page that trips it is not finished.
 
 **Fill the sheet.** Fitting is half the job — unused paper prints anyway.
 Content that stops well short of the content box is not minimal, it is
-unfinished: make what is there roomier — larger type, wider spacing, bigger
-fillable areas — never filler (`references/design-rules.md`, "Empty,
-overflow, and underfill"). Blank space left intentionally for the user to
+unfinished. Win this in the ledger above: plan the content to land between
+70% and 95% of the content box, so the first assembly is the last. When it
+does land short, make what is there roomier — token scaling in `custom_css`
+first (type a step, spacing up), then bigger fillable areas — never filler,
+and never a content rewrite for a page that merely stops short
+(`references/design-rules.md`, "Empty, overflow, and underfill", which also
+sets the one-pass rule). Blank space left intentionally for the user to
 fill in — by pen on the printed page, or on screen — counts as filled; only
 purposeless emptiness is underfill.
 
@@ -277,6 +281,16 @@ Three outcomes:
   container and content together) — shorten the content or size the
   container for it. Fix your channels and re-run the Step 5 command; never
   hand-tune around the numbers the table already gives you.
+
+**The fill line** (`fill: N% height, N% ink`, per sheet) prints on every
+passing run, and below 70% height or 30% ink one `underfill:` line follows.
+It is a warning, and it gets **one fill pass at most**: adjust per
+`references/design-rules.md` ("Empty, overflow, and underfill" — token
+scaling for a page that stops short, content only for a stretched one),
+re-run the Step 5 command once, and ship what that reports, naming the fill
+numbers in your report. A page that is still under a floor after one pass is
+finished; do not rework it again, and never bounce it between a fill warning
+and an overflow failure — that trade is two full assemblies for no page.
 
 **The contrast check** (`contrast-cli.mjs`) verifies every piece of text
 clears its WCAG AA floor (4.5:1 body, 3:1 large or bold), measured at the
@@ -583,7 +597,7 @@ doesn't show a half-written file:
 5. **Check the fit** (`fit`, above). Your edit is the likeliest thing to have
    pushed the content off its sheets, and nothing will tell you if it did — or
    hollowed it out: if the sheet is now well under-used, rebalance in the same
-   pass (Step 3, "Fill the sheet").
+   pass (Step 3, "Fill the sheet"; the one-pass rule in Step 6 still applies).
 
 If the server has stopped, `selection` and `status` will say so. Restart it
 (Step 7, same `--dir`) and carry on; there is no session to re-establish.
