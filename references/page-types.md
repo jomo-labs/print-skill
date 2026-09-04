@@ -133,7 +133,7 @@ them:
 | Type scale | `--text-2xs` 9 · `--text-xs` 10.5 · `--text-body` 13.5 · `--text-md` 15.5 · `--text-lg` 19 · `--text-xl` 26 · `--text-2xl` 38 · `--text-3xl` 48 · `--text-4xl` 80 (px) |
 | Spacing | `--space-1..20`: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80 (px) |
 | Borders | `--border-fat` 5 · `--border-mid` 3 · `--border-thin` 1.5 · `--border-hair` 1 (px) |
-| Leading / tracking | `--leading-display` 1.1 · `--leading-body` 1.35 · `--leading-label` 1.4 · `--tracking-label` 0.08em · `--tracking-kicker` 0.32em · `--display-overhang` (the padding display type needs to keep its ink out of a container's clip — see design-rules.md) |
+| Leading / tracking | `--leading-display` 1.1 · `--leading-body` 1.65 · `--leading-label` 1.4 · `--tracking-label` 0.08em · `--tracking-kicker` 0.32em · `--display-overhang` (the padding display type needs to keep its ink out of a container's clip — see design-rules.md) |
 | Page margins | `--page-margin-top` 64 · `--page-margin-x` 72 · `--page-margin-bottom` 72 (px) |
 
 Already styled by the base layer (use as-is, don't restyle): **tables**

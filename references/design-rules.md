@@ -31,15 +31,24 @@ must not restate them and cannot opt out — it describes only what it changes.
   reaches the bottom margin while covering almost none of the sheet — which
   looks composed and is the harder one to see, because every measure of extent
   calls it full. The fit check reports both (`fill: N% height, N% ink`) and
-  warns below 70% height or 30% ink.
-  The remedies are not interchangeable. A page that stops short can be scaled
-  up: body type a step larger, wider spacing, bigger fillable areas (writing
-  lines, drawing frames, cells), or a roomier layout. A page that is stretched
-  has already spent its spacing — more of it makes the page emptier, not
-  fuller — so it needs more content, or larger functional blank areas. Never
-  filler content, either way. Blank space left intentionally for the user to
-  fill in — by pen or on screen — counts as filled; only purposeless emptiness
-  is underfill.
+  warns below 70% height or 30% ink — one line, naming the condition.
+  The remedies are not interchangeable, and they are ranked by cost. A page
+  that **stops short** is fixed in `custom_css` first: scale the type and
+  spacing tokens up in the `:root` block (`--text-*` a step, `--space-*` by
+  10–25%), or enlarge the functional blank areas (writing lines, drawing
+  frames, cells) — a token edit, not a content rewrite. A page that is
+  **stretched** has already spent its spacing — more of it makes the page
+  emptier, not fuller — so it needs more content, or larger functional blank
+  areas. Never filler content, either way. Blank space left intentionally for
+  the user to fill in — by pen or on screen — counts as filled; only
+  purposeless emptiness is underfill.
+  **One fill pass.** Underfill is a warning, not a failure, and it gets one
+  adjustment: make the change above, re-assemble once, and ship what that
+  reports — mention the fill numbers in the report and move on. Never a
+  second rework for fill, and never a rework that trades a fill warning for
+  an overflow and back: the sizing ledger (SKILL.md Step 3) is where fill is
+  won, and a page that lands within the floors on its first assembly costs
+  one round.
 - **Containers clip, they never overlap.** Structural containers (div,
   section, li's list, table cells, …) carry `overflow: clip` from the document
   stylesheet: on paper, content painted over a neighbouring block is never

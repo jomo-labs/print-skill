@@ -47,7 +47,13 @@ const LADDER = [[0.9, 1], [0.8, 1], [0.75, 1], [0.75, 0.96], [0.75, 0.92]];
 // rather than chosen: a packed single-column article and a week-grid chore
 // chart both land near 60, a two-column news page near 40, and the loosely
 // set pages this check exists to catch cluster in the low 20s — so 30
-// separates them with room on both sides.
+// separates them with room on both sides. (Ink is measured on em boxes, so
+// the document stylesheet's body leading does not move it.)
+//
+// Below a floor the report adds ONE short line naming the condition and
+// nothing else: the remedies live in design-rules.md, along with the rule
+// that bounds how many times a page is reworked for fill. A check that
+// coaches on every pass is a check that gets a rewrite on every pass.
 const HEIGHT_FLOOR = 70;
 const INK_FLOOR = 30;
 
@@ -261,7 +267,8 @@ try {
  *
  *  Measured on the page's current state, squeeze included. Warnings, never
  *  failures — a page can be sparse on purpose, but that must survive seeing
- *  the number. */
+ *  the number. The warning names the condition and points at the rule; it
+ *  does not prescribe the fix (see the floors above for why). */
 async function reportFill(page) {
   const fills = await page.evaluate(() => {
     // Coverage is accumulated into a coarse grid rather than a rect union:
@@ -379,17 +386,11 @@ async function reportFill(page) {
   for (const [i, f] of fills.entries()) {
     const sheet = fills.length === 1 ? "the sheet" : `sheet ${i + 1}`;
     if (f.height < HEIGHT_FLOOR) {
-      console.log(
-        `${sheet} uses only ${f.height}% of its height — underfill: the content stops ` +
-        "short of the bottom margin. Scale type, spacing, or the functional blank areas " +
-        "(writing lines, boxes) up so the page feels complete (principles.md VII), or " +
-        "leave it sparse as a deliberate choice.");
+      console.log(`underfill: ${sheet} stops short, at ${f.height}% of its height ` +
+        "(design-rules.md — one fill pass at most)");
     } else if (f.ink < INK_FLOOR) {
-      console.log(
-        `${sheet} runs to ${f.height}% of its height but covers only ${f.ink}% of it — ` +
-        "underfill: the page is stretched, not filled. Spacing is already carrying the " +
-        "height, so more of it will not help — add content, or widen the functional " +
-        "blank areas (principles.md VII), or leave it sparse as a deliberate choice.");
+      console.log(`underfill: ${sheet} is stretched — ${f.height}% height on ${f.ink}% ink ` +
+        "(design-rules.md — one fill pass at most)");
     }
   }
 }
