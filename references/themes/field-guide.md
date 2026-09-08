@@ -9,26 +9,10 @@ below.
 
 ## 1. Meta & Philosophy
 
-- **Principles specific to this theme:**
-  1. Every item is a specimen: it gets a number, a name, and a caption, in that
-     order, whether it is a bird, an ingredient or a chore.
-  2. The page is a plate from a book. Generous margins, a centered axis, and one
-     dominant illustration position — the layout of a lithographic plate, not of
-     a form.
-  3. Annotation over decoration. Ornament earns its place only as a rule, a
-     bracket, or a caption mark; nothing is added purely to fill space.
-  4. Old-book restraint reads as expensive. Two type sizes and a hairline rule
-     do more here than any flourish.
-- **Personality adjectives:** studied, patient, elegant, slightly antique,
-  curious.
-- **Voice & microcopy:** third person, descriptive, unhurried. Captions in the
-  present tense with a scientific-register aside ("Common in gardens; forages at
-  dusk."). Latinate binomials in italic where they are real — never invented.
-  Labels are nouns, not instructions: "Habitat", not "Write the habitat here".
-- **What makes it distinctive:** the only shipped theme with a centered
-  compositional axis and a caption system, and the only one that treats the
-  drawn mark as the page's subject rather than as chrome. Where Newspaper is
-  restrained and modern, Field guide is restrained and old.
+A vintage-naturalist plate: each item is a numbered specimen with name and
+caption, centered on a margin-rich axis. Third-person,
+unhurried; italic binomials are real, never invented. Restraint (two type
+sizes, one hairline rule) is the look.
 
 ## 2. Typography
 
@@ -160,17 +144,8 @@ characters and never justified.
 
 ## 7. Contrast evidence
 
-Measured against white paper, sRGB-clamped:
+`--color-moss` 7.21:1 (safe at `--text-2xs`, specimen numbers), `--color-rust`
+6.87:1, `--color-indigo` 7.74:1 — all safe at any size, white paper.
 
-- `--color-moss` `oklch(45% 0.075 140)` — **7.21:1**. Clears AA for body text
-  at any size; used at `--text-2xs` for specimen numbers without concern.
-- `--color-rust` `oklch(48% 0.120 45)` — **6.87:1**. Safe at any size.
-- `--color-indigo` `oklch(44% 0.090 250)` — **7.74:1**. Safe at any size.
-
-All three sit inside the sRGB gamut. All three are comfortably above the floor,
-which is why the rationing rule above is a design constraint rather than an
-accessibility one.
-
-Body type floor: **14.5px** (`--text-body` above), raised from the default
-because EB Garamond's small x-height makes 13.5px read a size smaller than the
-default serif does at the same nominal value.
+Body type floor: 14.5px (`--text-body` above) — EB Garamond's small x-height
+reads smaller than the default serif at 13.5px.

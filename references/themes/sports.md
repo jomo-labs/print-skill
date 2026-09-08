@@ -12,27 +12,11 @@ Platform invariants are in `design-rules.md`; only what Sports changes is below.
 
 ## 1. Meta & Philosophy
 
-- **Principles specific to this theme:**
-  1. The number is the subject. Whatever the page is counting — runs, goals,
-     minutes read, chores done — one figure per block gets the display size and
-     everything else defers to it.
-  2. Condensed type, wide field. Broadcast graphics buy their density from
-     narrow letterforms, not from small type; the page stays legible at arm's
-     length on a fridge.
-  3. Rules do the dividing. A scoreboard is ruled into cells, never boxed into
-     panels with fills — which is also the platform's no-fill rule, met exactly.
-  4. Every label is a stat abbreviation: short, uppercase, tracked out. "AB R H
-     RBI", not "At Bats, Runs, Hits".
-- **Personality adjectives:** athletic, tabular, decisive, high-contrast, loud
-  in the numbers and quiet everywhere else.
-- **Voice & microcopy:** present-tense and clipped, the register of a
-  broadcast lower-third. Team or player name first, then the fact ("BIANCHINIS
-  — 4th straight"). Superlatives only when the number supports them. No
-  exclamation points; the scale carries the emphasis.
-- **What makes it distinctive:** the only shipped theme built on condensed
-  display type and a hairline rule grid, and the only one that reserves
-  `--text-4xl` for a literal scoring figure. Where Comic is loud in its chrome,
-  Sports is loud in its data and nearly bare around it.
+Broadcast-scoreboard energy: one number per block is the subject and gets the
+display size; everything else is a tracked, uppercase stat abbreviation.
+Condensed type buys density at arm's-length fridge legibility; rules divide
+cells, never fills. Voice is present-tense and clipped — team or player name
+first, then the fact.
 
 ## 2. Typography
 
@@ -113,11 +97,8 @@ paragraph of recap sit on the same grid.
 | `--border-mid` | `2.5px` |
 | `--border-hair` | `0.75px` |
 
-- **Page chrome:** no frame, deliberately. The identity is carried by the
-  masthead rule and the stat grid; a border around a scoreboard reads as a
-  certificate. The lightened `--border-hair` is what makes a dense stat grid
-  hold together without turning gray — at 1px, twenty rules per page is a
-  visible tint.
+- **Page chrome:** no frame, deliberately — the identity is carried by the
+  masthead rule and the stat grid.
 - **Signature motifs:** `.kicker` for the matchup line; a **rail number** — the
   figure set in the display font at `--text-4xl`, sitting in a left column with
   a `--border-fat` rule in `--color-team` beside it; a **stat strip**, a single
@@ -156,17 +137,13 @@ paragraph of recap sit on the same grid.
 
 ## 7. Contrast evidence
 
-Measured against white paper (`--color-paper`), sRGB-clamped:
+Against white paper (`--color-paper`), sRGB-clamped:
 
-- `--color-team` `oklch(42% 0.120 250)` — **8.46:1**. Clears AA for body text;
-  safe at any size, including the `--text-2xs` kicker.
-- `--color-live` `oklch(50% 0.190 25)` — **6.63:1**. Safe at any size; rationed
-  by the rule above, not by contrast.
-- `--color-turf` `oklch(48% 0.110 150)` — **6.21:1**. Safe at any size.
-
-All three sit inside the sRGB gamut, so a browser renders the stated value
-rather than a clamped approximation of it.
+- `--color-team` — 8.46:1, safe at any size, including the `--text-2xs`
+  kicker.
+- `--color-live` — 6.63:1 and `--color-turf` — 6.21:1, both safe at any size;
+  live is rationed by the rule above, not by contrast.
 
 Body type floor: the default. This theme is not kids-first and does not raise
-it — but when the request is a kids' team (little league, a school roster),
-take the 16px floor from `comic.md` and say so on the page's own terms.
+it — but for a kids' team (little league, a school roster), take the 16px
+floor from `comic.md` and say so on the page's own terms.

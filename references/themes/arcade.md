@@ -8,26 +8,9 @@ Platform invariants are in `design-rules.md`; only what Arcade changes is below.
 
 ## 1. Meta & Philosophy
 
-- **Principles specific to this theme:**
-  1. Everything is on a grid of squares. Cells, checkboxes, dividers and marks
-     all resolve to whole multiples of an 8px unit — the page should look like
-     it was laid out on graph paper, because it was.
-  2. Scarcity is the mood. An arcade screen shows a score, a level and three
-     lives; it does not show a paragraph. Cut copy until each block is a label
-     and a value.
-  3. Chrome is diegetic. Section headings are LEVEL 1, a completed row is
-     CLEARED, an empty state is INSERT COIN. The page is the interface.
-  4. The pixel font is a sign, not a voice. It sets headings and values and
-     nothing longer than four words.
-- **Personality adjectives:** blocky, cheerful, systematic, low-fi, a little
-  deadpan.
-- **Voice & microcopy:** uppercase, short, no articles — "PLAYER 1", "STAGE
-  CLEAR", "NEW HIGH SCORE". Body prose, where a page needs it, drops back to
-  ordinary sentences in the body face; do not write paragraphs in caps.
-- **What makes it distinctive:** the only shipped theme on a monospaced stack
-  end to end, and the only one whose display face is metrically enormous — its
-  scale steps run *down* from the default rather than up, which is stated in
-  section 2 because it inverts the usual instinct.
+Blocky, low-fi arcade-HUD energy: an 8px grid, labels-and-values copy
+("PLAYER 1", "STAGE CLEAR"), diegetic chrome (LEVEL headings, CLEARED rows,
+INSERT COIN). The pixel face sets only short labels, never prose.
 
 ## 2. Typography
 
@@ -167,19 +150,14 @@ multiple of 8px on both axes and at least 32px tall.
 
 ## 7. Contrast evidence
 
-Measured against white paper, sRGB-clamped:
+Against white paper, sRGB-clamped:
 
-- `--color-magenta` `oklch(52% 0.218 350)` — **6.22:1**. Clears AA for body
-  text; safe at the `--text-2xs` 10px floor.
-- `--color-cyan` `oklch(50% 0.091 220)` — **5.82:1**. Safe at any size. Note
-  this is a *dark* cyan on purpose: an arcade-bright cyan lands near 1.6:1 and
-  is unusable on paper, so the theme takes the hue and gives up the brightness.
-- `--color-coin` `oklch(55% 0.120 70)` — **4.98:1**. Safe at any size; the
-  closest of the three to the floor, so it stays on marks and figures rather
-  than carrying a sentence.
+- `--color-magenta` — 6.22:1, safe for body text and at the `--text-2xs`
+  10px floor.
+- `--color-cyan` — 5.82:1, safe at any size; kept dark on purpose (bright cyan
+  lands near 1.6:1, unusable on paper).
+- `--color-coin` — 4.98:1, closest to the floor — stays on marks and figures
+  rather than carrying a sentence.
 
-All three sit inside the sRGB gamut.
-
-Body type floor: **14px** (`--text-body` above), raised from the default
-because monospace at 13.5px reads smaller than a serif at the same size. Kids'
-content in this theme takes 16px.
+Body type floor: 14px (`--text-body` above). Kids' content in this theme
+takes 16px.

@@ -7,22 +7,11 @@ them is wrong. Platform invariants live in `design-rules.md`.
 
 ## 1. Meta & Philosophy
 
-- **Principles specific to this theme:**
-  1. A page is a publication, not a document — masthead, kicker, byline
-     conventions apply even to a chore chart.
-  2. Restraint is the aesthetic. The look comes from proportion and rule
-     weight, not decoration.
-  3. Every element earns its place in the hierarchy before it earns a visual
-     treatment.
-- **Personality adjectives:** editorial, restrained, considered, timeless,
-  quietly confident.
-- **Voice & microcopy:** third-person, declarative sentences. Section kickers
-  in small caps ("TODAY'S AGENDA", not "Your Agenda!"). No exclamation points,
-  no emoji. Bylines and datelines where the content calls for them (e.g.
-  "Tuesday, June 17" under a masthead).
-- **What makes it distinctive:** zero chrome flourish — no frame, no required
-  motif. Its identity is typography (Playfair Display + Source Serif 4) and
-  rule-based hierarchy, not a visual gimmick.
+A publication, not a document: masthead, kicker and byline conventions apply
+even to a chore chart. Restraint is the aesthetic — proportion and rule weight
+carry it, not decoration or chrome (no frame, no required motif). Voice is
+third-person and declarative, no exclamation points, no emoji; section kickers
+run in small caps ("TODAY'S AGENDA", not "Your Agenda!").
 
 ## 2. Typography
 
@@ -49,21 +38,21 @@ them is wrong. Platform invariants live in `design-rules.md`.
 | `--text-lg` | 19px | sub-headings |
 | `--text-xl` | 26px | h2 |
 | `--text-2xl` | 38px | h1 |
-| `--text-3xl` | 48px | score numbers; unused by prose defaults |
-| `--text-4xl` | 80px | hero display; unused by Newspaper |
+| `--text-3xl` | 48px | score numbers |
+| `--text-4xl` | 80px | hero display, unused here |
 
 | Token | Value | Role |
 |---|---|---|
 | `--leading-display` | 1.1 | h1, h2 |
-| `--leading-body` | 1.65 | body copy — the base layer's value; a page type that reads as newsprint tightens it per page (see `types/news-digest.md`), the theme does not |
+| `--leading-body` | 1.65 | body copy, unchanged; `types/news-digest.md` tightens it per page, not the theme |
 | `--leading-label` | 1.4 | labels, kickers, headings in the label font |
 | `--tracking-display` | 0 | display type sets at normal tracking |
 | `--tracking-label` | 0.08em | section headings (h3) |
 | `--tracking-kicker` | 0.32em | `.kicker` and uppercase metadata rows |
 
-`.kicker` and `h3` are different roles: the wide-set (0.32em) uppercase label
-that opens a masthead or section, versus a tighter-set (0.08em) heading inside
-running content. Don't collapse them.
+`.kicker` (wide-set, 0.32em, opens a masthead or section) and `h3` (tighter,
+0.08em, a heading inside running content) are different roles — don't
+collapse them.
 
 ## 3. Color
 
@@ -79,9 +68,8 @@ running content. Don't collapse them.
 | `--color-rule-light` | `oklch(83% 0.005 78)` |
 | `--color-pull-bg` | `oklch(94% 0.009 78)` |
 
-- **Accent:** `--color-accent` `oklch(52% 0.150 78)` (warm amber). One accent
-  only; a theme wanting a tinted surface retunes `--color-pull-bg` and uses
-  `.tint`.
+- **Accent:** `--color-accent` `oklch(52% 0.150 78)`. One accent only; a theme
+  wanting a tinted surface retunes `--color-pull-bg` and uses `.tint`.
 - **Rationing rule:** accent appears in kickers, pull-rules, star performers,
   score highlights, and the dateline only — never as a background.
 - **Semantic role mapping:** winner/star values in ink at full weight;
@@ -89,21 +77,20 @@ running content. Don't collapse them.
   `--color-ghost`; section headings and kickers in `--color-mid`; dateline in
   `--color-accent`; table header rows inverted ink-on-paper; alternating table
   rows tinted `--color-pull-bg`.
-- **Light/dark:** Newspaper ships light-on-white only, and `--color-paper` is
-  locked white platform-wide. An inverted band is available as `.invert` for
-  small mastheads and headers, not as a page treatment.
+- **Light/dark:** light-on-white only (`--color-paper` is locked white
+  platform-wide). `.invert` gives a small inverted band — mastheads/headers
+  only, never a page treatment.
 
 ## 4. Spacing & Density
 
 - `--space-1` … `--space-20` on a 4px base unit: 4, 8, 12, 16, 20, 24, 32, 40,
   48, 64, 80px. Newspaper uses the defaults unchanged.
-- Page margin: the default `--page-margin-top` 64px / `--page-margin-x` 72px /
-  `--page-margin-bottom` 72px, i.e. a ~672x920px content box on letter
-  portrait (~879px of height usable after the shell's footer).
+- Page margin: defaults unchanged (`--page-margin-top` 64px /
+  `--page-margin-x` 72px / `--page-margin-bottom` 72px; resulting content box
+  in `design-rules.md`).
 - Section rhythm: close-set — sections are separated by a rule plus
-  `--space-4`-`--space-6` of vertical space. Newspaper's restraint lives in
-  rule weight and type, **not** in empty space: the form being evoked is a
-  dense one, and a broadsheet reads as a broadsheet because it is crowded.
+  `--space-4`-`--space-6` of vertical space. Restraint lives in rule weight and
+  type, **not** in empty space.
 - Density expectation: the sheet carries content to the bottom margin, and
   carries it the whole way down. Height and ink are different questions —
   spacing buys the first without buying the second, so a page that runs to
@@ -124,17 +111,12 @@ running content. Don't collapse them.
 | `--page-frame-inset` | 48px (0.5in) on every edge — derived from the page margin; the shell floors what it paints at 24px (0.25in), so neither a theme override nor a fit squeeze can put the frame in the unprintable edge |
 | `--image-filter` | `grayscale(100%)` |
 
-- **Page chrome:** no border. Newspaper's sheet carries no frame onto paper —
-  the restraint is the point.
-- **Signature motifs:** none required. The shared opt-in utilities
-  (`.tilt` / `.tilt-right` at `--tilt-angle` -0.6deg / 1.5deg, `.badge`,
-  `.chapter-label`, `.halftone`) exist in the base layer for any theme to use,
-  and Newspaper applies none of them by default. It reads as itself with zero
-  motifs.
+- **Page chrome:** no border — the sheet carries no frame onto paper.
+- **Signature motifs:** none required. Shared opt-in utilities (`.tilt` /
+  `.tilt-right` at `--tilt-angle` -0.6deg / 1.5deg, `.badge`, `.chapter-label`,
+  `.halftone`) exist for any theme; Newspaper uses none by default.
 - **Marks and imagery:** no icon system — a small mark (checkbox, divider) is a
-  styled `<span>` or a hairline rule. Images run grayscale (`--image-filter`):
-  an editorial page is ink on paper, and color halftones dither on a home
-  printer.
+  styled `<span>` or a hairline rule. Images run grayscale (`--image-filter`).
 
 ## 6. Components & Patterns
 
@@ -145,14 +127,14 @@ Signature blocks:
 - **Kicker** (`.kicker`) — `--text-2xs`, uppercase, `--tracking-kicker`, in
   `--color-mid`.
 - **Dateline** (`.dateline`) — `--text-2xs` in `--color-accent`, under the
-  masthead. The one place accent carries small text.
+  masthead.
 - **Pull-quote** — `--color-pull-bg` tint via `.tint`, or a
   `--border-mid` accent stripe (`blockquote`'s default: mid-weight left rule,
   italic, `--color-mid`).
 - **Table** — label font at `--text-xs`, tabular figures; header row inverted
   at `--text-2xs` uppercase; `--border-hair` row rules; even rows tinted
-  `--color-pull-bg`. Both fills ship by default and a theme may override them
-  with its own `th` / `td` rules.
+  `--color-pull-bg`. A theme may override either with its own `th` / `td`
+  rules.
 - **Score box** (`.score-box`) — `--border-thin` accent frame, score at
   `--text-3xl` in the display font with tabular figures, team label at
   `--text-xs` in the label font.
@@ -166,11 +148,8 @@ Empty, overflow, and underfill behavior: the baseline's, unchanged.
 
 ## 7. Contrast evidence
 
-- `--color-ink` `oklch(11% 0.005 78)` on white measures well above the 4.5:1
-  body floor.
-- `--color-accent` `oklch(52% 0.150 78)` on white clears the 3:1 large/bold
-  floor. `.dateline` at `--text-2xs` is an accepted exception — redundant
-  metadata, never the page's payload.
+- `--color-ink` clears the 4.5:1 body floor easily.
+- `--color-accent` clears the 3:1 large/bold floor. `.dateline` at
+  `--text-2xs` is an accepted exception — redundant metadata, never the
+  page's payload.
 - Body type floor: 13.5px adult, 16px+ for kids' content.
-- Screen-legibility: no concerns — Source Serif 4 and Inter are both designed
-  for screen and print at these sizes.
