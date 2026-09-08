@@ -40,8 +40,8 @@ foreground commands. It decided whether you could hold a listen loop open, and
 live editing depended on the answer.
 
 Nothing listens any more. The page records what the user selected; you read it
-with one short command at the moment a request needs a target (SKILL.md's "Live
-mode"). That is a single shell call that starts and finishes inside one turn, so
+with one short command at the moment a request needs a target
+(`references/follow-up.md`, "Live mode"). That is a single shell call that starts and finishes inside one turn, so
 it works identically on every harness that can run a command at all — no
 background task, no stream, no watcher to arm, nothing left running between
 turns, and nothing for a harness to be capable or incapable of.
