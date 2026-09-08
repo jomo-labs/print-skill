@@ -34,21 +34,11 @@ yes, and there is nothing further to check.
 
 ## Why there is nothing further to check
 
-There used to be a capability ladder here: whether your harness could stream a
-command's output, or run one in the background and wake you, or only run
-foreground commands. It decided whether you could hold a listen loop open, and
-live editing depended on the answer.
-
-Nothing listens any more. The page records what the user selected; you read it
-with one short command at the moment a request needs a target
-(`references/follow-up.md`, "Live mode"). That is a single shell call that starts and finishes inside one turn, so
-it works identically on every harness that can run a command at all — no
-background task, no stream, no watcher to arm, nothing left running between
-turns, and nothing for a harness to be capable or incapable of.
-
-The ladder was also the source of the worst failures this skill had: agents that
-armed six overlapping watchers, re-armed them on every event, and buried the
-user in notifications about the machinery. A read is not capable of that.
+Nothing listens. The page records what the user selected; read it with one
+short command at the moment a request needs a target
+(`references/follow-up.md`, "Live mode"). That single shell call starts and
+finishes inside one turn, so it works identically on every harness that can
+run a command at all — no background task, no stream, no watcher to arm.
 
 ---
 

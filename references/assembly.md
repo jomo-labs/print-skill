@@ -4,18 +4,12 @@ The mechanical procedure that turns your authored channels into the final HTML
 file. Read this when you're ready to assemble (after the self-check in
 `design-rules.md` passes). Every step is anchor-exact — follow it literally.
 
-The document template (`assets/page_template.html`) is the page skeleton — a
-pure document with no chrome markup, whose styles
-(`assets/shell/document.css`) are inlined at assembly so the generated file
-is fully self-contained. The chrome (`assets/shell/chrome.css`,
-`assets/shell/chrome-host.css`, `assets/shell/shell.js` — toolbar,
-edit mode, the live connection to the model) is injected
-by the local server at serve time, never baked into the page. It renders
-inside its own shadow root, so the two never collide: your `custom_css` cannot
-restyle the chrome, and the chrome adds nothing to the document beyond room
-for the toolbar. You never author or retype any of
-these files — **produce the copy with the commands below, then make targeted
-insertions at the anchors.**
+The document template (`assets/page_template.html`) and the shell chrome it
+links (`assets/shell/`) are never authored or retyped — **produce the copy
+with the commands below, then make targeted insertions at the anchors.** The
+chrome is injected by the local server at serve time, never baked into the
+generated file — "Verification" below is what confirms none of it leaked
+into the page.
 
 ## Run it as one command
 
@@ -82,13 +76,9 @@ replaced with a single hyphen, leading/trailing hyphens trimmed, plus `.html`
 
 The generated page is a **pure, self-contained document**: its styles
 (tokens, page geometry, print rules) are inlined, and it contains no chrome
-markup, no scripts, and no references to any sidecar file. Opened directly it
-is a plain printable HTML page that can be moved or mailed on its own; the
-local server wraps it at serve time by injecting the chrome (`chrome.css` +
-`chrome-host.css` + `shell.js` — toolbar, edit mode, live connection)
-from the skill's own assets — always current, so chrome updates apply
-automatically to already-generated pages. The chrome lives in a shadow root of
-its own: whatever the page's CSS does, the chrome looks the same.
+markup, no scripts, and no references to any sidecar file — opened directly
+it is a plain printable HTML page that prints correctly on its own, and can
+be moved or mailed as one file.
 
 All insertions below are edits to this copy. Insertion order matters: steps 2 → 3
 → 4 all anchor on the literal `<style id="content-overrides"></style>` tag, and
@@ -207,10 +197,8 @@ e.g. `@page { size: A4 landscape; margin: 0; }`. Both attributes set →
 `<body data-mp-paper="a4" data-mp-orientation="landscape">`.
 Neither set → leave the body tag untouched.
 
-There is deliberately no live-edit attribute. Whether the page can reach a
-model is not a property of the document — it is whether the page is being
-served (see `references/harness-support.md` Part 1), which the chrome reads at load
-from its own origin.
+There is deliberately no live-edit attribute: reachability is runtime state,
+not stored in the document (`references/harness-support.md` Part 1).
 
 ### 6. Content
 

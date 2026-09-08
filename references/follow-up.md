@@ -27,7 +27,7 @@ what a bounded squeeze could absorb) or a text style fails its contrast
 floor, so a pipeline can stop on an accidental page break instead of
 shipping it. (An open page checks the same
 thing continuously, and in live mode offers the user a FIX button that sends
-you a `kind: "fit"` event — see "A fit problem arrives".)
+you a `kind: "fit"` event — see "A page that stops fitting".)
 
 Both need Node 18+ and the Step 0 `npm install`. There is no dialog fallback
 without a human: if Node is unavailable, report the HTML path and say the PDF
@@ -76,7 +76,7 @@ couple of seconds of the file changing on disk (the shell polls the server's
 ETag) — after an edit, tell the user the open page has updated; don't ask
 them to refresh. In a live session the refresh is exact rather than
 merely quick: bracketing the edit with `status working` / `status done` (see
-"Handling a message") holds the preview across your writes and refreshes it
+"Editing the page") holds the preview across your writes and refreshes it
 the moment you report done.
 
 Sync runs the other way too: text edits the user makes in the browser are
