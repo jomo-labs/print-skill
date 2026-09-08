@@ -42,32 +42,30 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isGoogleFontsUrl, takeValue } from "./lib.mjs";
 
-const USAGE = `usage: node lint-cli.mjs [--css <overrides.css>] [--content <content.html>]
-                         [--font-import <url>] [--page <assembled.html>] [--help]
+const USAGE = `usage: node lint-cli.mjs [--css <file>] [--content <file>]
+                         [--font-import <url>] [--page <file>] [--help]
 
 Runs the Part B checks from references/design-rules.md over the AUTHORED
-channels. Never point --css at an assembled page: the shell's own stylesheet
-breaks half of these by design. Use --page for that.
+channels. Never point --css at an assembled page — use --page for that.
 
-  --css <file>         the authored custom_css channel. Optional — a page with
-                       no custom_css lints clean.
-  --content <file>     the authored content_html channel; its inline style
-                       attributes — quoted or unquoted — are linted under the
-                       same rules (item 7), and an HTML character reference
-                       inside one is itself a violation, since the browser
-                       decodes it before CSS sees the value.
-  --font-import <url>  the authored font_import channel (item 8).
-  --page <file>        an ASSEMBLED page edited in place. Lints only the body of
-                       <style id="content-overrides">, the content inside
-                       <div class="page">, and the stylesheet <link> hrefs
-                       (item 8, still a warning); the shell's inlined
-                       document.css is ignored. Lines are page-absolute. A page
-                       with no content-overrides block is a clean page, not an
-                       error. Cannot be combined with --css or --content.
-  --help               print this and exit 0.
+  --css <file>          the authored custom_css channel. Optional.
+  --content <file>      the authored content_html channel; inline style
+                        attributes are linted too (item 7).
+  --font-import <url>   the authored font_import channel (item 8).
+  --page <file>         an ASSEMBLED page edited in place. Lints only the
+                        content-overrides block and <div class="page">.
+                        Cannot combine with --css or --content.
+  --help                print this and exit 0.
+
+Checks: (1) no markup breakout or remote load (2) no backslashes (3) paper
+stays white (4) backgrounds from the allowlist only, no filter /
+backdrop-filter / mix-blend-mode, no inset shadow (5) shadows are print-flat
+(6) no literal colors outside :root (7) no character references in a style
+attribute (8) font_import is a plain fonts.googleapis.com URL (9) display
+type keeps its clearance
 
 Every violation is reported in one pass with its line and the offending
-declaration, so one fix round closes all of them.
+declaration.
 Exit: 0 clean · 1 violations · 2 bad usage`;
 
 const argv = process.argv.slice(2);

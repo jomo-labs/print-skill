@@ -53,21 +53,19 @@
 // browser involved — for automated pipelines (see render-cli.mjs for the
 // one-shot variant that needs no running server).
 //
-// Usage: node server.mjs [--dir <pages-dir>] [--port <port>] [--auto-port]
+// Usage: node server.mjs [--dir <pages-dir>] [--port <port>]
 // --dir: the project's out/ — an absolute path is safest, since a shell that
 // ran `npm install` in <skill-dir>/server is still sitting there. Omitted or
 // pointed at a project root, the out/ inside it is used; pointed anywhere
 // inside the skill's own install, the server refuses to start rather than
 // serve a tree with none of the project's pages in it (see resolveServeDir).
-// --auto-port: if the port is taken (e.g. another project's print-skill
-// server), walk upward to the next free one instead of failing.
 import http from "node:http";
 import { promises as fs, realpathSync, statSync, readdirSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderPdf, closeBrowser } from "./render.mjs";
-import { slugify, takeFlag, takeValue, realOrSelf } from "./lib.mjs";
+import { slugify, takeValue, realOrSelf } from "./lib.mjs";
 import {
   createLiveLog, postMessage, readMessages,
   setSelection, getSelections, setFit, getFits,
@@ -324,10 +322,8 @@ export function resolveServeDir(dirArg, cwd = process.cwd()) {
 /**
  * Start the pages server. Returns { server, port, url, close } once listening.
  * port 0 picks an ephemeral port (used by render-cli.mjs for one-shot renders).
- * autoPort: on EADDRINUSE, walk up from `port` (up to +10) instead of failing —
- * lets a second project run its own server while another project's holds 4949.
  */
-export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "127.0.0.1", autoPort = false } = {}) {
+export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "127.0.0.1" } = {}) {
   const ROOT = path.resolve(dir);
   // This server's own live-channel log — one for every page it serves, not
   // one per page: see createLiveLog() for why.
@@ -661,29 +657,18 @@ export function startServer({ dir = process.cwd(), port = DEFAULT_PORT, host = "
   });
 
   return new Promise((resolve, reject) => {
-    let attempt = port;
-    const tryListen = () => {
-      server.once("error", (e) => {
-        if (autoPort && e.code === "EADDRINUSE" && attempt - port < 10) {
-          attempt++;
-          tryListen();
-        } else {
-          reject(e);
-        }
+    server.once("error", reject);
+    // Local tool: bind loopback only, never an external interface.
+    server.listen(port, host, () => {
+      const bound = server.address().port;
+      baseUrl = `http://${host}:${bound}`;
+      resolve({
+        server,
+        port: bound,
+        url: baseUrl,
+        close: () => new Promise((r) => server.close(r)),
       });
-      // Local tool: bind loopback only, never an external interface.
-      server.listen(attempt, host, () => {
-        const bound = server.address().port;
-        baseUrl = `http://${host}:${bound}`;
-        resolve({
-          server,
-          port: bound,
-          url: baseUrl,
-          close: () => new Promise((r) => server.close(r)),
-        });
-      });
-    };
-    tryListen();
+    });
   });
 }
 
@@ -714,7 +699,6 @@ if (isMain) {
   const { url, close } = await startServer({
     dir: root,
     port: Number(portArg),
-    autoPort: takeFlag(args, "--auto-port") === true,
   });
   console.log(`print-skill server: ${url}  (serving ${root})`);
   // Addressed to the agent that just started this process. There is nothing

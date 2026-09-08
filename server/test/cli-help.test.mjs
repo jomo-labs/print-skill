@@ -124,6 +124,13 @@ test("SKILL.md defines <skill-dir> absolutely, in Step 0, and only there", async
   }
 });
 
+test("lint-cli.mjs --help stays small: every byte enters the model's context", async () => {
+  const r = await run([cliPath("lint-cli.mjs"), "--help"]);
+  assert.equal(r.code, 0);
+  assert.ok(Buffer.byteLength(r.stdout) <= 1500,
+    `lint-cli.mjs --help is ${Buffer.byteLength(r.stdout)} bytes, over the 1,500 budget`);
+});
+
 test("bad usage is still an exit 2 with the usage text on stderr", async () => {
   // --help is an addition, not a loosening: an unknown flag must still fail.
   const bad = await run([cliPath("assemble-cli.mjs"), "--nope"]);
