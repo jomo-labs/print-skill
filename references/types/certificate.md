@@ -1,11 +1,5 @@
 # Certificate / award
 
-Part of the print skill's page-type catalog. `references/routing.md` holds
-the routing table; `references/page-types.md` holds the shared **content
-blocks** this spec names (section block, checklist block, lined writing
-area, …), the sheet geometry, and the theming rule: on a themed request, *Default styling*
-below is dropped entirely and only *Functional requirements* survive.
-
 **Landscape** — set `orientation` to `landscape`. The page prints on a letter
 sheet in landscape: 1056×816px, with a content box roughly **912px wide × 680px
 tall**. The shell's footer sits *inside* that box and takes 41px, so content has

@@ -1,11 +1,5 @@
 # Monthly calendar
 
-Part of the print skill's page-type catalog. `references/routing.md` holds
-the routing table; `references/page-types.md` holds the shared **content
-blocks** this spec names (section block, checklist block, lined writing
-area, …), the sheet geometry, and the theming rule: on a themed request, *Default styling*
-below is dropped entirely and only *Functional requirements* survive.
-
 Classic month grid, 7 columns × 5–6 rows. **Landscape** for writing room;
 portrait for a wall look.
 

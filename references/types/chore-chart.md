@@ -1,11 +1,5 @@
 # Chore chart / habit tracker
 
-Part of the print skill's page-type catalog. `references/routing.md` holds
-the routing table; `references/page-types.md` holds the shared **content
-blocks** this spec names (section block, checklist block, lined writing
-area, …), the sheet geometry, and the theming rule: on a themed request, *Default styling*
-below is dropped entirely and only *Functional requirements* survive.
-
 Task rows × day/date columns, with checkboxes at intersections. **Landscape**
 (many columns). Header names the person/family and time period.
 
