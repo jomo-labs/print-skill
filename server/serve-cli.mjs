@@ -312,6 +312,12 @@ async function startOn(port) {
   return null;
 }
 
+// Keep the event loop alive across the async work below. Nothing else does:
+// probe sockets are transient and the child is unref()'d, so a moment with no
+// pending handle lets Node exit 13 ("unfinished top-level await") before the
+// URL is ever printed — seen roughly one full-suite run in three on a loaded
+// machine, with empty stderr.
+const keepAlive = setInterval(() => {}, 1 << 30);
 const { health, known } = await survey();
 let port = findOurs(health);
 
@@ -365,3 +371,4 @@ if (port === null) {
 }
 console.log(`http://127.0.0.1:${port}`);
 console.log(`serving ${root}`);
+clearInterval(keepAlive);
