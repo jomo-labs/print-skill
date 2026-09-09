@@ -100,18 +100,20 @@ its ink out of a container's clip (see design-rules.md).
 
 ### The newsprint scale
 
-A named, denser variant of the type scale, for page types that set prose in
-columns and read as a publication rather than a document. A type opts in by
+A named variant of the type scale for page types that set prose in columns
+and read as a publication rather than a document: tighter leading and smaller
+display steps, body copy unchanged at the 13.5px floor. A type opts in by
 naming it in its *Default styling*; it is written as a `:root` override in
 `custom_css`:
 
     --leading-body: 1.4;
-    --text-body: 11.5px; --text-md: 13px;
     --text-lg: 16px;     --text-xl: 22px;
     --text-2xl: 32px;    --text-3xl: 41px;
 
-**Only the prose and display steps move.** `--text-2xs` (9px) and `--text-xs`
-(10.5px) stay at their base values: those are the label-font steps — table
+**Only the display steps and leading move.** `--text-body` (13.5px) and
+`--text-md` (15.5px) stay at base — 13.5px is the adult body floor in
+`design-rules.md` and this scale does not go under it. `--text-2xs` (9px) and
+`--text-xs` (10.5px) stay at their base values too: those are the label-font steps — table
 text, table headers, datelines, the footer — and `design-rules.md` floors that
 role at 9–10.5px, so they have no slack to give. Shrinking them puts table
 text under 8.7px once the fit squeeze lands, below the range the design system
