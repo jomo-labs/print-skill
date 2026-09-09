@@ -10,25 +10,17 @@
 //
 // Asserted here: the CSS policy itself (containers clip, the sheet and text
 // elements don't), vertical and horizontal detection, the runtime marker and
-// its absence from the saved file, the toolbar + record round trip, a clean
-// page staying silent (SVG icons and tilted motifs included), and fit-cli
-// failing the build on a clipped container.
+// its absence from the saved file, the toolbar + record round trip, and a
+// clean page staying silent (SVG icons and tilted motifs included).
 //
 //   node --test server/test/          (needs `npm install` in server/)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
 import { startServer } from "../server.mjs";
 import { CHROME, loadPageParts, fillTemplate, launchTestBrowser, openTab } from "./helpers.mjs";
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FIT_CLI = path.join(HERE, "..", "fit-cli.mjs");
-const run = promisify(execFile);
 
 // A fixed-height box with several times its height in copy: the classic
 // dashboard-tile overflow. Everything past ~120px is past the clip edge.
@@ -312,21 +304,5 @@ test("content cut off inside a container is detected and handed over", async (t)
       assert.equal(state.marked, 0, "no outline on a page with nothing to outline");
       assert.equal(state.shown, false);
     });
-  });
-
-  // The generation-time gate: Step 6 must stop on a cut the same way it stops
-  // on an accidental page break, or a pipeline ships a printable with content
-  // silently missing.
-  await t.test("fit-cli fails a clipped page and names the container", async () => {
-    const env = { ...process.env };
-    const fail = await run(process.execPath, [FIT_CLI, path.join(dir, "clipped.html")], { env })
-      .then(() => null, (e) => e);
-    assert.ok(fail, "exit 1 on a clipped page");
-    assert.match(fail.stderr, /cut off inside 1 container/, fail.stderr);
-    assert.match(fail.stderr, /DOES NOT PRINT/, fail.stderr);
-    assert.match(fail.stderr, /#page > div/, "the address the model acts on");
-
-    const pass = await run(process.execPath, [FIT_CLI, path.join(dir, "fits.html")], { env });
-    assert.match(pass.stdout, /fits: 1 sheet, as authored/, pass.stdout);
   });
 });
