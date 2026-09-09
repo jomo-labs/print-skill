@@ -58,7 +58,8 @@ Each type's full spec — functional requirements and default styling — lives
 in its own file under `types/`. **Read only the matched type's file**; the
 rest of the catalog is other requests' context, and reading it all costs
 every later turn. (Pages that embed derived line art also read
-`types/image-block.md`.)
+`types/image-block.md`.) A row that names a second file — `newsprint.md`, at
+`references/newsprint.md` — loads both in Step 3's one batched command.
 
 | Page type | Spec |
 |---|---|
@@ -74,10 +75,10 @@ every later turn. (Pages that embed derived line art also read
 | Flashcards | `types/flashcards.md` |
 | Certificate / award | `types/certificate.md` |
 | Scorecard / tally | `types/scorecard.md` |
-| Sports box score / game recap | `types/box-score.md` |
+| Sports box score / game recap | `types/box-score.md` + `newsprint.md` |
 | Weather forecast | `types/weather-forecast.md` |
 | Financial / market summary | `types/financial-summary.md` |
-| News digest | `types/news-digest.md` |
+| News digest | `types/news-digest.md` + `newsprint.md` |
 | Article reformat | `types/article-reformat.md` |
 | Travel itinerary | `types/travel-itinerary.md` |
 | Receipt / expense report | `types/receipt.md` |
