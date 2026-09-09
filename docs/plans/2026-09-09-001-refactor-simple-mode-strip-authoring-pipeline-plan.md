@@ -16,7 +16,7 @@ print-skill's current pipeline (`SKILL.md` Steps 5-7) runs every authored page t
 
 ## Requirements
 
-- R1. `server/assemble-cli.mjs`, `lint-cli.mjs`, `fit-cli.mjs`, `contrast-cli.mjs`, and `serve-cli.mjs` are deleted, along with the tests that exist only to exercise them.
+- R1. `server/assemble-cli.mjs`, `server/lint-cli.mjs`, `server/fit-cli.mjs`, `server/contrast-cli.mjs`, and `server/serve-cli.mjs` are deleted, along with the tests that exist only to exercise them.
 - R2. The page server (`server/server.mjs`), the PDF engine (`server/render.mjs`, `server/render-cli.mjs`, `server/browser.mjs`), the browser viewer (`assets/shell/*`), and the live-edit channel (`server/chat-cli.mjs`, `server/chat-store.mjs`) are unchanged in behavior.
 - R3. Server launch no longer depends on `serve-cli.mjs`'s port-reuse/registry logic; starting the server is `npm start` / `node server.mjs`.
 - R4. `references/*.md`, `references/themes/`, and `references/types/` are deleted; anything from `references/follow-up.md` still needed to explain the live-edit channel is inlined into the new `SKILL.md` first.
@@ -27,7 +27,7 @@ print-skill's current pipeline (`SKILL.md` Steps 5-7) runs every authored page t
 
 - **Server launch reverts to `node server.mjs` / `npm start`, dropping `serve-cli.mjs` entirely**: the user chose to treat launch convenience (port reuse, registry, retry loop) as part of "the logic" to cut, not part of "the html renderer" to keep.
 - **`SKILL.md` is rewritten in place, not deleted**: Simple Mode stays a usable, redistributable skill — just a much smaller one — rather than becoming a bare sandbox.
-- **`references/` is deleted outright, not kept-but-disconnected**: matches "remove most of the logic." `references/follow-up.md`'s live-edit-channel content must be read and inlined into the new `SKILL.md` (U5) before the deletion (U4) runs.
+- **`references/` is deleted outright, not kept-but-disconnected**: matches "remove most of the logic." `references/follow-up.md`'s live-edit-channel content must be read and inlined into the new `SKILL.md` (U4) before the deletion (U5) runs.
 - **Mixed test files are rewritten, not deleted**: `clip-detection.test.mjs`, `font-metrics-fit.test.mjs`, and `page-frame.test.mjs` each exercise real keep-list behavior (shell.js clip detection, server.mjs page-frame chrome injection) alongside a cut-list dependency (`fit-cli.mjs` or `assemble-cli.mjs`). Deleting them outright would silently drop coverage for surviving features.
 - **`lib.mjs`, `browser.mjs`, and `assets/page_template.html` are untouched structurally**: research confirmed the dependency arrow runs cut-list → keep-list only (e.g. `fit-cli.mjs` imports from `server.mjs`/`browser.mjs`, never the reverse), so no keep-list source file needs editing to stop calling into the cut-list. `lib.mjs` stays because `server.mjs` and `chat-cli.mjs` import it; `page_template.html` stays because `server/test/helpers.mjs` (the shared fixture builder for keep-list tests) reads it.
 
