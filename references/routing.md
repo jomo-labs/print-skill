@@ -35,7 +35,7 @@ nothing matches, use **Generic reformat** at the bottom.
 | 19 | Travel itinerary | "itinerary", "trip to", "packing list", "Day 1 / Day 2", flights/hotels | |
 | 20 | Financial / market summary | "stocks", "portfolio", "market", tickers, "crypto" | |
 | 21 | Article reformat | A content URL, "print this article", "reader mode", "clean version" | Skip if the URL is an image used as a design reference |
-| 22 | News digest | "news", "headlines", "top stories", "briefing" | Late — its keywords are broad |
+| 22 | News digest | "news", "newspaper", "morning paper", "front page", "edition", "headlines", "top stories", "briefing" | Late — its keywords are broad |
 | 23 | Generic reformat | "print this", "format this", "make it pretty", "make this a page" — or anything unmatched | Catch-all |
 
 Also in the catalog but usually explicit by name: **Daily dashboard**, **Weekly
