@@ -175,6 +175,13 @@ try {
         `WCAG AA floor (4.5:1 body, 3:1 large/bold)` +
         (bad ? `; ${bad} had a color this engine could not resolve (????)` : "") + ".");
       console.error("  Darken the token, or raise the size/weight so the 3:1 floor applies.");
+      if (fails.some((f) => f.ratio !== null && f.ratio <= 1.05)) {
+        console.error("  A ratio near 1:1 is paper-colored text on a background the shell stripped: the " +
+          "no-fill rule resets `background` on div/section/p/span/li. Drop the declaration and " +
+          "put class=\"invert\" (ink band) or class=\"tint\" on the element instead.");
+      }
+      console.error("  The fix is in your CSS channel — never in server/ or assets/, which are not " +
+        "yours to read or patch.");
     }
   }
   process.exitCode = fails.length === 0 ? 0 : 1;

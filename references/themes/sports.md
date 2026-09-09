@@ -59,7 +59,7 @@ first, then the fact.
 |---|---|
 | `--color-ink` | `oklch(11% 0.006 250)` |
 | `--color-mid` | `oklch(44% 0.010 250)` |
-| `--color-dim` | `oklch(67% 0.008 250)` |
+| `--color-dim` | `oklch(56% 0.008 250)` |
 | `--color-ghost` | `oklch(87% 0.006 250)` |
 | `--color-rule` | `oklch(11% 0.006 250)` |
 | `--color-rule-light` | `oklch(83% 0.006 250)` |

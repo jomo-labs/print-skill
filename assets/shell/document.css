@@ -9,7 +9,10 @@
   --color-paper:      white;
   --color-ink:        oklch(11% 0.005 78);
   --color-mid:        oklch(44% 0.008 78);
-  --color-dim:        oklch(67% 0.006 78);
+  --color-dim:        oklch(56% 0.006 78);   /* 4.66:1 on paper — clears the 4.5:1 body
+                                                 floor. At 67% it was 2.99:1, under BOTH
+                                                 floors, and the most common contrast
+                                                 failure in traced runs. */
   --color-ghost:      oklch(87% 0.005 78);
   --color-rule:       oklch(11% 0.005 78);
   --color-rule-light: oklch(83% 0.005 78);

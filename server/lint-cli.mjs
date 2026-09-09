@@ -278,6 +278,19 @@ const isRootRule = (selectors) =>
 const subjectTags = (selectors) =>
   subjectsOf(selectors).map((s) => (s.match(/^[A-Za-z][A-Za-z0-9]*/) || [""])[0].toLowerCase());
 
+// Which selector subjects keep a background through the shell's no-fill
+// enforcement (assets/shell/document.css): table parts, and the two opt-in
+// utilities. Everything else — a bare class, a div, a span — is stripped, so
+// a fill declared there is a declaration that never paints. A bare class is
+// judged as stripped on purpose: it almost always dresses a div or a span,
+// and the fix (the utility class, or a `th` selector) is one edit either way.
+const FILL_TAGS = new Set(["table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption"]);
+const carriesFill = (subjects) =>
+  subjects.every((s) => {
+    const tag = (s.match(/^[A-Za-z][A-Za-z0-9]*/) || [""])[0].toLowerCase();
+    return FILL_TAGS.has(tag) || /\.(invert|tint)(?![A-Za-z0-9_-])/.test(s);
+  });
+
 // ── Item 1 and 2: raw text, before any parsing ─────────────────────────────
 // These run on the ORIGINAL text, comments included: a `</style>` inside a
 // comment closes the tag just as well as one outside it.
@@ -308,6 +321,10 @@ const BACKGROUND_OK = new Set([
   "var(--color-ink)", "var(--color-paper)", "var(--color-pull-bg)",
   "transparent", "none", "inherit",
 ]);
+// The two allowlisted values that actually paint — and that the shell strips
+// off every content element but table parts and .invert / .tint (see
+// carriesFill). Paper on a div is a no-op, not a hazard, and stays legal.
+const STRIPPED_PAINTS = new Set(["var(--color-ink)", "var(--color-pull-bg)"]);
 const squash = (v) => v.toLowerCase().replace(/\s+/g, "");
 
 // ── Item 6: literal colors ─────────────────────────────────────────────────
@@ -420,7 +437,7 @@ const blockPadding = (prop, value) => {
 const isZeroLength = (v) => /^-?0*\.?0*(px|pt|pc|in|cm|mm|q|em|rem|ex|ch|%)?$/i.test(String(v || ""));
 
 // ── The block walker: items 3-6 (and 9 for stylesheet rules) ───────────────
-function lintBlock({ decls, base, text, source, selectors, isRoot, inline }) {
+function lintBlock({ decls, base, text, source, selectors, isRoot, inline, tag }) {
   const at = (i) => `${source}:${lineOf(text, i)}`;
   const seen = [];
   for (const { prop, value, at: i } of declsOf(decls, base)) {
@@ -441,6 +458,17 @@ function lintBlock({ decls, base, text, source, selectors, isRoot, inline }) {
           "the whole value must be exactly one of var(--color-ink), var(--color-paper), " +
           "var(--color-pull-bg), transparent, none, inherit — no !important, no shorthand; " +
           "use .invert / .tint, a border or a print-flat shadow to carry color");
+      } else if (STRIPPED_PAINTS.has(squash(value)) &&
+                 !carriesFill(inline ? [tag || ""] : subjectsOf(selectors))) {
+        // An allowlisted ink or tint fill on an element the shell strips: the
+        // band never paints, and the paper-colored text set to sit on it
+        // prints white-on-white. Traced runs spent up to twenty tool calls
+        // finding this by reading the shell's source; the lint names it here.
+        flag(4, "a fill the shell strips", where, snippet,
+          "the shell resets background on div/section/p/span/li/… to transparent, so this " +
+          "band prints white-on-white — drop the declaration and put class=\"invert\" (ink " +
+          "band) or class=\"tint\" on the element; only table parts (th, td, tr, …) and the " +
+          ".invert / .tint classes carry a fill through");
       }
     }
     if (prop === "background-image" && squash(value) !== "none") {
@@ -584,9 +612,12 @@ for (const m of content.matchAll(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<
       "just be a new bypass. Write the character itself; authored CSS never needs one");
   }
   rawScan(value, contentSource, at, content);
+  // The element the attribute sits on, for the stripped-fill check: the
+  // nearest unclosed tag opener before the attribute.
+  const tag = (content.slice(0, m.index).match(/<([A-Za-z][A-Za-z0-9]*)[^<>]*$/) || [])[1] || "";
   lintBlock({
     decls: value, base: at, text: content, source: contentSource,
-    selectors: "inline style", isRoot: false, inline: true,
+    selectors: "inline style", isRoot: false, inline: true, tag,
   });
 }
 
