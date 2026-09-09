@@ -23,7 +23,9 @@ and a FIX button, see "Live mode"), but nothing catches anything at authoring
 time. Judge the design yourself, and keep the page inside one sheet unless the
 request genuinely needs more.
 
-Never open, grep, or debug `server/` or `assets/shell/` — treat both as given.
+Never modify or debug `server/` or `assets/shell/` — treat both as given. The
+two files you do read are `assets/page_template.html` and
+`assets/shell/document.css`, which Step 1 copies and inlines.
 
 ## Workflow
 
@@ -79,6 +81,24 @@ Two more optional slots:
   (`landscape`; omit for portrait). Any size × orientation combination works,
   and this is the only orientation mechanism.
 
+  **Anything but letter portrait needs a second edit**, or the page prints at
+  Letter when opened without the server. The body attribute drives the sheet's
+  on-screen geometry, but the `@page` box is a static rule in the template —
+  rewrite `<style id="dynamic-page-css">` to match:
+
+  | `data-mp-paper` | portrait | landscape |
+  |---|---|---|
+  | *(omitted)* | `letter` | `letter landscape` |
+  | `a4` | `A4` | `A4 landscape` |
+  | `legal` | `legal` | `legal landscape` |
+  | `half` | `5.5in 8.5in` | `8.5in 5.5in` |
+
+  So an A4 landscape page carries
+  `<style id="dynamic-page-css">@page { size: A4 landscape; margin: 0; }</style>`.
+  The server's shell fixes this up at runtime, so the mismatch is invisible in
+  the browser and shows up only in a directly-opened file's print — set it
+  correctly at authoring time.
+
 What the shell and server actually depend on — get these right or the toolbar,
 edit mode, and fit reporting misbehave:
 
@@ -90,8 +110,37 @@ edit mode, and fit reporting misbehave:
   font stacks, so the page stays coherent and grayscale-safe.
 - Never put `background` on a `div`/`span`/`p` — the shell strips it. Use
   `class="invert"` or `class="tint"` on the element instead.
-- A multi-sheet page is explicit sibling `.page` sheets, laid out on purpose —
-  never the accident of writing too much for one.
+- A multi-sheet page is laid out on purpose, never the accident of writing too
+  much for one — and it has a specific shape. Your content is inserted *inside*
+  `.page#page`, so further sheets are **nested** `.page` elements within it,
+  each with its own `<footer>`. Keep `id="page"` on the outer container: the
+  shell's sizing, pagination, and fit reporting all key on `#page`.
+
+  Nested sheets need this block in `<head>` (before `content-overrides`), or
+  each sheet renders inset inside a paper-coloured outer sheet with its footer
+  floating mid-page:
+
+  ```html
+  <style id="mp-nested-sheets">
+  #page { padding: 0 !important; border: none !important; box-shadow: none !important; background: transparent !important; }
+  #page > footer { display: none; }
+  #page > .page {
+    width: 100%;
+    height: 1056px;
+    margin: 0 0 var(--space-10);
+    padding: var(--page-margin-top) var(--page-margin-x) var(--page-margin-bottom);
+    background: var(--color-paper) !important;
+    display: flex;
+    flex-direction: column;
+  }
+  #page > .page:last-child { margin-bottom: 0; }
+  #page > .page > footer { margin-top: auto; }
+  @media print { #page > .page { margin: 0 !important; } }
+  </style>
+  ```
+
+  The `height` is a fallback only — the shell sets each nested sheet's exact
+  paper height at runtime.
 
 ### Step 2 — Serve
 

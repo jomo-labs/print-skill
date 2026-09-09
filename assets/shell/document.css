@@ -205,8 +205,9 @@ body {
 /* Static per-paper sheet geometry so a page opened directly (no scripts)
    still shows and prints its configured paper exactly. applySize() sets the
    same dimensions as inline styles at runtime; these cover the script-less
-   case via the assembly-set body attribute. (Assembly also rewrites the
-   static @page size in #dynamic-page-css to match.) */
+   case via the body's data-mp-paper attribute. The static @page size in
+   #dynamic-page-css must be set to match when the page is authored — the
+   script-less case has nothing else to fix it up. */
 body[data-mp-paper="a4"] .page        { width: 793px;  height: 1122px; }
 body[data-mp-paper="legal"] .page     { width: 816px;  height: 1344px; }
 body[data-mp-paper="half"] .page      { width: 528px;  height: 816px;  }
