@@ -1,10 +1,4 @@
-# Word search *(presentation-only — see the puzzle note in `page-types.md`)*
-
-Part of the print skill's page-type catalog. `references/page-types.md`
-holds the routing table, the shared **content blocks** this spec names
-(section block, checklist block, lined writing area, …), the sheet
-geometry, and the theming rule: on a themed request, *Default styling*
-below is dropped entirely and only *Functional requirements* survive.
+# Word search *(presentation-only — see the puzzle note in `routing.md`)*
 
 A letter-grid puzzle with a hidden word list. **Portrait.**
 

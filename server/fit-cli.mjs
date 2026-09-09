@@ -28,7 +28,7 @@
 // token cascade); re-running this check strips any previous squeeze first and
 // re-derives from the authored state, so squeezes never compound.
 //
-// Usage: node fit-cli.mjs <page.html>
+// Usage: node fit-cli.mjs <page.html> | node fit-cli.mjs --help
 // Exit:  0  the content fits (as authored, or after a persisted squeeze)
 //        1  it does not (or the page could not be loaded)
 //        2  bad usage
@@ -57,8 +57,29 @@ const LADDER = [[0.9, 1], [0.8, 1], [0.75, 1], [0.75, 0.96], [0.75, 0.92]];
 const HEIGHT_FLOOR = 70;
 const INK_FLOOR = 30;
 
-const pageArg = process.argv[2];
-if (!pageArg || pageArg.startsWith("--") || process.argv[3]) {
+const USAGE = `usage: node fit-cli.mjs <page.html> [--help]
+
+Measures an assembled page against the sheets it was written for, squeezing a
+near miss into fitting and reporting a real overflow with the per-sheet
+section table.
+
+  <page.html>  the assembled page, the CLI's one positional argument.
+  --help       print this and exit 0.
+
+There are no other flags: the squeeze ladder, its floors, and the underfill
+floors are calibrated constants, not knobs.
+Exit: 0 it fits (as authored, or after a persisted squeeze) · 1 it does not
+(or the page could not be loaded) · 2 bad usage.`;
+
+const argv = process.argv.slice(2);
+if (argv.includes("--help")) {
+  console.log(USAGE);
+  process.exit(0);
+}
+// One positional and nothing else: an unrecognized flag is a mistake worth
+// stopping on rather than silently ignoring.
+const pageArg = argv[0];
+if (!pageArg || pageArg.startsWith("--") || argv[1]) {
   console.error("usage: node fit-cli.mjs <page.html>");
   process.exit(2);
 }

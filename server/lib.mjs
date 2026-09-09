@@ -128,6 +128,18 @@ export function findSheetEdgeBorders(css) {
 }
 
 /**
+ * Is `url` a plain Google Fonts stylesheet URL (design-rules.md Part B item 8)?
+ *
+ * Lives here because two callers enforce it — assemble-cli decides whether to
+ * emit the `<link>`, lint-cli reports on it — and two copies of a security
+ * pattern is one copy too many. The character class is deliberately narrow:
+ * anything outside it could carry a quote and break out of the href attribute.
+ */
+export function isGoogleFontsUrl(url) {
+  return /^https:\/\/fonts\.googleapis\.com\/[A-Za-z0-9/?&=+:;,@._%-]*$/.test(String(url));
+}
+
+/**
  * realpath, or the path unchanged when it doesn't exist yet — the caller's
  * own existence check reports that. Paths are compared realpath-to-realpath
  * because a skill is commonly reached through a symlink

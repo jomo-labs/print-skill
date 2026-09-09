@@ -7,21 +7,10 @@ Platform invariants are in `design-rules.md`; only what Comic changes is below.
 
 ## 1. Meta & Philosophy
 
-- **Principles specific to this theme:**
-  1. Everything is a little too big and a little too excited — comic panels
-     don't whisper.
-  2. The reader is a kid (or reading with one); confusion is charming, not a
-     defect ("Dog Man thinks this is very interesting.").
-  3. Structure shows its seams on purpose — thick borders and offset shadows
-     read as "constructed," not accidental.
-- **Personality adjectives:** loud, earnest, chunky, playful, sincere.
-- **Voice & microcopy:** short sentences. Capital letters for EMPHASIS. "WOW."
-  as a standalone sentence is acceptable and encouraged. Slightly confused,
-  always earnest — never sarcastic or knowing.
-- **What makes it distinctive:** the only shipped theme with a hard offset
-  shadow and a heavy ink border on the sheet, and the only one with a narrator
-  voice. Built for the kids-content category (chore charts, activity pages,
-  wishlists) — the loudest theme on purpose.
+Loud, chunky kids'-comic energy: short earnest sentences, capital-letter
+EMPHASIS, a narrator voice, a hard offset shadow, and a heavy ink border — the
+only shipped theme with either. Personality: loud, earnest, chunky, playful,
+sincere; built for kids' content (chore charts, activity pages, wishlists).
 
 ## 2. Typography
 
@@ -109,14 +98,6 @@ panels are meant to feel packed, not airy.
 
 ## 7. Contrast evidence
 
-- `--color-blue` `oklch(48% 0.140 240)` on white clears the 3:1 large/bold
-  floor and is used at 32px+ (chapter titles, hero numbers). It sits close
-  enough to the floor that it must not carry small body text — this theme never
-  does that.
-- `--color-red` `oklch(50% 0.190 25)` likewise clears 3:1 for large/bold
-  callout use only.
-- Body type floor: 16px+ (`--text-body` is retuned above), since this theme
-  defaults to kids' content.
-- Screen-legibility: Patrick Hand and Bangers read slightly less crisply
-  on-screen at small sizes than in print — mitigated by the 16px body floor
-  already in effect.
+- `--color-blue` clears 3:1 large/bold; used at 32px+ only, never body text.
+- `--color-red` clears 3:1 large/bold; callout/SFX use only.
+- Body type floor: 16px+ (`--text-body` above) — also covers screen legibility.
