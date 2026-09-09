@@ -152,3 +152,58 @@ test("a grid of empty bordered cells counts as filled", async (t) => {
   assert.ok(f.ink >= 30, "an empty week grid is still full, got ink " + f.ink);
   assert.ok(!/underfill/.test(r.stdout), "no underfill warning expected: " + r.stdout);
 });
+
+// Inline SVG is artwork, not emptiness — a maze, a badge, a drawn frame. The
+// fill check matched IMG|SVG|CANVAS in uppercase, and an inline <svg> keeps its
+// lowercase qualified name (SVG namespace), so a page that was half maze read
+// as 11% ink and was told it was stretched.
+test("inline SVG artwork counts as coverage", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "fill-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const r = await assemble(dir,
+    `<div data-mp-section="head"><h1>Maze</h1></div>\n` +
+    `<div data-mp-section="maze"><svg viewBox="0 0 600 700" width="600" height="700" ` +
+    `xmlns="http://www.w3.org/2000/svg"><path d="M0 0H600V700H0Z M40 40H560" fill="none" ` +
+    `stroke="currentColor" stroke-width="4"/></svg></div>`,
+    "Maze Page");
+  assert.equal(r.code, 0, r.stderr);
+  const f = fill(r.stdout);
+  assert.ok(f.ink >= 30, "the svg is coverage, got ink " + f.ink);
+  assert.ok(!/underfill/.test(r.stdout), "no underfill warning expected: " + r.stdout);
+});
+
+// A calendar cell holds its date and nothing else: still a box you write in.
+// Before this, one child element made the cell a wrapper worth only its
+// strokes, and a month grid read as 25% ink — which sent an author looking for
+// ink to add, straight into the no-fill rule.
+test("a grid of labeled bordered cells counts as filled", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "fill-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cells = Array.from({ length: 35 }, (_, i) =>
+    `<div style="border: 1px solid var(--color-rule-light); height: 120px">` +
+    `<span class="kicker">${i + 1}</span></div>`).join("");
+  const r = await assemble(dir,
+    `<div data-mp-section="head"><h1>September</h1></div>\n` +
+    `<div data-mp-section="grid" style="display: grid; grid-template-columns: repeat(7, 1fr)">` +
+    `${cells}</div>`,
+    "Month Grid");
+  assert.equal(r.code, 0, r.stderr);
+  const f = fill(r.stdout);
+  assert.ok(f.ink >= 30, "a month grid is full, got ink " + f.ink);
+  assert.ok(!/underfill/.test(r.stdout), "no underfill warning expected: " + r.stdout);
+});
+
+// The wrapper case above, with the author's intent declared: a page-sized
+// frame to draw in is full because it says so, not because a heuristic guessed.
+test("a large frame marked data-mp-blank counts as filled", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "fill-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const r = await assemble(dir,
+    `<div data-mp-section="frame" data-mp-blank style="border: 1px solid var(--color-rule); ` +
+    `height: 8.5in; padding: var(--space-4)"><p class="kicker">Draw here</p></div>`,
+    "Drawing Page");
+  assert.equal(r.code, 0, r.stderr);
+  const f = fill(r.stdout);
+  assert.ok(f.ink >= 30, "a declared blank is coverage, got ink " + f.ink);
+  assert.ok(!/underfill/.test(r.stdout), "no underfill warning expected: " + r.stdout);
+});

@@ -8,8 +8,8 @@ mechanical and assembly runs it for you.
 
 ## Platform invariants — inherited by every theme
 
-Enforced by `assets/shell/document.css` or the Part B lint. A theme spec
-must not restate them, and describes only what it changes.
+Enforced by the shell or the Part B lint. A theme spec describes only what
+it changes.
 
 - **Sheet and margin.** The sheet is a fixed physical size and its padding
   (`--page-margin-*`, 4px base unit) IS the print margin, printed 1:1. A theme
@@ -17,38 +17,37 @@ must not restate them, and describes only what it changes.
 - **The footer eats the last ~41px.** The footer sits *inside* the content
   box, costing 41px (32px margin-top, 8px padding-top, 1px rule). Content
   must come in **strictly under** box height − 41 (exactly on it already
-  paginates). The quoted content-box heights in rule 5 are the box; subtract
-  41 for usable height.
+  paginates). Rule 5's content-box heights are the box; subtract 41 for
+  usable.
 - **Empty, overflow, and underfill.** An empty block keeps its frame and label
   (Principle IV). Overflow drops the body type-scale one step, then shortens
-  or splits — never truncate, never spill past the sheet edge. Underfill can
-  be too short (≤~2/3 of the content box, rule 5) or stretched (spread with
-  spacing to the bottom margin, covering almost none of the sheet). The fit
-  check reports both (`fill: N%
-  height, N% ink`) and warns below 70% height or 30% ink.
-  Remedies rank by cost. A **too-short** page is fixed in `custom_css`
-  first: scale the type and spacing tokens up in `:root` (`--text-*` a
-  step, `--space-*` by 10–25%), or enlarge functional blank areas (writing
-  lines, drawing frames, cells) — a token edit, not a rewrite. A
-  **stretched** page needs more content or larger blank areas — never more
-  spacing, never filler. Blank space left for the user to fill in counts as
-  filled; only purposeless emptiness is underfill.
+  or splits — never truncate, never spill past the sheet edge. Underfill is
+  too short (≤~2/3 of the content box, rule 5) or stretched (spaced out to
+  the bottom margin over almost no ink); the fit check reports `fill: N%
+  height, N% ink` and warns below 70% height or 30% ink. Remedies rank by
+  cost: a **too-short** page is fixed in `custom_css` first — scale `--text-*`
+  a step, `--space-*` by 10–25%, or enlarge functional blank areas (writing
+  lines, drawing frames, cells) — a token edit, not a rewrite; a **stretched**
+  page needs more content or larger blank areas, never more spacing, never
+  filler. Blank space for the reader's pen counts as filled, and the check
+  already counts a labeled bordered box (a calendar cell, a work box) and
+  inline SVG; a large blank frame carries `data-mp-blank` to count whole.
+  Never add a band or a fill to move the ink number — filler, and stripped
+  anyway (rule 1).
   **One fill pass.** Underfill warns, not fails: one adjustment, re-assemble
   once, ship what that reports and name the fill numbers — never a second
-  rework, and never one that swaps a fill warning for an overflow.
+  rework, never one that trades a fill warning for an overflow.
 - **Containers clip, they never overlap.** Structural containers (div,
   section, li's list, table cells, …) carry `overflow: clip`: a fixed-size
   box cuts what outgrows it — never size a container smaller than its
   content on purpose; design content to fit its box (Principle VII). A
-  container that genuinely must bleed (rare) opts out
-  with `overflow: visible` and owns the overlap it allows. A heading's
-  descenders (and, at tight leading, its ascenders) can hang past its border
-  box; **that clearance must come from layout**, never the 6px
-  `overflow-clip-margin`.
-  The element defaults carry it as `padding-block: var(--display-overhang)`
-  on `h1`/`h2`, and on anything else using `--leading-display`. Zeroing a
-  heading's *margin* is fine; never zero its padding or rely on its bottom
-  margin instead.
+  container that genuinely must bleed (rare) opts out with `overflow:
+  visible` and owns the overlap it allows. A heading's descenders (and, at
+  tight leading, its ascenders) can hang past its border box; **that
+  clearance must come from layout**, never the 6px `overflow-clip-margin`:
+  the element defaults carry `padding-block: var(--display-overhang)` on
+  `h1`/`h2` and on anything using `--leading-display`. Zeroing a heading's
+  *margin* is fine; never zero its padding or rely on its bottom margin.
 - **Contrast and type floors.** WCAG AA: 4.5:1 body, 3:1 large or bold accent.
   Body copy >=13.5px, 16px+ for kids'. Label-font metadata (dateline, table
   text/headers, footer) runs 9-10.5px, never body copy. A theme states the
@@ -72,20 +71,21 @@ must not restate them, and describes only what it changes.
    `var(--color-pull-bg)`, `transparent`, `none`, `inherit` — never
    `var(--color-accent)`.
 
-   Tables handle themselves (`th` inverted, even rows tinted — defaults a
-   theme may override). **Elsewhere use the `.invert` and `.tint` classes
-   rather than declaring a background**: a hand-declared band prints
-   white-on-white. Small bands and headers only.
+   Tables handle themselves (`th` inverted, even rows tinted — a theme may
+   override). **Elsewhere use the `.invert` and `.tint` classes, never a
+   declared background**: the shell strips `background` from div, section, p,
+   span, li and the rest, so a hand-declared band never paints and its paper
+   text prints white-on-white; the lint rejects it (Part B item 4). Small
+   bands and headers only.
 
 1a. **Pictorial shapes are SVG, not CSS** — draw icons, balls, badges, and
    other pictorial artwork as inline SVG with `fill="none"` and stroked paths
    (`stroke="currentColor"` or a `var(--color-*)` token), never by compositing CSS
    backgrounds (gradients), pseudo-element fills, or inset
-   box-shadows — each is a fill in disguise and fails the same
-   Part B lint as rule 1. This rule governs artwork you **draw**; a sourced
-   SVG or raster spot may carry its own fills (rule 1 still applies). See
-   `references/marks.md` for sourcing, judging, and drawing a mark that
-   reads.
+   box-shadows — each is a fill in disguise and fails the Part B lint. This
+   governs artwork you **draw**; a sourced SVG or raster spot may carry its
+   own fills. `references/marks.md` covers sourcing, judging and drawing a
+   mark that reads.
 
 2. **No hardcoded colors** — NEVER use a literal color (`#hex`, `rgb()`, `rgba()`,
    `hsl()`, `oklch()`, or a named CSS color like `red`/`cornflowerblue`) directly
@@ -94,9 +94,9 @@ must not restate them, and describes only what it changes.
    `:root { --color-accent: oklch(35% 0.12 240); }` — never inlined again
    elsewhere.
 
-   NEVER infer a token name — only names `assets/shell/document.css` or your
-   own `:root` override define are valid; an undefined one silently drops
-   its declaration, and assembly fails.
+   NEVER infer a token name — only names in the token quick reference or your
+   own `:root` override are valid; an undefined one drops its declaration,
+   and assembly fails.
 
 3. **Ad-hoc theming is wide open, except paper.** Freely define your own
    accent, ink, rule, and subtle-tone colors, fonts, and page chrome to
@@ -108,12 +108,11 @@ must not restate them, and describes only what it changes.
 3a. **Font choice must always resolve to a real, loaded typeface** — the shell
    preloads ONLY the default trio (Playfair Display, Source Serif 4, Inter).
    Naming any other font requires `font_import` set to a matching Google
-   Fonts URL, or it falls back. Do NOT reach for OS-bundled
-   fonts (`Comic Sans MS`, `Chalkboard SE`, `Papyrus`, `Brush Script MT`).
-   Pick a specific Google Font instead and set
+   Fonts URL, or it falls back. Never OS-bundled fonts (`Comic Sans MS`,
+   `Chalkboard SE`, `Papyrus`, `Brush Script MT`) or generic keywords
+   (`cursive`, `fantasy`, `monospace`): pick a specific Google Font and set
    `font_import` — bold/comic: Bangers, Fredoka; handwritten: Patrick Hand,
-   Caveat; mono/typewriter: Space Mono; anything else: any specific Google
-   Font, never a generic keyword (`cursive`, `fantasy`, `monospace`).
+   Caveat; mono/typewriter: Space Mono.
 
 4. **Discrete pages** — one `<div class="page">` = one physical sheet. Never rely
    on CSS page-break properties; design content to fit the paper height.
@@ -123,9 +122,9 @@ must not restate them, and describes only what it changes.
 
 5. **Orientation** — judge it from the content's shape and declare it via the
    `orientation` channel only — independent of `paper` (the size axis).
-   Wide-grid content — calendars, schedules, scoreboards — prints better
-   LANDSCAPE: set `orientation` to `landscape` and design for a
-   1056px-wide × 816px-tall sheet (content box ~912px wide × ~680px tall, of
+   Wide-grid content — calendars, schedules, scoreboards — is LANDSCAPE:
+   design for a 1056px-wide × 816px-tall sheet (content box ~912px wide ×
+   ~680px tall, of
    which ~639px is usable once the footer takes its 41px),
    filling the height. Tall, list-like content stays portrait (the default;
    content box ~672px wide × ~920px tall, ~879px usable). Never set it via
@@ -136,10 +135,9 @@ must not restate them, and describes only what it changes.
 Wrap each top-level content block in a `<div data-mp-section="[type]">` where type
 is one of: `header`, `calendar`, `checklist`, `scores`, `schedule`, `notes`,
 `table`, `writing`, `image`, `custom`. Do not mark the `<footer>` element — it is
-structural. Example: `<div data-mp-section="notes">...</div>`. The shell's print
-CSS uses these markers to break at section boundaries when content genuinely
-overflows, never mid-block — and the shell's pagination keeps a marked section
-whole whenever it fits on a sheet of its own.
+structural. The shell breaks at these boundaries when content genuinely
+overflows, never mid-block, and keeps a marked section whole whenever it fits
+on a sheet of its own.
 
 ---
 
@@ -152,10 +150,12 @@ reporting every violation in one pass with its line and declaration.
 (1) no markup breakout or remote load (no `<letter`, `@import`, `url(`). (2)
 no `\` (backslash) anywhere in `custom_css`: a CSS escape (`@\69mport` is
 `@import`) can smuggle banned constructs past a text check; authored CSS
-never needs one. (3)-(6) paper stays white; the background allowlist,
-print-flat shadows, and no literal color outside `:root` — Part A rules 1
-and 2. (7) the same over inline `style` attributes, plus no HTML character
-reference (`&#117;`, `&amp;`) inside one: the browser decodes a reference
+never needs one. (3)-(6) paper stays white; the background allowlist (an ink
+or tint fill anywhere but a table part or `.invert`/`.tint` is stripped by
+the shell, so it fails too); print-flat shadows; no literal color outside
+`:root` — Part A rules 1 and 2. (7) the same over inline `style` attributes,
+plus no HTML character reference (`&#117;`, `&amp;`) inside one: the browser
+decodes a reference
 before CSS sees the value — write the character itself (`custom_css` is
 exempt). (8) `font_import` is a plain
 `https://fonts.googleapis.com/` URL, or it is **dropped with a warning**,

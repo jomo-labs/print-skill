@@ -2,7 +2,7 @@
 
 Both routing tables, in one file — this is all Step 1 needs. Match here and come
 out with a type slug and, when the request is themed, a theme slug; Step 3 reads
-everything they point at in one command.
+everything they point at in one command (the theme files in a second).
 
 ---
 

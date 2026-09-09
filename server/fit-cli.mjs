@@ -333,8 +333,12 @@ async function reportFill(page) {
       // (a white band over white) is not coverage either.
       const paper = cs.backgroundColor;
       const opaque = (c) => c && c !== "transparent" && !/,\s*0\s*\)$/.test(c);
+      // Case-insensitive on purpose: an inline <svg> is in the SVG namespace
+      // and keeps its lowercase qualified name, so an uppercase-only match
+      // never saw a maze, a badge or a drawn frame — a page that was half
+      // artwork read as 11% ink and got told it was stretched.
       const fills = (el, s) =>
-        /^(IMG|SVG|CANVAS)$/.test(el.tagName) ||
+        /^(img|svg|canvas)$/i.test(el.tagName) ||
         s.backgroundImage !== "none" ||
         (opaque(s.backgroundColor) && s.backgroundColor !== paper);
       const edges = (el, s) => {
@@ -353,15 +357,35 @@ async function reportFill(page) {
       // strokes it prints, and what it holds is counted on its own terms.
       // Without that split, one hairline div around the content would report
       // any page, however empty, as completely covered.
+      // A functional blank the author declares — a drawing frame, a work box,
+      // a notes panel — is covered whatever it holds: data-mp-blank says
+      // "this space is for the reader's pen" (design-rules.md, Empty,
+      // overflow, and underfill), and no heuristic below has to guess it.
+      const declaredBlank = (el) => el.hasAttribute("data-mp-blank");
+      // A bordered box holding only a label — a calendar cell with its date,
+      // a work box under its question — is still a box you write IN. When
+      // what it holds covers under a quarter of it, and the box itself is
+      // under a third of the sheet's content area (a page-sized frame around
+      // thin content is a wrapper, whatever its label ratio), it counts whole.
+      const labeledBlank = (el, r) => {
+        const own = r.width * r.height;
+        if (own <= 0 || own > (area.w * area.h) / 3) return false;
+        let held = 0;
+        for (const k of el.children) {
+          const kr = k.getBoundingClientRect();
+          held += kr.width * kr.height;
+        }
+        return held / own < 0.25;
+      };
       const markBox = (el, s) => {
         const r = el.getBoundingClientRect();
-        if (fills(el, s) || el.tagName === "HR") {
+        if (fills(el, s) || el.tagName === "HR" || declaredBlank(el)) {
           mark(r.left, r.top, r.right, r.bottom);
           return;
         }
         const sides = edges(el, s);
         if (!sides.length) return;
-        if (!el.firstElementChild) {
+        if (!el.firstElementChild || labeledBlank(el, r)) {
           mark(r.left, r.top, r.right, r.bottom);
           return;
         }
@@ -411,7 +435,8 @@ async function reportFill(page) {
         "(design-rules.md — one fill pass at most)");
     } else if (f.ink < INK_FLOOR) {
       console.log(`underfill: ${sheet} is stretched — ${f.height}% height on ${f.ink}% ink ` +
-        "(design-rules.md — one fill pass at most)");
+        "(design-rules.md — one fill pass at most; space left for the reader's pen is not " +
+        "underfill, and adding a band or a fill to move this number is never the fix)");
     }
   }
 }

@@ -61,7 +61,7 @@ INSERT COIN). The pixel face sets only short labels, never prose.
 |---|---|
 | `--color-ink` | `oklch(13% 0.004 285)` |
 | `--color-mid` | `oklch(46% 0.006 285)` |
-| `--color-dim` | `oklch(68% 0.005 285)` |
+| `--color-dim` | `oklch(56% 0.005 285)` |
 | `--color-ghost` | `oklch(88% 0.004 285)` |
 | `--color-rule` | `oklch(13% 0.004 285)` |
 | `--color-rule-light` | `oklch(84% 0.004 285)` |
