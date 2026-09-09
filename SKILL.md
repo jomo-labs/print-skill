@@ -2,7 +2,7 @@
 name: print
 description: "Convert anything into a beautifully formatted, print-ready HTML page using the magicprint design system. Handles content reformatting (text, URLs, notes, data) and structured printable forms (dashboards, calendars, worksheets, chore charts, scorecards, certificates, word searches, mazes, comic strips, drawing pages, activity pages for kids). Use when asked to 'print', 'make printable', 'format for print', 'weekly calendar', 'daily dashboard', 'worksheet', 'something for the fridge', 'chore chart', 'certificate', 'word search', 'maze', 'comic strip', 'drawing page', 'activity page', or 'coloring page'."
 license: Apache-2.0
-compatibility: Node 18+ recommended for the bundled local PDF server (optional — without it, pages print via the browser dialog)
+compatibility: Node 18+ recommended for the bundled local page server and PDF renderer (optional — without it, pages print via the browser dialog)
 allowed-tools: Read Write Edit Bash WebFetch AskUserQuestion
 metadata:
   version: "1.0.0"
@@ -12,39 +12,36 @@ metadata:
 # Print
 
 Turn the user's request into a print-ready HTML page. You author the page
-**content**; the document template (`assets/page_template.html`) and the
-**shell chrome** it links (`assets/shell/`) are never authored or retyped, only
-copied and filled (see `references/assembly.md`).
+**content** and fill the document template yourself; the template
+(`assets/page_template.html`) and the **shell chrome** it links
+(`assets/shell/`) are copied and filled, never authored or retyped.
 
-The bundled commands verify what is mechanical — structure, fit and per-sheet
-fill, contrast. Never measure anything with your own scripts or browser, and
-never open, grep or debug `server/` or `assets/shell/`: a failed check names
-its fix, and the fix is always in your channel files. The only files you read
-are the references Steps 1 and 3 name. The commands cannot judge design, so
-`references/design-rules.md` is mandatory, not advisory: Part A is yours, Part B
-the assemble command enforces.
+**Nothing here verifies your work.** There is no lint, no fit check, no
+contrast check, and no design-rules pass — what you write is what prints. The
+page reports its own fit problems in the browser once it is open (a red line
+and a FIX button, see "Live mode"), but nothing catches anything at authoring
+time. Judge the design yourself, and keep the page inside one sheet unless the
+request genuinely needs more.
+
+Never open, grep, or debug `server/` or `assets/shell/` — treat both as given.
 
 ## Workflow
 
 ### Step 0 — Input & server warm-up
 
-**Resolve `<skill-dir>` first, once.** Every `<skill-dir>/…` path — in this
-file, in `references/follow-up.md` and in the other reference files — means the
+**Resolve `<skill-dir>` first, once.** Every `<skill-dir>/…` path means the
 **absolute** path of the directory holding this `SKILL.md`, the one with
 `server/` and `assets/` in it. Work it out at the start of the run, confirm it
 and the server's dependencies in **one** command —
-`ls -d <skill-dir>/server/assemble-cli.mjs <skill-dir>/server/node_modules`
+`ls -d <skill-dir>/server/server.mjs <skill-dir>/server/node_modules`
 (both listed = ready) — and paste that same absolute string into every later
-command. Never a relative path: it stops resolving the moment you `cd` to the
-scratch directory, and assembly dies with `Cannot find module`.
+command. Never a relative path: it stops resolving the moment you `cd` to a
+scratch directory.
 
 If `node_modules` is missing and Node is available, start
 `npm install --prefix <skill-dir>/server` as a **background** task (its
 postinstall fetches the pinned Chromium) — `--prefix`, never `cd` into the
-skill — and continue; Step 7 picks it up. No Node: skip.
-
-If the output is for an automated consumer or the user asked for a PDF file,
-read "Headless / pipeline use" in `references/follow-up.md`.
+skill — and continue; Step 2 picks it up. No Node: skip.
 
 If there's no input at all, ask: "What would you like to print? Paste text, a
 URL, or describe the page you want."
@@ -53,214 +50,72 @@ If the request contains an image URL (`.jpg`/`.jpeg`/`.png`/`.webp`/`.gif`),
 it's a reference image: view it (Read/WebFetch) before designing, and design
 from what you saw, not from the URL string.
 
-### Step 0.5 — Interview (interactive sessions only)
-
-Two dialogs at most, only for what is genuinely open. **Skip it** when nobody
-can answer — headless or non-interactive runs; in Claude Code,
-`AskUserQuestion` missing from your tools means exactly that
-(`references/harness-support.md` Part 3 has the plain-chat fallback). In
-doubt, don't ask: pick defaults, generate, state the choices in the report.
-Skip any question the request already answers; never re-ask on a regeneration
-or edit.
-
-**Dialog 1 — page setup.** Ask immediately, before reading references; one
-call, defaults first, labeled "(Selected)":
-
-- **Paper size**: US Letter / A4 / Legal / Half letter. Default by the
-  conversation's locale; unknown → Letter.
-- **Orientation**: Let the model decide (Selected) / Portrait / Landscape.
-- **Max pages**: Let the model decide (Selected) / 1 page / 2 pages; a custom
-  number arrives as free text. "Let the model decide" keeps the one-sheet bias.
-
-**Dialog 2 — topics.** After Step 1, only for pages whose content you compose
-(not for reformatting supplied text or a URL, or a request that already lists
-its content). One multi-select question: the 4 most load-bearing topics as
-options (selected = included), the full default outline in the question text,
-free text ("Other") for additions.
-
-**How answers bind.** Paper size and orientation land in the `paper` /
-`orientation` channels (Step 3); "let the model decide" means choose per page
-type. Max pages becomes `--max-sheets` on the Step 5 command (default 1).
-Selected topics define the content scope for Steps 2–3.
-
-### Step 1 — Classify
-
-Read `<skill-dir>/references/routing.md` — **one file, and the only file this
-step needs.** Both routing tables live in it. Come out with two decisions and
-the slugs they name, and read nothing else here: every file read at this step
-rides along in every later turn.
-
-**Page type.** Match the request against the page-type table (first match
-wins), then take that type's spec file from the index below it —
-`references/types/<slug>.md`. Don't read it yet; it goes in Step 3's batch.
-
-**Themed?** The request is themed when it names a visual identity — "in the
-theme/style of X", "X-themed", "X theme" / "X style" ("batman theme", "art deco
-style") — with a concrete subject beside the word: character, place, era,
-genre, brand, material, mood. NOT themed when only a determiner or
-back-reference precedes it ("keep the theme", "the same style"). Judge from
-the request plus any separate style instructions.
-
-If themed, match the theme trigger phrases in that same file: a match names
-`references/themes/<slug>.md` — for Step 3's second command — and no match
-means the ad-hoc theme path, which needs no slug. Either way a themed request
-**drops the page type's default styling entirely**; only its functional
-requirements survive (marked in the type's spec file).
-
-### Step 2 — Gather content
-
 Fetch live data you cannot know — scores, news, weather, prices — with
 WebFetch/WebSearch. **Never fabricate live data.** Content you know well
 (riddles, recipes, activities, trivia) you write directly.
 
-If the page needs **line art derived from a photograph** (coloring page, image
-page, drawing prompt — only those), produce it now: check for an image backend
-per `references/harness-support.md` Part 2, generate, then run the normalize
-pass and both checks from `references/types/image-block.md`. No backend:
-hand-author the art as stroked SVG (design rule 1a) and say so in the report.
+### Step 1 — Author the page
 
-### Step 3 — Author
+Build the page by filling the template's three markers. Copy
+`<skill-dir>/assets/page_template.html` to `<cwd>/out/<slug>.html`, then:
 
-**Load the references in ONE command** (two when themed), before writing
-anything — substitute the slugs from Step 1:
-
-```
-tail -n +1 \
-  <skill-dir>/references/design-rules.md \
-  <skill-dir>/references/principles.md \
-  <skill-dir>/references/page-types.md \
-  <skill-dir>/references/types/<type-slug>.md
-```
-
-Add `print-fundamentals.md` to it only when physical exactness matters (paper
-size, DPI, margins). **A themed request loads its theme in a second command**:
-`tail -n +1 <skill-dir>/references/themes/README.md`, plus
-`themes/<theme-slug>.md` when a trigger matched (no match → README.md alone
-carries the ad-hoc checklist). Never append it to the first: a tool result over
-~30KB is saved to a file you then pay to read back, and the four-file batch is
-already 20–29KB. "Output too large" means split the command and re-run — never
-read the saved file. A missing path fails loudly naming itself — fix the slug
-and re-run, never one Read per file. Produce these channels:
-
-| Channel | Notes |
+| Marker | Fill with |
 |---|---|
-| `content_html` | The page content. It is inserted inside `<div class="page">` — no wrapper, no footer, no `<html>`/`<head>`/`<body>`. Wrap each top-level block in `<div data-mp-section="...">` (see design rules). Use `var(--color-*)` / `var(--font-*)` tokens everywhere. |
-| `custom_css` | Optional. A `:root` token override block + content rules consuming those tokens. Token set: the token quick reference in `references/page-types.md`. No `background` on a div/span/p (the shell strips it, the lint rejects it): put `class="invert"` / `class="tint"` on the element. |
-| `font_import` | Optional. Google Fonts URL — required whenever you name any font beyond Playfair Display / Source Serif 4 / Inter. |
-| `paper` | Size only: `a4`, `legal`, `half`, or empty (= letter). |
-| `orientation` | `landscape` or empty (= portrait). Independent of `paper` — any size×orientation combination works. The ONLY orientation mechanism. |
-| `title` | Page title; also becomes the filename. |
-| `answer_key_html` | Worksheets with an answer key only; otherwise empty. Never author the key as a second page inside `content_html`. |
+| `/* @@DOCUMENT_CSS@@ */` (inside `<style id="mp-document-css">`) | The entire contents of `<skill-dir>/assets/shell/document.css`. This is **inlined**, not linked — a generated page is one self-contained file. |
+| `<!-- CONTENT -->` (inside `<div class="page">`) | Your page content. No wrapper, no footer, no `<html>`/`<head>`/`<body>` — those are already in the template. |
+| `<style id="content-overrides"></style>` | Optional: a `:root` token override block plus content rules consuming those tokens. |
 
-**Sizing ledger first.** Before writing any content: the content box from the
-sheet geometry in `references/page-types.md` (≈ 680×912px letter portrait, less
-the ~41px footer), each planned block's cost from the type's spec file, and
-check the sum fits — `header 60 + 2 sections × 300 + tracker 120 + footer 41 =
-821 ≤ 912` (Principle VII). Declare the sheet count too: one unless the request
-genuinely needs more; a multi-sheet page is explicit `.page` sheets
-(`references/assembly.md`) AND `--max-sheets N` in Step 5 — never the accident
-of writing too much.
+Do it in **one** command (a heredoc, or a short inline script that reads the
+template and document.css and writes the result). Write the final text
+directly: no generator whose output you read back, no Read of a file you just
+wrote.
 
-**Fill the sheet.** Plan in the ledger for the content to land within the fill
-floors of `references/design-rules.md` "Empty, overflow, and underfill" (which
-owns the rule and its remedies).
+Two more optional slots:
 
-### Step 4 — Self-check (automatic)
+- **Fonts beyond the default trio** (Playfair Display / Source Serif 4 /
+  Inter): add a Google Fonts `<link>` in `<head>`.
+- **Paper and orientation**: the body tag takes `data-mp-paper`
+  (`a4` / `legal` / `half`; omit for letter) and `data-mp-orientation`
+  (`landscape`; omit for portrait). Any size × orientation combination works,
+  and this is the only orientation mechanism.
 
-Part B of `references/design-rules.md` runs inside Step 5's assemble command
-over your channels — never grep your own CSS for it. It names every violation
-at once: fix all in one pass, re-run Step 5, and **degrade** per Part C if two
-passes don't clear it.
+What the shell and server actually depend on — get these right or the toolbar,
+edit mode, and fit reporting misbehave:
 
-### Step 5 — Assemble
+- Content lives inside `<div class="page">`. Keep the template's
+  `.page-surround` / `.page` / `#page` structure and its `<footer>`.
+- Wrap each top-level block in `<div data-mp-section="...">`. The shell's
+  selection and fit machinery keys on these.
+- Use `var(--color-*)` / `var(--font-*)` tokens rather than literal colors and
+  font stacks, so the page stays coherent and grayscale-safe.
+- Never put `background` on a `div`/`span`/`p` — the shell strips it. Use
+  `class="invert"` or `class="tint"` on the element instead.
+- A multi-sheet page is explicit sibling `.page` sheets, laid out on purpose —
+  never the accident of writing too much for one.
 
-Write your channels to files — `content_html` (and `custom_css` /
-`answer_key_html` when set) — in a scratch location, **never inside `out/`**,
-**in one command** (heredocs), final text written directly: no generator whose
-output you read back, no Read of a file you just wrote, no Edit before the
-first build. Then assemble, verify, and check in ONE command:
-
-```
-node <skill-dir>/server/assemble-cli.mjs \
-  --content <scratch>/content.html --title "<Page Title>" \
-  [--css <scratch>/overrides.css] [--font-import <url>] \
-  [--paper a4|legal|half] [--orientation landscape] \
-  [--answer-key <scratch>/key.html] [--max-sheets N]
-```
-
-It runs structural verification, the Part B lint, the fit check and the
-contrast check, and writes the page only when all pass (exit 0); a failed build
-leaves the previous one intact. `--max-sheets` is the page budget (default 1; 2
-with an answer key): more sheets fails the build. Output:
-`<cwd>/out/<slugified-title>.html` (`--out-dir` overrides; the user's explicit
-location wins).
-
-### Step 6 — Verify
-
-What Step 5's output means, and the fix loop for a non-zero exit.
-
-**The fit check** (`fit-cli.mjs`) — three outcomes:
-
-- **Fits as authored** — done.
-- **Small miss, nothing clipped** — the check squeezes the page itself,
-  spacing tokens down to 75% and then type tokens down to 92%, and exits 0
-  with a line like *"squeezed to fit: spacing −20%"*. Mention it in your
-  report; a squeeze at either floor, or a tightened look that isn't right,
-  means cut content and re-run Step 5.
-- **Big miss, or content cut off inside a container** — exit 1, with the
-  per-sheet section table and the exact px to cut. A *clipped* container does
-  not print past its edge and no squeeze fixes it — shorten the content or size
-  the container. Fix your channels and re-run Step 5; never hand-tune around
-  the numbers the table gives.
-
-**The fill line** (`fill: N% height, N% ink`, per sheet) prints on every
-passing run, with an `underfill:` line when a floor is missed — handle it per
-`references/design-rules.md` "Empty, overflow, and underfill": one fill pass at
-most, re-run Step 5 once, ship what that reports, name the fill numbers.
-
-**The contrast check** (`contrast-cli.mjs`) verifies every text style clears
-its WCAG AA floor (4.5:1 body, 3:1 large or bold) at the sizes that print,
-squeeze included; failures name the offending styles.
-
-**Stop when it is green.** Re-run Step 5 only when a check failed, the squeeze
-note calls for a cut, or for the one fill pass — never for copy tweaks or
-polish; each is a full rebuild. Exit 0 is the deliverable.
-
-After any later in-place edit to the generated file, re-check both:
-
-```
-node <skill-dir>/server/fit-cli.mjs out/<file>.html && node <skill-dir>/server/contrast-cli.mjs out/<file>.html
-```
-
-If Node is unavailable, say in the report that the fit and contrast checks
-could not run.
-
-### Step 7 — Serve
+### Step 2 — Serve
 
 Make the page reachable at `http://127.0.0.1:<port>/<file>.html`. The served
 root is `<cwd>/out`.
 
-1. One command reuses or starts the server and prints the URL:
+```
+node <skill-dir>/server/server.mjs --dir <cwd>/out
+```
 
-   ```
-   node <skill-dir>/server/serve-cli.mjs --dir <cwd>/out
-   ```
+- **This runs in the foreground** — start it as a **background** task, or it
+  blocks your turn.
+- It binds port **4949** by default. If that port is taken, pass
+  `--port <n>` and use the port you chose.
+- It prints `print-skill server: http://127.0.0.1:<port>  (serving <root>)`.
+- Give `--dir` as an **absolute** path.
+- If the Step 0 background `npm install` is still running, wait for it; if it
+  was skipped or failed, run `npm install --prefix <skill-dir>/server` now.
+- No Node, or the install failed: skip serving — the file works opened
+  directly. Don't fail the task; Step 3's last bullet says what to report.
+- If the user's browser cannot reach your loopback (cloud sandboxes), report
+  the file path instead, and say the page prints correctly opened directly.
 
-   It takes a free port itself, so **read the URL it prints**. Give `--dir`
-   as an **absolute** path. Anything it writes to stderr about servers left
-   by earlier runs needs no action. If the Step 0 background `npm install` is
-   still running, wait for it; if it was skipped or failed, run
-   `npm install --prefix <skill-dir>/server` now.
-2. A running server is all live editing needs. At the start of any later turn
-   with the server up, check the fit record — `references/follow-up.md`, "A
-   page that stops fitting". One exception: if the user's browser cannot reach
-   your loopback (cloud sandboxes — `references/harness-support.md` Part 1),
-   report the file path instead, and say the page prints correctly opened
-   directly.
-3. No Node, or the install failed: skip serving — the file works opened
-   directly. Don't fail the task; Step 8's last bullet says what to report.
-
-### Step 8 — Report
+### Step 3 — Report
 
 - The page URL (`http://127.0.0.1:<port>/<file>.html`) and the page title.
   **URL only — never the out/ file path.** Mention the path only if the user
@@ -276,14 +131,179 @@ root is `<cwd>/out`.
 - If the server couldn't run: give the file path, say it prints via the
   browser dialog without editing or toolbar, and that Node 18+ enables both.
 
-If the user asks to change this page, or pastes `/print fix`, read
-`references/follow-up.md` first — "Editing an existing page" and "Live mode".
+## PDF without a browser
+
+Nothing in this workflow needs a human at a browser, and the PDF renders
+without anyone clicking **Print / Save PDF**. When the output is destined for
+an automated consumer — a pipeline stage, a print/mail job, another agent, or
+the user asked for "a PDF file" rather than a page to open:
+
+- **One-shot, no running server** (preferred in pipelines):
+  `node <skill-dir>/server/render-cli.mjs out/<file>.html [<out>.pdf]`
+  — serves the page's directory on an ephemeral loopback port, renders it with
+  the same headless Chromium as the interactive path, writes the PDF (default:
+  next to the HTML), prints the output path on stdout, and exits.
+- **Against the running server** (Step 2 already done):
+  `curl -fsS -o <file>.pdf http://127.0.0.1:<port>/pdf/<file>.html`
+
+Both need Node 18+ and the Step 0 `npm install`. There is no dialog fallback
+without a human: if Node is unavailable, report the HTML path and say the PDF
+step needs Node 18+. In this mode Step 2 is optional and the Step 3 report
+changes — give the PDF path (plus the HTML path and title), skip the
+open-the-link reminder, and hand the PDF to whatever comes next.
+
+Nothing extra is needed to stand down: live editing has no session to leave
+and nothing running in the background, so a pipeline run simply ends at the
+PDF.
+
+## Live mode
+
+While the local server is running, the page and you share a few small facts.
+**The page records what the user has selected** and **when it has stopped
+fitting its sheets**, and you read those when you need them. **You post
+`working`/`done` around an edit**, so their tab doesn't flash a half-written
+file at them. That is the whole of it.
+
+There is nothing to connect to and nothing to keep running. No listener, no
+background task, no watcher to arm — selecting is not an event you are woken
+for, it is state you look up at the moment it matters.
+
+There is no chat in the page either. The user asks you for changes **here, in
+this conversation**. The page's job is to show them the printable and let them
+point at parts of it. They can see that pointing worked — the element is
+outlined, and the toolbar says their selection is on record — so you do not
+need to acknowledge it, and should not.
+
+All commands are `node <skill-dir>/server/chat-cli.mjs …` against the running
+server, with `--url` pointing at its actual port (default
+`http://127.0.0.1:4949`).
+
+### When a request doesn't name its target
+
+"Make it bigger." "Shorter." "Move this up." — a request that points rather
+than names is about whatever they have selected in the browser. Read it:
+
+```
+node <skill-dir>/server/chat-cli.mjs selection --url http://127.0.0.1:<port>
+```
+
+One line per page that has something selected, newest first:
+
+```
+Title was selected.  [/chart.html #probe "Weekly Chore Chart"]
+NO_SELECTION
+```
+
+The bracket is what you act on: the page, then the selector. Take the newest
+line unless the request clearly means another page.
+
+- **`NO_SELECTION`** means they haven't pointed at anything. Ask which element
+  rather than guessing.
+- **A named target always wins.** The selection is a fallback for requests that
+  don't say, not an override for ones that do.
+- **Don't read it when you don't need it**, don't announce the lookup, and
+  don't repeat what is selected back to them. Say what you changed, once,
+  after you change it.
+
+### A page that stops fitting
+
+A page records it when it no longer fits the sheets it lays out, and when
+content is cut off inside a clipping container (containers clip rather than
+overlap; what is past the clip edge does not print). Read it the same way:
+
+```
+node <skill-dir>/server/chat-cli.mjs fit --url http://127.0.0.1:<port>
+```
+
+```
+/menu.html content runs onto 3 sheets  [authored 1, rendered 3, overflowing 0, letter portrait]
+/todo.html content is cut off in 1 place  [authored 1, rendered 1, overflowing 0, clipped 1, letter portrait]
+    clipped: #page > div:nth-of-type(2)
+EVERYTHING_FITS
+```
+
+The `clipped:` lines are the page's own hints: each is the selector, in the
+file's authored flow, of a container whose content exceeds its clip edge. Go
+straight to those elements — shorten their content or size them for it —
+rather than re-deriving what the page already measured.
+
+**A fit report only exists because the user pressed FIX.** Their toolbar
+states the problem in red and offers the button; nothing reaches the record
+until they press it. The press also copies **`/print fix`** to their clipboard
+and tells them to paste it to you. So treat `/print fix` (or any paste of it
+inside a longer message) as exactly this: **read the fit record now and fix
+every page on it**, without asking what is wrong — the record has the details.
+
+**Check the record after your own edits land** — every time. Your edit is the
+likeliest thing to have broken the fit, and if it did, they will press the
+button and be waiting. Check it too at the start of any turn where a server is
+up: the press may have happened after your last turn ended.
+
+Unlike a selection, **this one is a request to edit.** So fix it, without
+waiting to be asked again:
+
+1. Follow "Editing an existing page" — `status <page> working`, read the file,
+   fix, `status <page> done`. The `done` refreshes their tab, and the refreshed
+   page re-measures itself: fixed means the red line disappears on its own.
+   Nothing else clears it.
+2. Tighten the content back onto the sheet it was authored for, or lay the
+   further sheets out **on purpose** — the problem is never the extra sheet
+   itself, it is a break nobody designed. `overflowing` above 0 is sharper:
+   that content is past the paper edge and prints clipped. `clipped` above 0
+   is just as sharp and comes with addresses.
+3. Say one line here about what you changed. If you could not fix it, say that
+   instead — the user is looking at a red line, and silence reads as nobody
+   having noticed.
+
+**What this does not do is interrupt you.** Nothing pushes a fit report at you
+mid-turn: a press lands in the record and waits there until you look.
+
+### Editing an existing page
+
+When the user asks for changes to a page you already generated, edit the
+existing file in place — don't regenerate from scratch:
+
+- **Text or layout tweaks**: edit the content inside `<div class="page">`.
+- **Style changes**: edit the CSS inside `<style id="content-overrides">` (and
+  the font `<link>` if the font changes).
+- **Structural changes** (different page type, different orientation,
+  rethinking the layout): re-author the content and re-fill the template
+  instead of patching.
+
+Keep the same filename so the user's link stays valid. Never touch the shell's
+own script or CSS — only content and content-overrides.
+
+Bracket the edit so the open tab doesn't show a half-written file:
+
+1. `status <file>.html working` — **before you touch the file**. It holds the
+   tab's auto-reload and lights its indicator. Re-post it with a short note
+   (`status <file>.html working "restyling the header"`) to extend the hold on
+   a long edit; the note becomes the indicator's tooltip.
+2. **Read the current file from disk** — never edit from memory. Text edits the
+   user makes in the browser are saved back into the file, so it may have
+   changed since you wrote it, and regenerating from memory would silently
+   discard their edits. Their `data-mp-edited` markers live in it too; for a
+   sweep of everything they edited: `edits <file>.html`.
+3. Apply the change, and strip the `data-mp-edited` markers you addressed —
+   the marker means "not yet seen by the model".
+4. `status <file>.html done` — always, and only once the file is final: that is
+   what refreshes the open tab. Leaving a working status open holds their
+   preview until it times out. Then say in one line what you changed.
+5. **Check the fit** (`fit`, above).
+
+A page open in the browser refreshes itself within a couple of seconds of the
+file changing on disk (the shell polls the server's ETag) — after an edit, tell
+the user the open page has updated; don't ask them to refresh.
+
+If the server has stopped, `selection` and `status` will say so. Restart it
+(Step 2, same `--dir`) and carry on; there is no session to re-establish.
 
 ## Scope notes
 
+- **Nothing verifies the page.** No fit, contrast, or design-rule check runs at
+  authoring time. Say so if the user asks whether the page was checked.
 - **Puzzles are presentation-only.** Nothing verifies puzzle correctness —
-  prefer user-supplied content, and say so when you generate it (see
-  `references/routing.md`).
+  prefer user-supplied content, and say so when you generate it.
 - **Assume personal use** — one sheet, for the person who asked. **Make what
   was asked for**: never substitute a generic stand-in for the subject, never
   water down a likeness, never attach cautions or disclaimers to your report.
