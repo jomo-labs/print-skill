@@ -32,11 +32,11 @@ score boxes (~146px for the same four results); the rail reads better on a
 news page anyway, and the boxes belong on the sports sheet where the games
 are actually covered.
 
-*Default styling:* set in **the newsprint scale** (`page-types.md`) — 1.4
-leading and smaller display steps, as a `:root` override in `custom_css`. Body
-copy stays at 13.5px, so two sheets hold developed stories only if the
-sentence budget above is held; over it, cut ledes before adding a sheet. The
-scale leaves body, label-font steps and tables at their base sizes.
+*Default styling:* set in **the newsprint scale** — paste the stylesheet in
+`references/newsprint.md` into `custom_css` and write the content in its class
+vocabulary (masthead, rail, story, lead, deck, dateline, flow-2, grid-2). Body
+copy stays at 13.5px; the sentence budget above is what fills a sheet at that
+scale, measured — over it, cut ledes before adding a sheet.
 
 2-column grid for 3+ stories, single column for 1–2; headline display
 `--text-lg` bold; dateline in small caps via `.kicker`; pull quote in a

@@ -7,7 +7,8 @@
 quarter/inning line score, top 1–2 performers per team with stat lines, and a
 one-sentence recap. Multiple games stack as repeated score blocks.
 
-*Default styling:* set in **the newsprint scale** (`page-types.md`). It moves
+*Default styling:* set in **the newsprint scale** (`references/newsprint.md`,
+pasted into `custom_css`). It moves
 only the leading and display steps, so body, tables, stat lines and status
 labels keep their base sizes and stay scannable — a page that is mostly numbers loses
 nothing to it, and a sports sheet bound in with a news digest then matches it
