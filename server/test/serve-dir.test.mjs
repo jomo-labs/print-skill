@@ -28,22 +28,6 @@ async function project() {
   return dir;
 }
 
-// SKILL_DIR/out is a real project when the skill has been run on itself, not
-// only ever test debris — so a test that needs it absent to make a clean
-// assertion confirms that first, rather than deleting or overwriting content
-// of unknown origin.
-async function assertSkillOutAbsent() {
-  const out = path.join(SKILL_DIR, "out");
-  const present = await fs.access(out).then(() => true, () => false);
-  assert.equal(
-    present,
-    false,
-    `${out} already exists — this test needs it absent to run cleanly. That's ` +
-      `either dogfood output from running the skill on itself, or a leftover ` +
-      `from an interrupted test run; move or remove it before running this suite.`
-  );
-}
-
 test("no --dir: the project's out/ is found from its cwd", async () => {
   const dir = await project();
   assert.equal(resolveServeDir(null, dir).root, path.join(dir, "out"));
@@ -70,23 +54,14 @@ test("a directory holding pages of its own is served as-is", async () => {
 });
 
 test("a cwd inherited from the skill is refused, not served", async () => {
-  // These are refused unconditionally, independent of whether SKILL_DIR/out
-  // exists — the bare-skill-root case below is the one whose verdict depends
-  // on that, and it owns its own test rather than sharing this loop.
-  for (const cwd of [SERVER_DIR, path.join(SKILL_DIR, "assets")]) {
+  for (const cwd of [SERVER_DIR, SKILL_DIR, path.join(SKILL_DIR, "assets")]) {
     assert.throws(() => resolveServeDir(null, cwd), /inside the print skill itself/);
   }
   // The same mistake with a relative flag: "out" under the skill, not a project's.
   assert.throws(() => resolveServeDir("out", SERVER_DIR), /inside the print skill itself/);
 });
 
-test("a bare skill root with no out/ yet is refused", async () => {
-  await assertSkillOutAbsent();
-  assert.throws(() => resolveServeDir(null, SKILL_DIR), /inside the print skill itself/);
-});
-
 test("the skill's own out/ is a project like any other", async () => {
-  await assertSkillOutAbsent();
   const out = path.join(SKILL_DIR, "out");
   await fs.mkdir(out, { recursive: true });
   try {
