@@ -159,8 +159,8 @@ function paginate(p) {
 
 // What the pass had to do, published three ways: to the toolbar as a status
 // message with a FIX button beside it, to the body as data-mp-overflow, and
-// to window.mpFit for anything reading the page from outside. The model hears
-// about it when the user presses that button, and not before (sendFitReport).
+// to window.mpFit for fit-cli.mjs. The model hears about it when the user
+// presses that button, and not before (sendFitReport).
 //
 // This is the point of the whole reporting path. Sheets the shell had to add
 // are sheets the AUTHOR did not lay out, and where a document breaks is a
@@ -2133,9 +2133,9 @@ function injectChrome() {
   // and usually the taller ones: content that fits its sheet in the font it
   // was designed for gets split onto a sheet it does not need. Pagination
   // happens once, so nothing would ever take that sheet back — the extra
-  // sheet is still in the DOM when the PDF renderer prints it, so the fit
-  // the page reports silently disagrees with the artifact it would produce.
-  // Re-split when the fonts land. Already-
+  // sheet is still in the DOM when the PDF renderer prints it, and every
+  // later fit pass (fit-cli strips its squeeze and re-splits) silently
+  // disagrees with the artifact. Re-split when the fonts land. Already-
   // resolved in the common case (fonts cached, or a page that names none),
   // where this is one no-op pass; `catch` because a document with no
   // FontFaceSet is not an error, it just has nothing to wait for.

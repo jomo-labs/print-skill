@@ -31,7 +31,7 @@ export async function loadPageParts() {
   return { template, documentCss };
 }
 
-/** Fill the template's markers: document css, then the page body. */
+/** What assemble-cli does, minimally: fill the template's markers. */
 export function fillTemplate(template, documentCss, body, { customCss } = {}) {
   let html = template.replace("/* @@DOCUMENT_CSS@@ */", documentCss);
   if (customCss !== undefined) {

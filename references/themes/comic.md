@@ -1,0 +1,103 @@
+# Theme: Comic (Dog Man / kids comic book)
+
+**Trigger phrases:** "Dog Man", "comic book", "comic strip", "Captain
+Underpants", "kids comic", or similar.
+
+Platform invariants are in `design-rules.md`; only what Comic changes is below.
+
+## 1. Meta & Philosophy
+
+Loud, chunky kids'-comic energy: short earnest sentences, capital-letter
+EMPHASIS, a narrator voice, a hard offset shadow, and a heavy ink border — the
+only shipped theme with either. Personality: loud, earnest, chunky, playful,
+sincere; built for kids' content (chore charts, activity pages, wishlists).
+
+## 2. Typography
+
+| Token | Value | Fallback |
+|---|---|---|
+| `--font-display` | Bangers | cursive |
+| `--font-body` | Patrick Hand | cursive |
+| `--font-label` | Patrick Hand | cursive |
+
+`font_import`:
+`https://fonts.googleapis.com/css2?family=Bangers&family=Patrick+Hand&display=swap`
+
+- Weights: both are single-weight faces. If they fail to load, fall back to
+  the `cursive` generic, never a heavier system font.
+- Scale changes:
+
+| Token | Value | Why |
+|---|---|---|
+| `--text-body` | 16px | kids' content floor |
+| `--text-3xl` | 52px | chapter titles, secondary hero numbers |
+| `--text-4xl` | 108px | the winner number on a hero stat panel |
+
+| Token | Value | Why |
+|---|---|---|
+| `--leading-body` | 1.55 | Patrick Hand reads looser than a serif body |
+| `--tracking-display` | 0.04em | the chunky comic-headline feel (0.02-0.1em range) |
+
+## 3. Color
+
+- **Neutral ramp:** unchanged from the default — Comic overrides no neutrals.
+- **Accents** (theme-specific tokens, all text/border only):
+
+| Token | Value | Use |
+|---|---|---|
+| `--color-blue` | `oklch(48% 0.140 240)` | "Dog Man blue" — chapter stripes, hero-panel accents |
+| `--color-red` | `oklch(50% 0.190 25)` | "Petey red" — callouts and BONK!!!-style exclamations only |
+| `--color-yellow` | `oklch(78% 0.180 90)` | highlight accent, used sparingly |
+
+- **Rationing rule:** three accent hues instead of one, but the same no-fill
+  rule — text and borders only.
+- **Semantic role mapping:** winner number in `--color-blue` at `--text-4xl`;
+  loser number in `--color-dim` around `--text-3xl`; callout/SFX text in
+  `--color-red`; chapter-heading kicker in `--color-blue`.
+
+## 4. Spacing & Density
+
+Default `--space-*` scale and page margins. Panels favor the tighter steps
+(`--space-4`-`--space-5` internal padding) and a compact section rhythm — comic
+panels are meant to feel packed, not airy.
+
+## 5. Surface & Motifs
+
+| Token | Value |
+|---|---|
+| `--page-border` | `5px solid var(--color-ink)` |
+
+- **Page chrome:** the heavy ink frame is load-bearing for this theme's
+  identity, not optional — it is what carries the look onto paper.
+  Border weights otherwise stay at the defaults.
+- **Signature motifs:** `.tilt` (default -0.6deg) on narrator boxes;
+  `.halftone` for panel texture where a comic-print feel is wanted; `.badge`
+  for a "WOOF!" circle stamp on VS dividers (outline only); `.chapter-label`
+  for chapter kickers, restyled to `--color-blue`.
+- **Marks and imagery:** no icon system. This theme's expressive substitute is
+  typographic sound effects ("BONK!!!", "WOW.") set in the display font at
+  large size with rotation — never image assets.
+
+## 6. Components & Patterns
+
+- **Cover masthead** — a small uppercase byline ("Dog Man's Sports Section — by
+  George and Harold"-style, adapted to the content), then a big two-line
+  display title with the second line in `--color-blue`, and a right-hand date
+  card separated by a `--border-fat` rule with a small rotated handwritten
+  aside.
+- **Chapter heading** — `.chapter-label` stripe in `--color-blue`, "Chapter N:"
+  kicker, title in ink.
+- **Narrator box** — outlined, `.tilt`-rotated, no fill: "Meanwhile, something
+  AMAZING was happening…"
+- **Hero stat panel** (3-up grid) — blue left accent border, winner number at
+  `--text-4xl`, description in the narrator voice, red rotated callout.
+- **"The End" colophon** — centered, tracked-out display type.
+- **Overflow deviation:** a comic panel that overflows never shrinks its offset
+  shadow or border weight to compensate — those stay fixed regardless of
+  content length. Reduce type or shorten the content instead.
+
+## 7. Contrast evidence
+
+- `--color-blue` clears 3:1 large/bold; used at 32px+ only, never body text.
+- `--color-red` clears 3:1 large/bold; callout/SFX use only.
+- Body type floor: 16px+ (`--text-body` above) — also covers screen legibility.

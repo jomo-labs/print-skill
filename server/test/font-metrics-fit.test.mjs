@@ -6,17 +6,27 @@
 // took that sheet back, so it was still in the DOM when the PDF renderer
 // printed it — a spurious, near-blank final page.
 //
-// Asserted here: the shell re-splits when the fonts land, and the re-split
-// reaches the printed artifact rather than only the in-page fit report.
+// The bug hid behind the checker. fit-cli always re-splits (it strips its
+// squeeze and calls applySize) before reading a verdict, so it measured the
+// repaired DOM and reported "fits: 1 sheet" about a file that rendered two.
+// Both halves are asserted here: the shell re-splits when the fonts land, and
+// the verdict fit-cli reports is the one a fresh load produces.
 //
 //   node --test server/test/          (needs `npm install` in server/)
 import test from "node:test";
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { startServer } from "../server.mjs";
 import { loadPageParts, fillTemplate, launchTestBrowser, openTab } from "./helpers.mjs";
+
+const run = promisify(execFile);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const FIT_CLI = path.join(HERE, "..", "fit-cli.mjs");
 
 function pdfPageCount(buf) {
   const m = buf.toString("latin1").match(/\/Type\s*\/Pages[\s\S]{0,200}?\/Count\s+(\d+)/);
@@ -89,4 +99,74 @@ test("the shell takes back a sheet it needed only in fallback metrics", async (t
   const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
   assert.equal(pdfPageCount(pdf), 1,
     "the re-split must reach the printed artifact, not only window.mpFit");
+});
+
+test("fit-cli's verdict is the one a fresh load of the file produces", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-fontfit-cli-"));
+  const { template, documentCss } = await loadPageParts();
+  const file = path.join(dir, "p.html");
+  // Content just over one sheet: fit-cli squeezes, persists, and reports. The
+  // report is only true if the persisted FILE fits — which is what the render
+  // below measures independently.
+  const body = Array.from({ length: 13 }, (_, i) =>
+    `<div data-mp-section="notes" class="blk"><p>Block ${i}</p></div>`).join("\n");
+  // The gap is a TOKEN, because retuning the spacing tokens is the whole
+  // mechanism of the squeeze — content built from literal lengths cannot be
+  // squeezed at all, and would only ever exercise the failure path.
+  await fs.writeFile(file, fillTemplate(template, documentCss, body,
+    { customCss: ".blk { height: 40px; margin-bottom: var(--space-10); }" }));
+
+  const { stdout } = await run("node", [FIT_CLI, file]);
+  const claimedSheets = Number(stdout.match(/fits:\s*(\d+)\s*sheet/)?.[1]);
+  assert.ok(Number.isInteger(claimedSheets), `no sheet count in fit-cli output:\n${stdout}`);
+
+  const { url, close } = await startServer({ dir, port: 0 });
+  const browser = await launchTestBrowser();
+  t.after(async () => {
+    await browser.close();
+    await close();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  const page = await openTab(browser);
+  await page.goto(`${url}/p.html`);
+  await page.waitForFunction("!!window.mpFit");
+  const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+
+  assert.equal(pdfPageCount(pdf), claimedSheets,
+    `fit-cli claimed ${claimedSheets} sheet(s); the file renders ${pdfPageCount(pdf)}:\n${stdout}`);
+});
+
+test("the squeeze ladder scales the authored baseline, not the previous rung", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "print-skill-squeeze-"));
+  const { template, documentCss } = await loadPageParts();
+  const file = path.join(dir, "p.html");
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+
+  // Enough over one sheet that the ladder has to walk past its first rung —
+  // the rungs are where compounding used to happen (0.9 x 0.8 x 0.75 = 0.54,
+  // a -46% squeeze announced as -25%).
+  const body = Array.from({ length: 13 }, (_, i) =>
+    `<div data-mp-section="notes" class="blk"><p>Block ${i}</p></div>`).join("\n");
+  // The gap is a TOKEN, because retuning the spacing tokens is the whole
+  // mechanism of the squeeze — content built from literal lengths cannot be
+  // squeezed at all, and would only ever exercise the failure path.
+  await fs.writeFile(file, fillTemplate(template, documentCss, body,
+    { customCss: ".blk { height: 40px; margin-bottom: var(--space-10); }" }));
+
+  const { stdout } = await run("node", [FIT_CLI, file]);
+  const pct = Number(stdout.match(/spacing −(\d+)%/)?.[1]);
+  assert.ok(Number.isInteger(pct), `no spacing squeeze reported:\n${stdout}`);
+
+  // --space-3 is 12px in the document stylesheet and is not overridden here,
+  // so the value in the SQUEEZE BLOCK states the factor the page actually got.
+  // It must be the factor that was announced. (Scoped to that block on
+  // purpose: the document stylesheet declares the same token further up.)
+  const text = await fs.readFile(file, "utf-8");
+  const block = text.match(/<style id="mp-fit-squeeze">([\s\S]*?)<\/style>/)?.[1];
+  assert.ok(block, "no squeeze block was persisted");
+  const written = Number(block.match(/--space-3:\s*([\d.]+)px/)?.[1]);
+  assert.ok(Number.isFinite(written), `no --space-3 in the persisted squeeze:\n${block}`);
+  assert.equal(Math.round((written / 12) * 100), 100 - pct,
+    `announced −${pct}% but wrote ${written}px for a 12px token ` +
+    `(= −${100 - Math.round((written / 12) * 100)}%)`);
 });

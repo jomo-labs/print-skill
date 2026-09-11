@@ -1,4 +1,4 @@
-// Small pieces shared between the server and chat-cli. Nothing here knows
+// Small pieces shared across the server and its CLIs. Nothing here knows
 // about HTTP, pages, or Playwright — it is the one home for helpers that were
 // otherwise copy-pasted per entry point.
 import { realpathSync } from "node:fs";
@@ -35,6 +35,108 @@ export function takeValue(argv, name, fallback) {
   const v = argv[i + 1];
   argv.splice(i, 2);
   return v;
+}
+
+/**
+ * Custom-property references in `html` that nothing in `html` defines.
+ *
+ * An undefined `var(--x)` is not an error the browser reports: the whole
+ * declaration becomes invalid at computed-value time, so a margin or gap
+ * silently collapses to 0 and the page renders subtly broken. Models writing
+ * custom css guess token names (the spacing scale is non-contiguous, so
+ * `--space-7` is a natural wrong guess between `--space-6` and `--space-8`),
+ * which makes this worth failing at assembly rather than trusting the eye.
+ *
+ * A reference with a fallback (`var(--x, 4px)`) resolves by definition and is
+ * not flagged. Returns [{ name, count, suggestion }] sorted by name;
+ * `suggestion` lists the nearest defined tokens sharing the name's stem
+ * (e.g. `--space-6, --space-8` for `--space-7`), or "" when none match.
+ */
+export function findUndefinedTokenRefs(html) {
+  const defined = new Set(
+    [...html.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]),
+  );
+  const counts = new Map();
+  for (const [, name, next] of html.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*([),])/g)) {
+    if (next === ",") continue; // carries a fallback — resolves regardless
+    if (!defined.has(name)) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const suggest = (name) => {
+    const m = name.match(/^(.*?)(\d+)$/);
+    if (!m) return "";
+    const [, stem, numStr] = m;
+    const num = parseInt(numStr, 10);
+    const peers = [...defined]
+      .map((d) => {
+        const dm = d.match(/^(.*?)(\d+)$/);
+        return dm && dm[1] === stem ? parseInt(dm[2], 10) : null;
+      })
+      .filter((n) => n !== null)
+      .sort((a, b) => a - b);
+    if (!peers.length) return "";
+    const below = peers.filter((n) => n < num).pop();
+    const above = peers.find((n) => n > num);
+    return [below, above]
+      .filter((n) => n !== undefined)
+      .map((n) => `${stem}${n}`)
+      .join(", ");
+  };
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => ({ name, count, suggestion: suggest(name) }));
+}
+
+/**
+ * Border and outline declarations in `css` whose subject is the sheet itself
+ * (`.page` / `#page`), returned as [{ selector, declaration }].
+ *
+ * The sheet box is the paper: its edge is flush with the sheet edge, inside
+ * the ~0.25in strip no desktop printer can reach. A border drawn there is
+ * drawn in the strip, so it clips on paper while looking correct on screen
+ * and in any viewport screenshot — the failure is invisible everywhere
+ * except the printed page. The shell has a mechanism for exactly this
+ * (`--page-border`, painted by `.page::before` at `--page-frame-inset`),
+ * so a direct border is never the way in; it is the way around.
+ *
+ * Only the selector's SUBJECT counts — `.page h1`, `.page > .card` and
+ * `.page-surround` all style something other than the sheet and are left
+ * alone. `border-radius`, `border-collapse` and bare `*-color` declarations
+ * paint no edge of their own and are not flagged, nor is an explicit
+ * `none` / `0`, which is how a theme turns a frame off.
+ */
+export function findSheetEdgeBorders(css) {
+  const body = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const found = [];
+  for (const [, selectors, decls] of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const subject = selectors.split(",").some((sel) => {
+      const last = sel.trim().split(/[\s>+~]+/).pop() || "";
+      const bare = last.replace(/::?[A-Za-z-]+(\([^)]*\))?/g, "");
+      return bare !== "" && /^(\.page|#page)+$/.test(bare);
+    });
+    if (!subject) continue;
+    for (const [, prop, value] of decls.matchAll(/([A-Za-z-]+)\s*:\s*([^;}]+)/g)) {
+      const name = prop.toLowerCase();
+      if (!/^(border|outline)(-|$)/.test(name)) continue;
+      if (/^border-(radius|collapse|spacing|image)/.test(name)) continue;
+      if (/-color$/.test(name)) continue;
+      const v = value.trim().toLowerCase();
+      if (v === "none" || v === "hidden" || /^0(px|pt|in|mm|em|rem)?$/.test(v)) continue;
+      found.push({ selector: selectors.trim().replace(/\s+/g, " "), declaration: `${prop.trim()}: ${value.trim()}` });
+    }
+  }
+  return found;
+}
+
+/**
+ * Is `url` a plain Google Fonts stylesheet URL (design-rules.md Part B item 8)?
+ *
+ * Lives here because two callers enforce it — assemble-cli decides whether to
+ * emit the `<link>`, lint-cli reports on it — and two copies of a security
+ * pattern is one copy too many. The character class is deliberately narrow:
+ * anything outside it could carry a quote and break out of the href attribute.
+ */
+export function isGoogleFontsUrl(url) {
+  return /^https:\/\/fonts\.googleapis\.com\/[A-Za-z0-9/?&=+:;,@._%-]*$/.test(String(url));
 }
 
 /**

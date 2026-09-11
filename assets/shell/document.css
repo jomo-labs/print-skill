@@ -9,10 +9,7 @@
   --color-paper:      white;
   --color-ink:        oklch(11% 0.005 78);
   --color-mid:        oklch(44% 0.008 78);
-  --color-dim:        oklch(56% 0.006 78);   /* 4.66:1 on paper — clears the 4.5:1 body
-                                                 floor. At 67% it was 2.99:1, under BOTH
-                                                 floors, and the most common contrast
-                                                 failure in traced runs. */
+  --color-dim:        oklch(67% 0.006 78);
   --color-ghost:      oklch(87% 0.005 78);
   --color-rule:       oklch(11% 0.005 78);
   --color-rule-light: oklch(83% 0.005 78);
@@ -70,8 +67,10 @@
      that reads as newsprint tightens it per page (news-digest, 1.4).
      Tightening it in the base layer was tried and taken back — it shortened
      every page type at once, so content that used to reach the bottom margin
-     stopped at ~80% of the sheet and the fill floors were missed on first
-     passes they never used to be, and every one of those bought a rewrite. */
+     stopped at ~80% of the sheet and the fit check's height warning fired on
+     first passes it never used to, and every one of those bought a rewrite
+     (see reportFill in fit-cli.mjs for the numbers, and design-rules.md for
+     the one-pass rule). */
   --leading-display: 1.1;
   --leading-body:    1.65;
   --leading-label:   1.4;
@@ -205,9 +204,8 @@ body {
 /* Static per-paper sheet geometry so a page opened directly (no scripts)
    still shows and prints its configured paper exactly. applySize() sets the
    same dimensions as inline styles at runtime; these cover the script-less
-   case via the body's data-mp-paper attribute. The static @page size in
-   #dynamic-page-css must be set to match when the page is authored — the
-   script-less case has nothing else to fix it up. */
+   case via the assembly-set body attribute. (Assembly also rewrites the
+   static @page size in #dynamic-page-css to match.) */
 body[data-mp-paper="a4"] .page        { width: 793px;  height: 1122px; }
 body[data-mp-paper="legal"] .page     { width: 816px;  height: 1344px; }
 body[data-mp-paper="half"] .page      { width: 528px;  height: 816px;  }
@@ -220,7 +218,8 @@ body[data-mp-paper="half"][data-mp-orientation="landscape"] .page  { width: 816p
 /* ── Element defaults (adapt per content type) ──
    Every size, weight, rule and space below resolves through a token, so a
    theme retunes the document by setting tokens, not by restating these rules.
-   A theme's section-to-token map is the contract these defaults consume. */
+   The theme spec's section-to-token map (references/themes/
+   theme-spec-template.md) is the contract these defaults consume. */
 h1 { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; line-height: var(--leading-display); letter-spacing: var(--tracking-display); margin-bottom: 0.2em; padding-block: var(--display-overhang); }
 h2 { font-family: var(--font-display); font-size: var(--text-xl);  font-weight: 700; line-height: var(--leading-display); letter-spacing: var(--tracking-display); margin: 1em 0 0.25em; padding-block: var(--display-overhang); }
 /* h3 is a section heading, not a kicker — the wide-tracked kicker convention

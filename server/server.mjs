@@ -696,21 +696,10 @@ if (isMain) {
     process.exit(1);
   }
   for (const note of notes) console.log(`print-skill server: ${note}`);
-  // A busy port is the ordinary failure here, not an exceptional one: this is
-  // commonly started as a background task, where an unhandled rejection's
-  // stack trace goes unread and the caller reports a URL nothing is serving.
-  let started;
-  try {
-    started = await startServer({ dir: root, port: Number(portArg) });
-  } catch (err) {
-    const busy = err?.code === "EADDRINUSE";
-    console.error(
-      `print-skill server: ${busy ? `port ${portArg} is already in use` : err.message}` +
-      (busy ? `\nStart it on another port instead: node ${path.join(SERVER_DIR, "server.mjs")} --dir ${root} --port <port>` : "")
-    );
-    process.exit(1);
-  }
-  const { url, close } = started;
+  const { url, close } = await startServer({
+    dir: root,
+    port: Number(portArg),
+  });
   console.log(`print-skill server: ${url}  (serving ${root})`);
   // Addressed to the agent that just started this process. There is nothing
   // to connect and nothing to arm — the one thing worth knowing is where the

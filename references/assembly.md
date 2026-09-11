@@ -1,0 +1,243 @@
+# Assembly
+
+The mechanical procedure that turns your authored channels into the final HTML
+file. Read this when you're ready to assemble (after the self-check in
+`design-rules.md` passes). Every step is anchor-exact — follow it literally.
+
+The document template (`assets/page_template.html`) and the shell chrome it
+links (`assets/shell/`) are never authored or retyped — **produce the copy
+with the commands below, then make targeted insertions at the anchors.** The
+chrome is injected by the local server at serve time, never baked into the
+generated file — "Verification" below is what confirms none of it leaked
+into the page.
+
+## Run it as one command
+
+`server/assemble-cli.mjs` executes this whole procedure — page copy, the
+anchored insertions in the right order, and the verification list at the end
+— and always runs the fit and contrast checks on the result:
+
+```
+node <skill-dir>/server/assemble-cli.mjs --content <content.html> --title "<title>" \
+  [--css <overrides.css>] [--font-import <url>] [--paper a4|legal|half] \
+  [--orientation landscape] [--answer-key <key.html>] [--out-dir <dir>] [--max-sheets N]
+```
+
+Prefer it whenever Node is available: it is one round-trip instead of a
+chain, and it cannot miss an anchor. The manual procedure below remains the
+spec the CLI implements — and the path to follow by hand when Node is not
+available, or when editing an already-generated file in place.
+
+## Inputs (the authored channels)
+
+| Channel | Required | What it is |
+|---|---|---|
+| `content_html` | yes | The page content. Inserted inside `<div class="page">` — no wrapper, no footer, no `<html>`/`<head>`/`<body>` tags of your own. |
+| `title` | yes | The page title (used for the filename and your report). |
+| `custom_css` | no | Style overrides; lands in `<style id="content-overrides">`. Must have passed the self-check. |
+| `font_import` | no | A Google Fonts URL; becomes a `<link>`. Must have passed self-check item 8. |
+| `paper` | no | Size only: one of `a4`, `legal`, `half`. Empty/anything else = letter. |
+| `orientation` | no | `landscape` or empty (= portrait). Independent of `paper` — any combination is valid. |
+| `answer_key_html` | no | Answer-key content for worksheets only — makes this a two-sheet document (step 2). Never author the key as a second page inside `content_html`. |
+
+## Procedure
+
+### 1. Output directory, produce the page copy
+
+Generated pages are outputs, not sources — they live flat in an `out/`
+directory (each printable is one self-contained file, so no
+subdirectories are needed), and users reach them through the local server
+URL, never the file path:
+
+```
+<outdir> = <cwd>/out/
+```
+
+If the user asked for an explicit output location, that wins — skip the
+out/ convention entirely.
+
+```bash
+mkdir -p <outdir>
+sed -e '\|/\* @@DOCUMENT_CSS@@ \*/|{r <skill-dir>/assets/shell/document.css' -e 'd' -e '}' \
+  <skill-dir>/assets/page_template.html > <outdir>/<output>.html
+```
+
+The `sed` inlines the document stylesheet (single source:
+`assets/shell/document.css`) into the template's `<style id="mp-document-css">`
+block — one command, nothing retyped. There is **no shell copy step**:
+`<outdir>` contains only `.html` files.
+
+(Whether `out/` is git-ignored is the project's own call — this skill never
+edits the project's `.gitignore` or any other file outside `out/`.)
+
+Output filename: the title, lowercased, every run of non-alphanumeric characters
+replaced with a single hyphen, leading/trailing hyphens trimmed, plus `.html`
+(e.g. "Weekly Meal Planner" → `weekly-meal-planner.html`).
+
+The generated page is a **pure, self-contained document**: its styles
+(tokens, page geometry, print rules) are inlined, and it contains no chrome
+markup, no scripts, and no references to any sidecar file — opened directly
+it is a plain printable HTML page that prints correctly on its own, and can
+be moved or mailed as one file.
+
+All insertions below are edits to this copy. Insertion order matters: steps 2 → 3
+→ 4 all anchor on the literal `<style id="content-overrides"></style>` tag, and
+each inserts *before* it (step 4 replaces it), so the custom CSS always ends up
+last and wins the cascade.
+
+### 2. Two-sheet documents only (answer_key_html is non-empty)
+
+Skip this step entirely for single-sheet pages.
+
+**2a.** Wrap the content and the key each in its own `.page` div, each carrying
+its own copy of the shell's footer, and use the result as the `content_html` for
+step 5:
+
+```html
+<div class="page">
+{content_html}
+<footer><span></span><span></span></footer>
+</div>
+<div class="page">
+{answer_key_html}
+<footer><span></span><span></span></footer>
+</div>
+```
+
+(The footer must be an exact copy of the `<footer>...</footer>` element already
+inside the shell's `#page` div — copy it from the shell, don't retype it, so the
+stamped copies can't drift. The container's own footer stays where it is; the CSS
+below hides it on screen and the shell's print rules hide it in print.)
+
+**2b.** Insert this block — verbatim, in full — immediately **before**
+`<style id="content-overrides"></style>`:
+
+```html
+<style id="mp-nested-sheets">
+/* Two-sheet document: nested .page sheets inside the #page container. */
+#page { padding: 0 !important; border: none !important; box-shadow: none !important; background: transparent !important; }
+#page > footer { display: none; }
+#page > .page {
+  width: 100%;
+  /* Sheet height fallback only — the shell's applySize() sets the exact
+     fixed height for the selected paper as an inline style on every nested
+     sheet, in both screen and print (WYSIWYG: each nested sheet IS one full
+     printed page; the dimension is immutable, content must fit it). */
+  height: 1056px;
+  margin: 0 0 var(--space-10);
+  /* Same margins and chrome as a single sheet, so an answer key prints with
+     the frame its theme gave sheet one. */
+  padding: var(--page-margin-top) var(--page-margin-x) var(--page-margin-bottom);
+  background: var(--color-paper) !important;
+  display: flex;
+  flex-direction: column;
+}
+#page > .page:last-child { margin-bottom: 0; }
+#page > .page > footer { margin-top: auto; }
+@media print {
+  /* Only the on-screen gap between sheets goes away — each sheet keeps its
+     full paper-size geometry so print matches the screen exactly. */
+  #page > .page { margin: 0 !important; }
+}
+</style>
+```
+
+The shell's print CSS and `applySize()` already handle the nested-sheet
+lane (`#page > .page`) — you add nothing else.
+
+### 3. Font link (font_import is set)
+
+Insert immediately **before** `<style id="content-overrides"></style>`:
+
+```html
+<link rel="stylesheet" href="{font_import}">
+```
+
+Only after re-confirming self-check item 8 (`https://fonts.googleapis.com/`
+prefix, restricted charset) — this is the moment the URL enters an HTML
+attribute, so it's worth the double check. An unsafe URL gets dropped, not fixed.
+
+### 4. Custom CSS (custom_css is set)
+
+Replace `<style id="content-overrides"></style>` with:
+
+```html
+<style id="content-overrides">
+{custom_css}
+</style>
+```
+
+If `custom_css` is empty, leave the tag untouched.
+
+### 5. Body configuration attributes (paper and/or orientation set)
+
+The document carries per-page configuration as **data attributes on `<body>`**
+— never as script calls (the runtime chrome reads them at load). Replace the
+literal `<body>` tag with `<body …>` carrying only the attributes that apply:
+
+- `data-mp-paper="{paper}"` when `paper` is one of the allowlisted values —
+  `a4`, `legal`, `half`. Anything else (including letter): omit the
+  attribute. (The value lands inside an HTML attribute, which is why the
+  allowlist is strict.)
+- `data-mp-orientation="landscape"` — this exact literal — when
+  `orientation` is `landscape`. Omit for portrait.
+When paper and/or orientation are set, ALSO replace the static line inside
+`<style id="dynamic-page-css">` with the matching `@page` size, so a page
+opened directly (script-less) prints its configured sheet exactly
+(`document.css` sizes the on-screen sheet from the body attributes):
+
+| paper \ orientation | portrait (omit) | `landscape` |
+|---|---|---|
+| letter (omit) | `letter` (leave as-is) | `letter landscape` |
+| `a4` | `A4` | `A4 landscape` |
+| `legal` | `legal` | `legal landscape` |
+| `half` | `5.5in 8.5in` | `8.5in 5.5in` |
+
+e.g. `@page { size: A4 landscape; margin: 0; }`. Both attributes set →
+`<body data-mp-paper="a4" data-mp-orientation="landscape">`.
+Neither set → leave the body tag untouched.
+
+There is deliberately no live-edit attribute: reachability is runtime state,
+not stored in the document (`references/harness-support.md` Part 1).
+
+### 6. Content
+
+Replace the **first** occurrence of `<!-- CONTENT -->` with `content_html` (the
+two-sheet wrapped version from step 2a when applicable). In the single-sheet
+case the shell's own footer already sits right after the marker inside `#page` —
+do not add another.
+
+## Verification (grep the written file)
+
+- No `<!-- CONTENT -->` remains.
+- Exactly one `<style id="content-overrides">`.
+- Self-contained pure document: no `@@DOCUMENT_CSS@@` marker remains and the
+  file contains `--color-ink` (the stylesheet really inlined); exactly one
+  `id="mp-document-css"`, appearing **before** `id="content-overrides"`; the
+  string `shell/` appears nowhere; **no** `<script` tags; `id="mp-toolbar"`
+  appears nowhere (the server injects all chrome at serve time).
+- If `font_import` was set: exactly one `<link rel="stylesheet"` whose href starts
+  with `https://fonts.googleapis.com/`, placed before the content-overrides tag.
+- If two-sheet: `id="mp-nested-sheets"` appears **before**
+  `id="content-overrides"`, and `#page` contains exactly two child `.page` divs,
+  each ending in a `<footer>`.
+- If non-letter paper: the `<body` tag carries `data-mp-paper="<paper>"`.
+- If landscape: the `<body` tag carries `data-mp-orientation="landscape"`;
+  otherwise the attribute appears nowhere.
+- If paper and/or orientation set: `dynamic-page-css` carries the matching
+  `@page` size from the table in step 5.
+- `data-mp-live-edit` appears nowhere — the attribute no longer exists.
+- No custom-css rule draws a border or outline on the sheet itself (`.page` /
+  `#page` as the selector's subject). The sheet box *is* the paper, so a border
+  on it lands in the ~0.25in strip no desktop printer can reach: it clips on
+  paper while looking correct on screen and in every screenshot. A themed frame
+  is set with `--page-border`, which the shell paints inset at
+  `--page-frame-inset`. Rules *inside* the sheet (`.page h1`, `.page > .card`)
+  are untouched by this.
+
+If any check fails, fix the copy — don't start over from a blank file.
+
+These are structural checks — they say the file is well-formed, not that the
+content fits the paper. Follow them with the fit check in SKILL.md Step 6
+(`node <skill-dir>/server/fit-cli.mjs <file>`), which is the one that catches a
+page whose content spills onto sheets nobody laid out.
