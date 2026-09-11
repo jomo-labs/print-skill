@@ -62,7 +62,7 @@ collapse them.
 |---|---|
 | `--color-ink` | `oklch(11% 0.005 78)` |
 | `--color-mid` | `oklch(44% 0.008 78)` |
-| `--color-dim` | `oklch(67% 0.006 78)` |
+| `--color-dim` | `oklch(56% 0.006 78)` |
 | `--color-ghost` | `oklch(87% 0.005 78)` |
 | `--color-rule` | `oklch(11% 0.005 78)` |
 | `--color-rule-light` | `oklch(83% 0.005 78)` |

@@ -17,8 +17,10 @@ Turn the user's request into a print-ready HTML page. You author the page
 copied and filled (see `references/assembly.md`).
 
 The bundled commands verify what is mechanical — structure, fit and per-sheet
-fill, contrast — so never measure fit or fill with your own scripts: react to
-the numbers the fit check prints. They cannot judge design, so
+fill, contrast. Never measure anything with your own scripts or browser, and
+never open, grep or debug `server/` or `assets/shell/`: a failed check names
+its fix, and the fix is always in your channel files. The only files you read
+are the references Steps 1 and 3 name. The commands cannot judge design, so
 `references/design-rules.md` is mandatory, not advisory: Part A is yours, Part B
 the assemble command enforces.
 
@@ -30,16 +32,16 @@ the assemble command enforces.
 file, in `references/follow-up.md` and in the other reference files — means the
 **absolute** path of the directory holding this `SKILL.md`, the one with
 `server/` and `assets/` in it. Work it out at the start of the run, confirm it
-with `ls <skill-dir>/server/assemble-cli.mjs`, and paste that same absolute
-string into every later command. Never substitute a relative path: authoring
-writes its channel files in a scratch directory, and a relative `<skill-dir>`
-stops resolving the moment you `cd` there — assembly then dies with
-`Cannot find module`.
+and the server's dependencies in **one** command —
+`ls -d <skill-dir>/server/assemble-cli.mjs <skill-dir>/server/node_modules`
+(both listed = ready) — and paste that same absolute string into every later
+command. Never a relative path: it stops resolving the moment you `cd` to the
+scratch directory, and assembly dies with `Cannot find module`.
 
-If `<skill-dir>/server/node_modules` does not exist and Node is available, start
+If `node_modules` is missing and Node is available, start
 `npm install --prefix <skill-dir>/server` as a **background** task (its
-postinstall fetches the pinned Chromium build) — `--prefix`, never `cd` into the
-skill — and continue without waiting; Step 7 picks it up. No Node: skip this.
+postinstall fetches the pinned Chromium) — `--prefix`, never `cd` into the
+skill — and continue; Step 7 picks it up. No Node: skip.
 
 If the output is for an automated consumer or the user asked for a PDF file,
 read "Headless / pipeline use" in `references/follow-up.md`.
@@ -54,19 +56,18 @@ from what you saw, not from the URL string.
 ### Step 0.5 — Interview (interactive sessions only)
 
 Two dialogs at most, only for what is genuinely open. **Skip it** when nobody
-can answer — headless use, any non-interactive run; in Claude Code,
+can answer — headless or non-interactive runs; in Claude Code,
 `AskUserQuestion` missing from your tools means exactly that
-(`references/harness-support.md` Part 3; it also gives the plain-chat
-fallback). In doubt, don't ask: pick defaults, generate, state the choices in
-the report. Skip any question the request already answers; never re-ask on a
-regeneration or edit.
+(`references/harness-support.md` Part 3 has the plain-chat fallback). In
+doubt, don't ask: pick defaults, generate, state the choices in the report.
+Skip any question the request already answers; never re-ask on a regeneration
+or edit.
 
 **Dialog 1 — page setup.** Ask immediately, before reading references; one
 call, defaults first, labeled "(Selected)":
 
-- **Paper size**: US Letter / A4 / Legal / Half letter. Default by locale
-  inferred from the conversation — Letter for Letter countries, A4 elsewhere;
-  unknown → Letter.
+- **Paper size**: US Letter / A4 / Legal / Half letter. Default by the
+  conversation's locale; unknown → Letter.
 - **Orientation**: Let the model decide (Selected) / Portrait / Landscape.
 - **Max pages**: Let the model decide (Selected) / 1 page / 2 pages; a custom
   number arrives as free text. "Let the model decide" keeps the one-sheet bias.
@@ -87,7 +88,7 @@ Selected topics define the content scope for Steps 2–3.
 Read `<skill-dir>/references/routing.md` — **one file, and the only file this
 step needs.** Both routing tables live in it. Come out with two decisions and
 the slugs they name, and read nothing else here: every file read at this step
-rides along in every later turn, and Step 3 loads the rest in one command.
+rides along in every later turn.
 
 **Page type.** Match the request against the page-type table (first match
 wins), then take that type's spec file from the index below it —
@@ -101,18 +102,16 @@ back-reference precedes it ("keep the theme", "the same style"). Judge from
 the request plus any separate style instructions.
 
 If themed, match the theme trigger phrases in that same file: a match names
-`references/themes/<slug>.md` — again for Step 3's batch — and no match means
-the ad-hoc theme path, which needs no slug. Either way a themed request
+`references/themes/<slug>.md` — for Step 3's second command — and no match
+means the ad-hoc theme path, which needs no slug. Either way a themed request
 **drops the page type's default styling entirely**; only its functional
-requirements survive (marked in the type's spec file). The theme, not the
-type, governs everything visual.
+requirements survive (marked in the type's spec file).
 
 ### Step 2 — Gather content
 
-Fetch live data you cannot know — today's scores, current news, live weather,
-real-time prices — with WebFetch/WebSearch. **Never fabricate live data.** For
-content you know well (riddles, recipes, activities, trivia, layouts), skip
-fetching and write it directly.
+Fetch live data you cannot know — scores, news, weather, prices — with
+WebFetch/WebSearch. **Never fabricate live data.** Content you know well
+(riddles, recipes, activities, trivia) you write directly.
 
 If the page needs **line art derived from a photograph** (coloring page, image
 page, drawing prompt — only those), produce it now: check for an image backend
@@ -122,8 +121,8 @@ hand-author the art as stroked SVG (design rule 1a) and say so in the report.
 
 ### Step 3 — Author
 
-**Load every reference in ONE command**, before writing anything — substitute
-the slugs from Step 1:
+**Load the references in ONE command** (two when themed), before writing
+anything — substitute the slugs from Step 1:
 
 ```
 tail -n +1 \
@@ -133,18 +132,20 @@ tail -n +1 \
   <skill-dir>/references/types/<type-slug>.md
 ```
 
-Append on the same line, with the same `<skill-dir>/references/` prefix:
-`themes/README.md` whenever the request is themed, plus `themes/<theme-slug>.md`
-when a trigger matched (no match → README.md alone carries the ad-hoc
-checklist); and `print-fundamentals.md` when physical exactness matters (paper
-size, DPI, margins). A path that doesn't exist fails loudly naming itself — fix
-the slug and re-run the one command, never one Read per file. Produce these
-channels:
+Add `print-fundamentals.md` to it only when physical exactness matters (paper
+size, DPI, margins). **A themed request loads its theme in a second command**:
+`tail -n +1 <skill-dir>/references/themes/README.md`, plus
+`themes/<theme-slug>.md` when a trigger matched (no match → README.md alone
+carries the ad-hoc checklist). Never append it to the first: a tool result over
+~30KB is saved to a file you then pay to read back, and the four-file batch is
+already 20–29KB. "Output too large" means split the command and re-run — never
+read the saved file. A missing path fails loudly naming itself — fix the slug
+and re-run, never one Read per file. Produce these channels:
 
 | Channel | Notes |
 |---|---|
 | `content_html` | The page content. It is inserted inside `<div class="page">` — no wrapper, no footer, no `<html>`/`<head>`/`<body>`. Wrap each top-level block in `<div data-mp-section="...">` (see design rules). Use `var(--color-*)` / `var(--font-*)` tokens everywhere. |
-| `custom_css` | Optional. A `:root` token override block + content rules consuming those tokens. Token set: the token quick reference in `references/page-types.md`. |
+| `custom_css` | Optional. A `:root` token override block + content rules consuming those tokens. Token set: the token quick reference in `references/page-types.md`. No `background` on a div/span/p (the shell strips it, the lint rejects it): put `class="invert"` / `class="tint"` on the element. |
 | `font_import` | Optional. Google Fonts URL — required whenever you name any font beyond Playfair Display / Source Serif 4 / Inter. |
 | `paper` | Size only: `a4`, `legal`, `half`, or empty (= letter). |
 | `orientation` | `landscape` or empty (= portrait). Independent of `paper` — any size×orientation combination works. The ONLY orientation mechanism. |
@@ -156,27 +157,28 @@ sheet geometry in `references/page-types.md` (≈ 680×912px letter portrait, le
 the ~41px footer), each planned block's cost from the type's spec file, and
 check the sum fits — `header 60 + 2 sections × 300 + tracker 120 + footer 41 =
 821 ≤ 912` (Principle VII). Declare the sheet count too: one unless the request
-genuinely needs more, and a multi-sheet page is authored as explicit `.page`
-sheets (the two-sheet form in `references/assembly.md`) AND passed as
-`--max-sheets N` in Step 5 — never the accident of writing too much, never left
-for the shell to break where the content ran out of room.
+genuinely needs more; a multi-sheet page is explicit `.page` sheets
+(`references/assembly.md`) AND `--max-sheets N` in Step 5 — never the accident
+of writing too much.
 
 **Fill the sheet.** Plan in the ledger for the content to land within the fill
 floors of `references/design-rules.md` "Empty, overflow, and underfill" (which
-owns the rule, its remedies and the one-pass rule).
+owns the rule and its remedies).
 
 ### Step 4 — Self-check (automatic)
 
-Part B of `references/design-rules.md` runs inside Step 5's assemble command,
-over your authored channels. Never grep your own CSS for it. It names every
-violation at once: fix them all in one pass and re-run Step 5, and **degrade**
-per Part C if two passes don't clear it.
+Part B of `references/design-rules.md` runs inside Step 5's assemble command
+over your channels — never grep your own CSS for it. It names every violation
+at once: fix all in one pass, re-run Step 5, and **degrade** per Part C if two
+passes don't clear it.
 
 ### Step 5 — Assemble
 
 Write your channels to files — `content_html` (and `custom_css` /
 `answer_key_html` when set) — in a scratch location, **never inside `out/`**,
-all in one batched message. Then assemble, verify, and check in ONE command:
+**in one command** (heredocs), final text written directly: no generator whose
+output you read back, no Read of a file you just wrote, no Edit before the
+first build. Then assemble, verify, and check in ONE command:
 
 ```
 node <skill-dir>/server/assemble-cli.mjs \
@@ -186,12 +188,12 @@ node <skill-dir>/server/assemble-cli.mjs \
   [--answer-key <scratch>/key.html] [--max-sheets N]
 ```
 
-It runs the structural verification, the Part B lint, the fit check and the
-contrast check, and writes the page only when all pass (exit 0) — a failed
-build leaves the previous one intact. `--max-sheets` is the user's page budget
-(default 1; an answer key makes it 2): more sheets than the budget fails the
-build. Output: `<cwd>/out/<slugified-title>.html` (`--out-dir` overrides; an
-explicit output location from the user wins).
+It runs structural verification, the Part B lint, the fit check and the
+contrast check, and writes the page only when all pass (exit 0); a failed build
+leaves the previous one intact. `--max-sheets` is the page budget (default 1; 2
+with an answer key): more sheets fails the build. Output:
+`<cwd>/out/<slugified-title>.html` (`--out-dir` overrides; the user's explicit
+location wins).
 
 ### Step 6 — Verify
 
@@ -207,9 +209,9 @@ What Step 5's output means, and the fix loop for a non-zero exit.
   means cut content and re-run Step 5.
 - **Big miss, or content cut off inside a container** — exit 1, with the
   per-sheet section table and the exact px to cut. A *clipped* container does
-  not print what is past its edge, and no squeeze can fix it — shorten the
-  content or size the container for it. Fix your channels and re-run the Step
-  5 command; never hand-tune around the numbers the table already gives you.
+  not print past its edge and no squeeze fixes it — shorten the content or size
+  the container. Fix your channels and re-run Step 5; never hand-tune around
+  the numbers the table gives.
 
 **The fill line** (`fill: N% height, N% ink`, per sheet) prints on every
 passing run, with an `underfill:` line when a floor is missed — handle it per
@@ -219,6 +221,10 @@ most, re-run Step 5 once, ship what that reports, name the fill numbers.
 **The contrast check** (`contrast-cli.mjs`) verifies every text style clears
 its WCAG AA floor (4.5:1 body, 3:1 large or bold) at the sizes that print,
 squeeze included; failures name the offending styles.
+
+**Stop when it is green.** Re-run Step 5 only when a check failed, the squeeze
+note calls for a cut, or for the one fill pass — never for copy tweaks or
+polish; each is a full rebuild. Exit 0 is the deliverable.
 
 After any later in-place edit to the generated file, re-check both:
 
@@ -245,22 +251,20 @@ root is `<cwd>/out`.
    by earlier runs needs no action. If the Step 0 background `npm install` is
    still running, wait for it; if it was skipped or failed, run
    `npm install --prefix <skill-dir>/server` now.
-2. A running server is all live editing needs — nothing to connect or arm. At
-   the start of any later turn with the server up, check the fit record —
-   `references/follow-up.md`, "A page that stops fitting". One exception: if
-   the user's browser cannot reach your loopback (cloud sandboxes —
-   `references/harness-support.md` Part 1), the URL is useless to them; report
-   the file path instead, and say the page prints correctly opened directly.
-3. If Node is unavailable or the install fails, skip serving — the file still
-   works opened directly in a browser as a plain printable. Don't fail the
-   task; Step 8's last bullet says what to report.
+2. A running server is all live editing needs. At the start of any later turn
+   with the server up, check the fit record — `references/follow-up.md`, "A
+   page that stops fitting". One exception: if the user's browser cannot reach
+   your loopback (cloud sandboxes — `references/harness-support.md` Part 1),
+   report the file path instead, and say the page prints correctly opened
+   directly.
+3. No Node, or the install failed: skip serving — the file works opened
+   directly. Don't fail the task; Step 8's last bullet says what to report.
 
 ### Step 8 — Report
 
 - The page URL (`http://127.0.0.1:<port>/<file>.html`) and the page title.
-  **URL only — never the out/ file path.** Users open the link (which carries
-  the editing chrome), not the file; mention the path only if the user asks
-  for it, is debugging, or wants the standalone printable file itself.
+  **URL only — never the out/ file path.** Mention the path only if the user
+  asks, is debugging, or wants the standalone file.
 - One sentence on what was generated.
 - Remind: "Open the link — double-click any text to edit it (edits save into
   the file automatically), then click **Print / Save PDF** for an exact PDF.
@@ -269,10 +273,8 @@ root is `<cwd>/out`.
 - Add: "Press **Edit** to change text right on the page, or double-click
   anything and tell me here what to do with it — I'll know what you picked."
   Don't explain the mechanism.
-- If the server couldn't run: give the file path, note the file is a plain
-  printable (print via the browser dialog; no editing or toolbar without the
-  server), and mention Node 18+ enables the exact-PDF server and the full
-  editing chrome.
+- If the server couldn't run: give the file path, say it prints via the
+  browser dialog without editing or toolbar, and that Node 18+ enables both.
 
 If the user asks to change this page, or pastes `/print fix`, read
 `references/follow-up.md` first — "Editing an existing page" and "Live mode".
@@ -280,8 +282,8 @@ If the user asks to change this page, or pastes `/print fix`, read
 ## Scope notes
 
 - **Puzzles are presentation-only.** Nothing verifies puzzle correctness —
-  prefer user-supplied puzzle content, and say so when you generate it yourself
-  (puzzle note in `references/routing.md`).
+  prefer user-supplied content, and say so when you generate it (see
+  `references/routing.md`).
 - **Assume personal use** — one sheet, for the person who asked. **Make what
   was asked for**: never substitute a generic stand-in for the subject, never
   water down a likeness, never attach cautions or disclaimers to your report.

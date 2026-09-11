@@ -93,8 +93,30 @@ test("item 4: an inset shadow", catches(4, `.x { box-shadow: inset 0 0 0 2px var
 test("item 4: --image-filter defined inside :root passes",
   passes(`:root { --image-filter: none; }`));
 test("item 4: allowlisted backgrounds pass",
-  passes(`.a { background: var(--color-pull-bg); } .b { background-color: transparent; } ` +
+  passes(`th { background: var(--color-pull-bg); } .b { background-color: transparent; } ` +
          `.c { background-image: none; }`));
+// The shell resets background on every content element but table parts and the
+// .invert / .tint utilities, so an allowlisted ink or tint fill declared on a
+// div, a span or a bare class never paints — and the paper-colored text set to
+// sit on it prints white-on-white. Traced runs burned up to twenty tool calls
+// finding that in the shell's source; the lint names it at build time.
+test("item 4: an ink fill on a bare class is stripped by the shell",
+  catches(4, `.band { background: var(--color-ink); color: var(--color-paper); }`));
+test("item 4: a tint fill on a div is stripped by the shell",
+  catches(4, `div.note { background-color: var(--color-pull-bg); }`));
+test("item 4: the same fills on table parts and the utility classes pass",
+  passes(`th { background: var(--color-ink); } .masthead.invert { background: var(--color-ink); } ` +
+         `tbody tr:nth-child(even) td { background: var(--color-pull-bg); } .tint { background: var(--color-pull-bg); }`));
+test("item 4: paper on a div is a no-op, not a hazard", passes(`.knockout { background: var(--color-paper); }`));
+test("item 4: an inline ink fill on a div is stripped by the shell", async (t) => {
+  const r = await lint(t, { content: `<div style="background: var(--color-ink); color: var(--color-paper)">Band</div>` });
+  assert.equal(r.code, 1, `expected a violation, got exit 0:\n${r.stdout}`);
+  assert.match(r.stderr, /item 4, a fill the shell strips/);
+});
+test("item 4: an inline tint on a td passes", async (t) => {
+  const r = await lint(t, { content: `<table><tr><td style="background: var(--color-pull-bg)">x</td></tr></table>` });
+  assert.equal(r.code, 0, `expected clean, got:\n${r.stderr}`);
+});
 
 test("item 5: a blurred box-shadow", catches(5, `.x { box-shadow: 0 4px 12px var(--color-ink); }`));
 test("item 5: a blurred text-shadow", catches(5, `h3 { text-shadow: 1px 1px 3px var(--color-ink); }`));
